@@ -39,6 +39,9 @@
 
     <div class="card" id="importCard" style="display:none;">
       <h3>CSVインポート</h3>
+      <div id="combinedRow" style="display:none; margin-bottom:8px;">
+        <label><input type="checkbox" id="combined" onchange="updateImportHint()" /> 商品＋商品詳細を同時に取り込む（1行で商品と詳細）</label>
+      </div>
       <p id="importHint" style="font-size:0.85rem; color:#555;"></p>
       <input type="file" id="csvFile" accept=".csv" />
       <div style="margin-top:10px;"><button class="secondary" onclick="importCsv()">取込実行</button></div>
@@ -91,6 +94,7 @@
       products: 'ヘッダー: 名称,カナ,部門,分類,管理コード,精度管理対象',
       'product-details': 'ヘッダー: 管理コード,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行',
     };
+    const COMBINED_HINT = 'ヘッダー: 名称,カナ,部門,分類,管理コード,精度管理対象,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行';
 
     let editId = null;
     let refCache = {};
@@ -115,9 +119,19 @@
       editId = null;
       const t = curType();
       document.getElementById('importCard').style.display = IMPORT_HINTS[t] ? 'block' : 'none';
-      if (IMPORT_HINTS[t]) document.getElementById('importHint').textContent = IMPORT_HINTS[t];
+      // 「商品＋詳細同時」チェックは商品種別のときだけ表示
+      document.getElementById('combinedRow').style.display = (t === 'products') ? 'block' : 'none';
+      if (t !== 'products') document.getElementById('combined').checked = false;
+      updateImportHint();
       await renderForm();
       await loadList();
+    }
+
+    function updateImportHint() {
+      const t = curType();
+      const combined = document.getElementById('combined').checked;
+      const hint = (t === 'products' && combined) ? COMBINED_HINT : IMPORT_HINTS[t];
+      if (hint) document.getElementById('importHint').textContent = hint;
     }
 
     async function renderForm() {
@@ -229,13 +243,18 @@
       const msg = document.getElementById('importMsg');
       if (!file) { setMsg(msg, 'ファイルを選択してください', 'error'); return; }
       const csv = await file.text();
-      const { ok, data } = await api('/api/import/' + curType(), { method: 'POST', body: JSON.stringify({ csv }) });
+      const combined = curType() === 'products' && document.getElementById('combined').checked;
+      const endpoint = combined ? 'products-combined' : curType();
+      const { ok, data } = await api('/api/import/' + endpoint, { method: 'POST', body: JSON.stringify({ csv }) });
       if (!ok) {
         let t = data.error || '取込失敗';
         if (data.errors) t += ' / ' + data.errors.slice(0, 5).map((e) => `${e.line}行:${e.error}`).join(' , ');
         setMsg(msg, t, 'error'); return;
       }
-      setMsg(msg, `${data.inserted}件取り込みました`, 'ok');
+      const summary = combined
+        ? `商品${data.productsCreated}件・詳細${data.detailsCreated}件を取り込みました`
+        : `${data.inserted}件取り込みました`;
+      setMsg(msg, summary, 'ok');
       refCache = {};
       loadList();
     }
