@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>入庫 | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header></header>
+  <main>
+    <div class="card">
+      <h2>入庫登録</h2>
+      <div class="row">
+        <div>
+          <label>入庫日</label>
+          <input type="date" id="receiptDate" />
+        </div>
+      </div>
+
+      <h3 style="margin-top:20px;">明細追加</h3>
+      <div class="row">
+        <div style="flex:2;">
+          <label>商品</label>
+          <select id="product"></select>
+        </div>
+        <div>
+          <label>ロット番号</label>
+          <input id="lot" placeholder="空欄可" />
+        </div>
+        <div>
+          <label>使用期限</label>
+          <input type="date" id="expiry" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>入庫個数</label>
+          <input type="number" id="qty" value="1" min="1" />
+        </div>
+        <div>
+          <label>梱包数</label>
+          <input type="number" id="pack" value="1" min="1" />
+        </div>
+        <div>
+          <label>単価</label>
+          <input type="number" id="price" value="0" min="0" />
+        </div>
+        <div style="flex:0;">
+          <label>&nbsp;</label>
+          <button onclick="addLine()">明細に追加</button>
+        </div>
+      </div>
+      <p class="msg" id="addMsg"></p>
+
+      <table id="lineTable">
+        <thead><tr><th>商品</th><th>ロット</th><th>使用期限</th><th>入庫個数</th><th>梱包数</th><th>加算バラ数</th><th>単価</th><th>BC</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+
+      <div style="margin-top:16px;">
+        <button onclick="submitReceipt()">入庫を保存</button>
+      </div>
+      <p class="msg" id="resultMsg"></p>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    let products = [];
+    let lines = [];
+
+    async function boot() {
+      const user = await initPage('receipts');
+      if (!user) return;
+      document.getElementById('receiptDate').value = new Date().toISOString().slice(0, 10);
+      products = await getProducts();
+      const sel = document.getElementById('product');
+      sel.innerHTML = products.map((p) => {
+        const d = p.details[0];
+        return `<option value="${p.productId}">${p.productName}${d && d.spec ? '（' + d.spec + '）' : ''}</option>`;
+      }).join('');
+      sel.addEventListener('change', fillDefaults);
+      fillDefaults();
+    }
+
+    function currentDetail() {
+      const pid = document.getElementById('product').value;
+      const p = products.find((x) => String(x.productId) === String(pid));
+      return p ? { product: p, detail: p.details[0] } : null;
+    }
+    function fillDefaults() {
+      const cur = currentDetail();
+      if (!cur || !cur.detail) return;
+      document.getElementById('pack').value = cur.detail.packSize;
+      document.getElementById('price').value = cur.detail.unitPrice;
+    }
+
+    function addLine() {
+      const cur = currentDetail();
+      if (!cur || !cur.detail) return;
+      const qty = Number(document.getElementById('qty').value);
+      const pack = Number(document.getElementById('pack').value);
+      if (qty < 1 || pack < 1) { setMsg(document.getElementById('addMsg'), '個数・梱包数は1以上', 'error'); return; }
+      const line = {
+        productId: cur.product.productId,
+        productName: cur.product.productName,
+        productDetailId: cur.detail.productDetailId,
+        lotNumber: document.getElementById('lot').value,
+        expiryDate: document.getElementById('expiry').value || null,
+        receiptQuantity: qty,
+        packSize: pack,
+        unitPrice: Number(document.getElementById('price').value),
+        barcode: cur.detail.barcodeIssueFlag,
+      };
+      lines.push(line);
+      setMsg(document.getElementById('addMsg'), '', '');
+      renderLines();
+    }
+
+    function renderLines() {
+      const tbody = document.querySelector('#lineTable tbody');
+      tbody.innerHTML = '';
+      lines.forEach((l, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          `<td>${l.productName}</td><td>${l.lotNumber || '(なし)'}</td><td>${l.expiryDate || '(なし)'}</td>` +
+          `<td style="text-align:right;">${l.receiptQuantity}</td><td style="text-align:right;">${l.packSize}</td>` +
+          `<td style="text-align:right;">${l.receiptQuantity * l.packSize}</td><td style="text-align:right;">${l.unitPrice}</td>` +
+          `<td>${l.barcode ? '○' : ''}</td>` +
+          `<td><button class="danger" onclick="removeLine(${i})">削除</button></td>`;
+        tbody.appendChild(tr);
+      });
+    }
+    function removeLine(i) { lines.splice(i, 1); renderLines(); }
+
+    async function submitReceipt() {
+      const msg = document.getElementById('resultMsg');
+      if (lines.length === 0) { setMsg(msg, '明細がありません', 'error'); return; }
+      const body = {
+        receiptDate: document.getElementById('receiptDate').value,
+        details: lines.map((l) => ({
+          productId: l.productId, productDetailId: l.productDetailId,
+          lotNumber: l.lotNumber, expiryDate: l.expiryDate,
+          receiptQuantity: l.receiptQuantity, packSize: l.packSize, unitPrice: l.unitPrice,
+        })),
+      };
+      const { ok, data } = await api('/api/receipts', { method: 'POST', body: JSON.stringify(body) });
+      if (!ok) { setMsg(msg, data.error || '保存失敗', 'error'); return; }
+      const bc = data.details.reduce((a, d) => a + d.barcodesIssued, 0);
+      setMsg(msg, `入庫を保存しました（入庫ID:${data.receiptId}／発行バーコード:${bc}本）`, 'ok');
+      lines = []; renderLines();
+    }
+
+    boot();
+  </script>
+</body>
+</html>

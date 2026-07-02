@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>発注 | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header></header>
+  <main>
+    <div class="card">
+      <h2>発注一覧</h2>
+      <div class="row">
+        <div style="flex:0; min-width:160px;">
+          <label>状態</label>
+          <select id="statusFilter" onchange="load()">
+            <option value="unordered">未発注</option>
+            <option value="ordered">発注済み</option>
+            <option value="received">入庫済み</option>
+            <option value="canceled">キャンセル</option>
+            <option value="">すべて</option>
+          </select>
+        </div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="load()">再読み込み</button></div>
+      </div>
+      <p class="msg" id="msg"></p>
+      <div id="orderList"></div>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    let products = [];
+
+    async function boot() {
+      const user = await initPage('orders');
+      if (!user) return;
+      products = await getProducts();
+      load();
+    }
+
+    async function load() {
+      const status = document.getElementById('statusFilter').value;
+      const { data } = await api('/api/orders' + (status ? '?status=' + status : ''));
+      const wrap = document.getElementById('orderList');
+      const orders = data.orders || [];
+      if (orders.length === 0) { wrap.innerHTML = '<p>該当する発注はありません。</p>'; return; }
+      wrap.innerHTML = orders.map(renderOrder).join('');
+    }
+
+    function renderOrder(o) {
+      const rows = o.details.map((d) =>
+        `<tr><td>${d.product_name}</td><td style="text-align:right;">${d.planned_order_quantity}</td><td style="text-align:right;">${d.order_quantity}</td></tr>`
+      ).join('');
+      const actions = o.order_status === 'unordered'
+        ? `<button onclick="place('${o.id}')">発注する</button> <button class="danger" onclick="cancel('${o.id}')">キャンセル</button>`
+        : o.order_status === 'ordered'
+          ? `<button class="danger" onclick="cancel('${o.id}')">キャンセル</button>`
+          : '';
+      // 未発注のみ商品手動追加フォーム(その問屋の商品のみ)
+      let addForm = '';
+      if (o.order_status === 'unordered') {
+        const opts = products
+          .map((p) => ({ p, d: p.details.find((d) => String(d.supplierId) === String(o.supplier_id)) }))
+          .filter((x) => x.d)
+          .map((x) => `<option value='${JSON.stringify({ productId: x.p.productId, productDetailId: x.d.productDetailId })}'>${x.p.productName}</option>`)
+          .join('');
+        addForm = `<div class="row" style="margin-top:10px; align-items:flex-end;">
+          <div style="flex:2;"><label>商品追加(この問屋のみ)</label><select id="add_${o.id}">${opts || '<option value="">対象商品なし</option>'}</select></div>
+          <div style="flex:0;"><label>発注数(梱包)</label><input type="number" id="addq_${o.id}" value="1" min="1" style="width:100px;" /></div>
+          <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="addDetail('${o.id}')">追加</button></div>
+        </div>`;
+      }
+      return `<div class="card" style="background:#fafcfe;">
+        <div class="row" style="align-items:center;">
+          <div><strong>発注 #${o.id}</strong> <span class="pill ${o.order_status}">${statusLabel(o.order_status)}</span></div>
+          <div>問屋: ${o.supplier_name || '-'}</div>
+          <div>発注日: ${o.order_date || '-'}</div>
+          <div class="spacer"></div>
+        </div>
+        <table><thead><tr><th>商品</th><th>発注予定数(梱包)</th><th>発注数(梱包)</th></tr></thead><tbody>${rows}</tbody></table>
+        ${addForm}
+        <div style="margin-top:10px;">${actions}</div>
+      </div>`;
+    }
+
+    function statusLabel(s) {
+      return { unordered: '未発注', ordered: '発注済み', received: '入庫済み', canceled: 'キャンセル' }[s] || s;
+    }
+
+    async function place(id) {
+      const { ok, data } = await api(`/api/orders/${id}/place`, { method: 'POST', body: JSON.stringify({}) });
+      setMsg(document.getElementById('msg'), ok ? `発注 #${id} を発注済みにしました` : (data.error || '失敗'), ok ? 'ok' : 'error');
+      load();
+    }
+    async function addDetail(orderId) {
+      const sel = document.getElementById('add_' + orderId);
+      if (!sel || !sel.value) { setMsg(document.getElementById('msg'), '追加する商品がありません', 'error'); return; }
+      const picked = JSON.parse(sel.value);
+      const orderQuantity = Number(document.getElementById('addq_' + orderId).value) || 1;
+      const { ok, data } = await api(`/api/orders/${orderId}/details`, {
+        method: 'POST',
+        body: JSON.stringify({ productId: picked.productId, productDetailId: picked.productDetailId, orderQuantity }),
+      });
+      setMsg(document.getElementById('msg'), ok ? '商品を追加しました' : (data.error || '失敗'), ok ? 'ok' : 'error');
+      load();
+    }
+
+    async function cancel(id) {
+      const { ok, data } = await api(`/api/orders/${id}/cancel`, { method: 'POST' });
+      setMsg(document.getElementById('msg'), ok ? `発注 #${id} をキャンセルしました` : (data.error || '失敗'), ok ? 'ok' : 'error');
+      load();
+    }
+
+    boot();
+  </script>
+</body>
+</html>

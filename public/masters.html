@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>マスター編集 | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header></header>
+  <main>
+    <div class="card">
+      <h2>マスター編集</h2>
+      <div class="row">
+        <div style="flex:0; min-width:220px;">
+          <label>マスター種別</label>
+          <select id="type" onchange="switchType()">
+            <option value="suppliers">問屋</option>
+            <option value="makers">メーカー</option>
+            <option value="departments">部門</option>
+            <option value="categories">分類</option>
+            <option value="users">ユーザー</option>
+            <option value="products">商品</option>
+            <option value="product-details">商品詳細</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 id="formTitle">新規登録</h3>
+      <div id="formArea" class="row"></div>
+      <div style="margin-top:12px;">
+        <button onclick="save()">保存</button>
+        <button class="secondary" onclick="resetForm()">クリア</button>
+      </div>
+      <p class="msg" id="formMsg"></p>
+    </div>
+
+    <div class="card" id="importCard" style="display:none;">
+      <h3>CSVインポート</h3>
+      <p id="importHint" style="font-size:0.85rem; color:#555;"></p>
+      <input type="file" id="csvFile" accept=".csv" />
+      <div style="margin-top:10px;"><button class="secondary" onclick="importCsv()">取込実行</button></div>
+      <p class="msg" id="importMsg"></p>
+    </div>
+
+    <div class="card">
+      <h3>一覧</h3>
+      <div style="overflow-x:auto;"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    // フィールド定義
+    const DEFS = {
+      suppliers:   [f('name','名称'), f('kana','カナ'), f('note','備考')],
+      makers:      [f('name','名称'), f('kana','カナ'), f('jan_maker_code','JANメーカーコード'), f('note','備考')],
+      departments: [f('name','名称'), f('kana','カナ'), f('note','備考')],
+      categories:  [f('name','名称'), f('kana','カナ'), f('note','備考')],
+      users: [
+        sel('user_type','タイプ',[['admin','管理者'],['general','一般'],['supplier','問屋']]),
+        f('name','氏名'), f('kana','カナ'), f('login_id','ログインID'),
+        f('password','パスワード', 'password'),
+      ],
+      products: [
+        f('name','名称'), f('kana','カナ'),
+        ref('department_id','部門','departments'),
+        ref('category_id','分類','categories'),
+        f('management_code','管理コード'),
+        chk('qc_target_flag','精度管理対象'),
+      ],
+      'product-details': [
+        ref('product_id','商品','products'),
+        f('apply_start_date','適用開始日','date'), f('apply_end_date','適用終了日','date'),
+        f('quantity_unit','数量単位'), f('pack_size','梱包数','number'), f('pack_unit','梱包単位'),
+        f('spec','規格'), f('unit_price','単価','number'), f('test_count','テスト数','number'),
+        f('min_quantity','最低個数','number'), f('order_quantity','発注個数','number'),
+        f('jan_code','JANコード'),
+        ref('maker_id','メーカー','makers'), ref('supplier_id','問屋','suppliers'),
+        chk('barcode_issue_flag','バーコード発行'),
+      ],
+    };
+    function f(key, label, type='text') { return { key, label, type }; }
+    function sel(key, label, options) { return { key, label, type: 'select', options }; }
+    function ref(key, label, refType) { return { key, label, type: 'ref', refType }; }
+    function chk(key, label) { return { key, label, type: 'checkbox' }; }
+
+    const IMPORT_HINTS = {
+      products: 'ヘッダー: 名称,カナ,部門,分類,管理コード,精度管理対象',
+      'product-details': 'ヘッダー: 管理コード,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行',
+    };
+
+    let editId = null;
+    let refCache = {};
+
+    async function boot() {
+      const user = await initPage('masters');
+      if (!user) return;
+      if (user.userType !== 'admin') { document.querySelector('main').innerHTML = '<div class="card">この画面は管理者のみ利用できます。</div>'; return; }
+      switchType();
+    }
+
+    function curType() { return document.getElementById('type').value; }
+
+    async function loadRef(refType) {
+      if (refCache[refType]) return refCache[refType];
+      const { data } = await api('/api/masters/' + refType);
+      refCache[refType] = data.rows || [];
+      return refCache[refType];
+    }
+
+    async function switchType() {
+      editId = null;
+      const t = curType();
+      document.getElementById('importCard').style.display = IMPORT_HINTS[t] ? 'block' : 'none';
+      if (IMPORT_HINTS[t]) document.getElementById('importHint').textContent = IMPORT_HINTS[t];
+      await renderForm();
+      await loadList();
+    }
+
+    async function renderForm() {
+      const t = curType();
+      const area = document.getElementById('formArea');
+      area.innerHTML = '';
+      for (const def of DEFS[t]) {
+        const div = document.createElement('div');
+        let inner = `<label>${def.label}</label>`;
+        if (def.type === 'select') {
+          inner += `<select id="fld_${def.key}">` + def.options.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') + `</select>`;
+        } else if (def.type === 'ref') {
+          const rows = await loadRef(def.refType);
+          inner += `<select id="fld_${def.key}"><option value="">(未選択)</option>` +
+            rows.map((r) => `<option value="${r.id}">${r.name}</option>`).join('') + `</select>`;
+        } else if (def.type === 'checkbox') {
+          inner += `<input type="checkbox" id="fld_${def.key}" />`;
+        } else {
+          inner += `<input type="${def.type}" id="fld_${def.key}" />`;
+        }
+        div.innerHTML = inner;
+        area.appendChild(div);
+      }
+    }
+
+    function resetForm() {
+      editId = null;
+      document.getElementById('formTitle').textContent = '新規登録';
+      DEFS[curType()].forEach((def) => {
+        const el = document.getElementById('fld_' + def.key);
+        if (!el) return;
+        if (def.type === 'checkbox') el.checked = false; else el.value = '';
+      });
+      setMsg(document.getElementById('formMsg'), '', '');
+    }
+
+    function collect() {
+      const body = {};
+      DEFS[curType()].forEach((def) => {
+        const el = document.getElementById('fld_' + def.key);
+        if (!el) return;
+        if (def.type === 'checkbox') body[def.key] = el.checked;
+        else if (def.key === 'password') { if (el.value) body[def.key] = el.value; }
+        else if (def.type === 'ref') body[def.key] = el.value || null;
+        else body[def.key] = el.value;
+      });
+      return body;
+    }
+
+    async function save() {
+      const t = curType();
+      const body = collect();
+      const msg = document.getElementById('formMsg');
+      const path = '/api/masters/' + t + (editId ? '/' + editId : '');
+      const method = editId ? 'PUT' : 'POST';
+      const { ok, data } = await api(path, { method, body: JSON.stringify(body) });
+      if (!ok) { setMsg(msg, data.error || '保存失敗', 'error'); return; }
+      setMsg(msg, editId ? '更新しました' : '登録しました', 'ok');
+      refCache = {};
+      resetForm();
+      await renderForm();
+      loadList();
+    }
+
+    async function edit(row) {
+      editId = row.id;
+      document.getElementById('formTitle').textContent = '編集 (ID:' + row.id + ')';
+      DEFS[curType()].forEach((def) => {
+        const el = document.getElementById('fld_' + def.key);
+        if (!el) return;
+        if (def.key === 'password') { el.value = ''; return; }
+        if (def.type === 'checkbox') el.checked = !!row[def.key];
+        else el.value = row[def.key] == null ? '' : row[def.key];
+      });
+      window.scrollTo(0, 0);
+    }
+
+    async function toggle(id) {
+      const { ok, data } = await api(`/api/masters/${curType()}/${id}/toggle`, { method: 'POST' });
+      if (!ok) { alert(data.error || '失敗'); return; }
+      refCache = {};
+      loadList();
+    }
+
+    async function loadList() {
+      const t = curType();
+      const { data } = await api('/api/masters/' + t);
+      const rows = data.rows || [];
+      const thead = document.querySelector('#tbl thead');
+      const tbody = document.querySelector('#tbl tbody');
+      if (rows.length === 0) { thead.innerHTML = ''; tbody.innerHTML = '<tr><td>データがありません</td></tr>'; return; }
+      const keys = Object.keys(rows[0]).filter((k) => !['created_at', 'updated_at'].includes(k));
+      thead.innerHTML = '<tr>' + keys.map((k) => `<th>${k}</th>`).join('') + '<th>操作</th></tr>';
+      tbody.innerHTML = rows.map((r) => {
+        const tds = keys.map((k) => `<td>${fmt(r[k])}</td>`).join('');
+        const hasActive = 'is_active' in r;
+        const toggleBtn = hasActive ? `<button class="${r.is_active ? 'danger' : ''}" onclick="toggle('${r.id}')">${r.is_active ? '無効化' : '有効化'}</button>` : '';
+        const editData = JSON.stringify(r).replace(/'/g, '&#39;');
+        return `<tr>${tds}<td><button class="secondary" onclick='edit(${editData})'>編集</button> ${toggleBtn}</td></tr>`;
+      }).join('');
+    }
+    function fmt(v) {
+      if (v === true) return '○'; if (v === false) return '';
+      return v == null ? '' : String(v);
+    }
+
+    async function importCsv() {
+      const file = document.getElementById('csvFile').files[0];
+      const msg = document.getElementById('importMsg');
+      if (!file) { setMsg(msg, 'ファイルを選択してください', 'error'); return; }
+      const csv = await file.text();
+      const { ok, data } = await api('/api/import/' + curType(), { method: 'POST', body: JSON.stringify({ csv }) });
+      if (!ok) {
+        let t = data.error || '取込失敗';
+        if (data.errors) t += ' / ' + data.errors.slice(0, 5).map((e) => `${e.line}行:${e.error}`).join(' , ');
+        setMsg(msg, t, 'error'); return;
+      }
+      setMsg(msg, `${data.inserted}件取り込みました`, 'ok');
+      refCache = {};
+      loadList();
+    }
+
+    boot();
+  </script>
+</body>
+</html>

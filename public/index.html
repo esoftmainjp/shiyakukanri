@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header><h1>試薬在庫管理システム</h1></header>
+  <main>
+    <!-- 未ログイン時 -->
+    <div class="card" id="loginCard" style="display:none; max-width:360px;">
+      <h2>ログイン</h2>
+      <label>ログインID</label>
+      <input id="loginId" value="admin" style="width:100%;" />
+      <label>パスワード</label>
+      <input id="password" type="password" value="Admin@12345" style="width:100%;" />
+      <div style="margin-top:12px;"><button onclick="login()">ログイン</button></div>
+      <p class="msg error" id="loginMsg"></p>
+    </div>
+
+    <!-- ログイン後 -->
+    <div id="appArea" style="display:none;">
+      <div class="card">
+        <h2>在庫一覧</h2>
+        <button class="secondary" onclick="loadStocks()">再読み込み</button>
+        <table id="stockTable">
+          <thead><tr><th>商品名</th><th>ロット</th><th>使用期限</th><th>在庫数(バラ)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    async function boot() {
+      const user = await api('/api/me');
+      if (user.ok) { showApp(user.data.user); }
+      else { document.getElementById('loginCard').style.display = 'block'; }
+    }
+    async function login() {
+      const loginId = document.getElementById('loginId').value;
+      const password = document.getElementById('password').value;
+      const { ok, data } = await api('/api/login', { method: 'POST', body: JSON.stringify({ loginId, password }) });
+      if (!ok) { setMsg(document.getElementById('loginMsg'), data.error || 'ログイン失敗', 'error'); return; }
+      showApp(data.user);
+    }
+    function showApp(user) {
+      document.getElementById('loginCard').style.display = 'none';
+      document.getElementById('appArea').style.display = 'block';
+      renderHeader(user, 'dashboard');
+      loadStocks();
+    }
+    async function loadStocks() {
+      const { data } = await api('/api/lookup/stocks');
+      const tbody = document.querySelector('#stockTable tbody');
+      tbody.innerHTML = '';
+      (data.stocks || []).forEach((s) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${s.product_name}</td><td>${s.lot_number || '(なし)'}</td><td>${s.expiry_date || '(なし)'}</td><td style="text-align:right;">${s.stock_quantity}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+    boot();
+  </script>
+</body>
+</html>

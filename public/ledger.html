@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>試薬管理台帳 | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header></header>
+  <main>
+    <div class="card">
+      <h2>試薬管理台帳</h2>
+      <p>精度管理対象商品の個体で、入庫日～出庫日（使用開始日）が指定期間と重なるものを出力します。</p>
+      <div class="row">
+        <div><label>期間(開始)</label><input type="date" id="from" /></div>
+        <div><label>期間(終了)</label><input type="date" id="to" /></div>
+        <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">表示</button></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="downloadCsv()">CSV出力</button></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="window.print()">印刷</button></div>
+      </div>
+      <p class="msg" id="msg"></p>
+      <table id="tbl">
+        <thead><tr>
+          <th>入庫日</th><th>商品名</th><th>ロット</th><th>内容物コード</th>
+          <th>有効期限</th><th>使用開始日</th><th>使用終了日</th><th>在庫数</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    async function boot() {
+      const user = await initPage('ledger');
+      if (!user) return;
+      const today = new Date().toISOString().slice(0, 10);
+      const y = new Date(); y.setFullYear(y.getFullYear() - 1);
+      document.getElementById('from').value = y.toISOString().slice(0, 10);
+      document.getElementById('to').value = today;
+      load();
+    }
+
+    function queryString() {
+      const p = new URLSearchParams();
+      const f = document.getElementById('from').value; if (f) p.set('from', f);
+      const t = document.getElementById('to').value; if (t) p.set('to', t);
+      return p.toString();
+    }
+
+    async function load() {
+      const { data } = await api('/api/ledger?' + queryString());
+      const tbody = document.querySelector('#tbl tbody');
+      tbody.innerHTML = '';
+      const rows = data.rows || [];
+      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="8">該当データがありません。</td></tr>'; return; }
+      rows.forEach((r) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          `<td>${r.receipt_date || ''}</td><td>${r.product_name}</td><td>${r.lot_number || '(なし)'}</td>` +
+          `<td>${r.content_code}</td><td>${r.expiry_date || ''}</td><td>${r.use_start_date || ''}</td>` +
+          `<td>${r.use_end_date || ''}</td><td style="text-align:right;">${r.stock_quantity}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function downloadCsv() { window.location = '/api/ledger/csv?' + queryString(); }
+
+    boot();
+  </script>
+</body>
+</html>

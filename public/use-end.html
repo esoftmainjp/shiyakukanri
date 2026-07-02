@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>使用終了日登録 | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header></header>
+  <main>
+    <div class="card">
+      <h2>使用終了日登録</h2>
+      <p>使用中（出庫済みで使用終了日が未登録）の独自バーコードを対象とします。</p>
+      <div class="row">
+        <div style="flex:2;"><label>検索（バーコード / 商品名 / 内容物コード）</label><input id="q" /></div>
+        <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">検索</button></div>
+        <div style="flex:0;"><label>使用終了日</label><input type="date" id="endDate" /></div>
+      </div>
+      <p class="msg" id="msg"></p>
+      <table id="tbl">
+        <thead><tr><th>バーコード</th><th>商品名</th><th>内容物コード</th><th>ロット</th><th>使用開始日</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    async function boot() {
+      const user = await initPage('useend');
+      if (!user) return;
+      document.getElementById('endDate').value = new Date().toISOString().slice(0, 10);
+      load();
+    }
+
+    async function load() {
+      const q = document.getElementById('q').value;
+      const { data } = await api('/api/barcodes/in-use' + (q ? '?query=' + encodeURIComponent(q) : ''));
+      const tbody = document.querySelector('#tbl tbody');
+      tbody.innerHTML = '';
+      const list = data.barcodes || [];
+      if (list.length === 0) { tbody.innerHTML = '<tr><td colspan="6">対象がありません。</td></tr>'; return; }
+      list.forEach((b) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          `<td>${b.barcode_value}</td><td>${b.product_name}</td><td>${b.content_code}</td>` +
+          `<td>${b.lot_number || '(なし)'}</td><td>${b.use_start_date || ''}</td>` +
+          `<td><button onclick="register('${b.barcode_value}')">終了登録</button></td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function register(value) {
+      const useEndDate = document.getElementById('endDate').value;
+      if (!useEndDate) { setMsg(document.getElementById('msg'), '使用終了日を入力してください', 'error'); return; }
+      const { ok, data } = await api(`/api/barcodes/${encodeURIComponent(value)}/use-end`, { method: 'POST', body: JSON.stringify({ useEndDate }) });
+      setMsg(document.getElementById('msg'), ok ? `${value} の使用終了日を登録しました` : (data.error || '失敗'), ok ? 'ok' : 'error');
+      load();
+    }
+
+    boot();
+  </script>
+</body>
+</html>

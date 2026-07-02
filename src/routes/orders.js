@@ -1,0 +1,161 @@
+'use strict';
+
+const express = require('express');
+const { pool, getClient } = require('../db');
+const { writeLog } = require('../services/log');
+
+const router = express.Router();
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// 発注一覧 (状態で絞り込み可)。明細も付与する。
+// GET /api/orders?status=unordered
+router.get('/', async (req, res) => {
+  const { status } = req.query;
+  try {
+    const params = [];
+    let where = '';
+    if (status) {
+      params.push(status);
+      where = 'WHERE o.order_status = $1';
+    }
+    const orders = await pool.query(
+      `SELECT o.id, o.order_date, o.supplier_id, s.name AS supplier_name,
+              o.order_status, o.note
+         FROM orders o
+         LEFT JOIN suppliers s ON s.id = o.supplier_id
+         ${where}
+        ORDER BY o.id DESC`,
+      params
+    );
+    const details = await pool.query(
+      `SELECT od.id, od.order_id, od.product_id, p.name AS product_name,
+              od.product_detail_id, od.planned_order_quantity, od.order_quantity
+         FROM order_details od
+         JOIN products p ON p.id = od.product_id
+        ORDER BY od.id`
+    );
+    const byOrder = {};
+    for (const d of details.rows) {
+      (byOrder[d.order_id] ||= []).push(d);
+    }
+    const result = orders.rows.map((o) => ({ ...o, details: byOrder[o.id] || [] }));
+    res.json({ orders: result });
+  } catch (err) {
+    console.error('発注一覧エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 発注処理: 未発注 → 発注済み
+// POST /api/orders/:id/place  body: { orderDate? }
+router.post('/:id/place', async (req, res) => {
+  const orderId = req.params.id;
+  const orderDate = (req.body && req.body.orderDate) || today();
+  try {
+    const r = await pool.query(
+      `UPDATE orders SET order_status = 'ordered', order_date = $2
+        WHERE id = $1 AND order_status = 'unordered'
+        RETURNING id`,
+      [orderId, orderDate]
+    );
+    if (r.rowCount === 0) {
+      return res.status(400).json({ error: '未発注の発注のみ発注処理できます' });
+    }
+    await writeLog(pool, {
+      userId: req.session.user.id, targetTable: 'orders', targetId: orderId,
+      operationType: '更新', before: { order_status: 'unordered' }, after: { order_status: 'ordered', order_date: orderDate },
+    });
+    res.json({ ok: true, orderId, orderStatus: 'ordered' });
+  } catch (err) {
+    console.error('発注処理エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// キャンセル: 未発注 or 発注済み → キャンセル
+// POST /api/orders/:id/cancel
+router.post('/:id/cancel', async (req, res) => {
+  const orderId = req.params.id;
+  try {
+    const r = await pool.query(
+      `UPDATE orders SET order_status = 'canceled'
+        WHERE id = $1 AND order_status IN ('unordered', 'ordered')
+        RETURNING id`,
+      [orderId]
+    );
+    if (r.rowCount === 0) {
+      return res.status(400).json({ error: 'この発注はキャンセルできません' });
+    }
+    await writeLog(pool, {
+      userId: req.session.user.id, targetTable: 'orders', targetId: orderId,
+      operationType: '更新', after: { order_status: 'canceled' },
+    });
+    res.json({ ok: true, orderId, orderStatus: 'canceled' });
+  } catch (err) {
+    console.error('発注キャンセルエラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 発注明細の商品追加: その発注の問屋の商品のみ許可(異問屋は拒否)
+// POST /api/orders/:id/details  body: { productId, productDetailId, orderQuantity }
+router.post('/:id/details', async (req, res) => {
+  const orderId = req.params.id;
+  const { productId, productDetailId, orderQuantity } = req.body || {};
+  if (!productId || !productDetailId) {
+    return res.status(400).json({ error: '商品IDと商品詳細IDは必須です' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const ord = await client.query(
+      `SELECT supplier_id, order_status FROM orders WHERE id = $1 FOR UPDATE`,
+      [orderId]
+    );
+    if (ord.rowCount === 0) {
+      throw Object.assign(new Error('発注が見つかりません'), { status: 404 });
+    }
+    if (ord.rows[0].order_status !== 'unordered') {
+      throw Object.assign(new Error('未発注の発注のみ商品を追加できます'), { status: 400 });
+    }
+
+    const pd = await client.query(
+      `SELECT supplier_id FROM product_details WHERE id = $1`,
+      [productDetailId]
+    );
+    if (pd.rowCount === 0) {
+      throw Object.assign(new Error('商品詳細が見つかりません'), { status: 400 });
+    }
+
+    // 問屋チェック: 発注の問屋と一致しなければ追加不可
+    if (String(pd.rows[0].supplier_id) !== String(ord.rows[0].supplier_id)) {
+      throw Object.assign(
+        new Error('発注情報の問屋と異なる問屋の商品は追加できません'),
+        { status: 400 }
+      );
+    }
+
+    const qty = Number(orderQuantity) || 1;
+    const ins = await client.query(
+      `INSERT INTO order_details (order_id, product_id, product_detail_id, planned_order_quantity, order_quantity)
+       VALUES ($1, $2, $3, $4, $4) RETURNING id`,
+      [orderId, productId, productDetailId, qty]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ ok: true, orderDetailId: ins.rows[0].id });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('発注明細追加エラー:', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'サーバーエラー' });
+  } finally {
+    client.release();
+  }
+});
+
+module.exports = router;

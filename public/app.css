@@ -1,0 +1,70 @@
+* { box-sizing: border-box; }
+body {
+  font-family: "Segoe UI", "Meiryo", sans-serif;
+  margin: 0;
+  background: #f4f6f8;
+  color: #222;
+}
+header {
+  background: #2c5f8a;
+  color: #fff;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+header h1 { font-size: 1.1rem; margin: 0; }
+header nav a {
+  color: #cfe3f5;
+  text-decoration: none;
+  margin-right: 12px;
+  font-size: 0.95rem;
+}
+header nav a:hover, header nav a.active { color: #fff; text-decoration: underline; }
+header .spacer { flex: 1; }
+header .user { font-size: 0.9rem; }
+main { max-width: 960px; margin: 20px auto; padding: 0 16px; }
+.card {
+  background: #fff;
+  border: 1px solid #dde3e8;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.card h2 { font-size: 1.05rem; margin-top: 0; }
+label { display: block; margin: 10px 0 4px; font-size: 0.9rem; font-weight: 600; }
+input, select {
+  padding: 7px 8px;
+  border: 1px solid #bcc6cf;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.row > div { flex: 1; min-width: 120px; }
+.row input, .row select { width: 100%; }
+button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  background: #2c5f8a;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+button:hover { background: #24506f; }
+button.secondary { background: #6c7a89; }
+button.secondary:hover { background: #57636f; }
+button.danger { background: #b23b3b; }
+button.danger:hover { background: #96302f; }
+table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+th, td { border: 1px solid #e0e5ea; padding: 6px 8px; text-align: left; font-size: 0.9rem; }
+th { background: #eef2f5; }
+.msg { min-height: 1.3em; font-size: 0.9rem; margin-top: 8px; }
+.msg.error { color: #b23b3b; }
+.msg.ok { color: #2c7a3f; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.8rem; color: #fff; }
+.pill.unordered { background: #b8860b; }
+.pill.ordered { background: #2c5f8a; }
+.pill.received { background: #2c7a3f; }
+.pill.canceled { background: #888; }

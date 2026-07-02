@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>出庫 | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header></header>
+  <main>
+    <div class="card">
+      <h2>出庫登録</h2>
+      <div class="row">
+        <div><label>出庫日</label><input type="date" id="issueDate" /></div>
+      </div>
+
+      <h3 style="margin-top:20px;">① バーコードで出庫（バラ1個）</h3>
+      <div class="row">
+        <div style="flex:2;"><label>バーコードを読み取り/入力</label><input id="barcode" placeholder="バーコード値" /></div>
+        <div style="flex:0;"><label>&nbsp;</label><button onclick="addBarcode()">追加</button></div>
+      </div>
+      <p class="msg" id="bcMsg"></p>
+
+      <h3 style="margin-top:20px;">② 数量で出庫</h3>
+      <div class="row">
+        <div style="flex:2;"><label>商品</label><select id="product" onchange="onProductChange()"></select></div>
+        <div style="flex:2;"><label>ロット / 在庫</label><select id="stock"></select></div>
+      </div>
+      <div class="row">
+        <div><label>出庫個数</label><input type="number" id="qty" value="1" min="1" /></div>
+        <div><label>梱包数</label><input type="number" id="pack" value="1" min="1" /></div>
+        <div style="flex:0;"><label>&nbsp;</label><button onclick="addQty()">追加</button></div>
+      </div>
+      <p class="msg" id="qtyMsg"></p>
+
+      <h3 style="margin-top:20px;">出庫明細</h3>
+      <table id="lineTable">
+        <thead><tr><th>種別</th><th>商品/バーコード</th><th>ロット</th><th>出庫バラ数</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+
+      <div style="margin-top:16px;"><button onclick="submitIssue()">出庫を保存</button></div>
+      <p class="msg" id="resultMsg"></p>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    let products = [];
+    let lines = [];
+
+    async function boot() {
+      const user = await initPage('issues');
+      if (!user) return;
+      document.getElementById('issueDate').value = new Date().toISOString().slice(0, 10);
+      products = await getProducts();
+      document.getElementById('product').innerHTML =
+        products.map((p) => `<option value="${p.productId}">${p.productName}</option>`).join('');
+      onProductChange();
+    }
+
+    function currentDetail() {
+      const pid = document.getElementById('product').value;
+      const p = products.find((x) => String(x.productId) === String(pid));
+      return p ? { product: p, detail: p.details[0] } : null;
+    }
+
+    async function onProductChange() {
+      const cur = currentDetail();
+      if (cur && cur.detail) document.getElementById('pack').value = cur.detail.packSize;
+      const pid = document.getElementById('product').value;
+      const { data } = await api('/api/lookup/stocks?productId=' + pid);
+      const sel = document.getElementById('stock');
+      // 在庫は使用期限の昇順(FEFO)で返る。先頭(最短期限)を自動選択する。
+      const stocks = data.stocks || [];
+      sel.innerHTML = stocks.map((s, i) =>
+        `<option value='${JSON.stringify({ lot: s.lot_number, exp: s.expiry_date })}'>` +
+        `${i === 0 ? '★最短期限 ' : ''}${s.lot_number || '(ロットなし)'} / 期限:${s.expiry_date || 'なし'} / 在庫:${s.stock_quantity}</option>`
+      ).join('') || '<option value="">在庫なし</option>';
+      sel.selectedIndex = 0; // FEFO: 最短期限を既定選択
+    }
+
+    async function addBarcode() {
+      const msg = document.getElementById('bcMsg');
+      const value = document.getElementById('barcode').value.trim();
+      if (!value) return;
+      const { ok, data } = await api('/api/lookup/barcode/' + encodeURIComponent(value));
+      if (!ok) { setMsg(msg, data.error || '照会失敗', 'error'); return; }
+      const b = data.barcode;
+      if (b.used_flag) { setMsg(msg, '使用済みのバーコードです', 'error'); return; }
+      lines.push({ kind: 'barcode', barcodeValue: b.barcode_value, label: `${b.product_name}(No.${b.content_code})`, lot: b.lot_number, bara: 1 });
+      setMsg(msg, '', '');
+      document.getElementById('barcode').value = '';
+      renderLines();
+    }
+
+    function addQty() {
+      const msg = document.getElementById('qtyMsg');
+      const cur = currentDetail();
+      const stockVal = document.getElementById('stock').value;
+      if (!cur || !cur.detail || !stockVal) { setMsg(msg, '商品・在庫を選択してください', 'error'); return; }
+      const st = JSON.parse(stockVal);
+      const qty = Number(document.getElementById('qty').value);
+      const pack = Number(document.getElementById('pack').value);
+      if (qty < 1 || pack < 1) { setMsg(msg, '個数・梱包数は1以上', 'error'); return; }
+      lines.push({
+        kind: 'qty', productId: cur.product.productId, productDetailId: cur.detail.productDetailId,
+        label: cur.product.productName, lot: st.lot, expiryDate: st.exp,
+        issueQuantity: qty, packSize: pack, bara: qty * pack,
+      });
+      setMsg(msg, '', '');
+      renderLines();
+    }
+
+    function renderLines() {
+      const tbody = document.querySelector('#lineTable tbody');
+      tbody.innerHTML = '';
+      lines.forEach((l, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          `<td>${l.kind === 'barcode' ? 'バーコード' : '数量'}</td>` +
+          `<td>${l.kind === 'barcode' ? l.barcodeValue + ' ' + l.label : l.label}</td>` +
+          `<td>${l.lot || '(なし)'}</td><td style="text-align:right;">${l.bara}</td>` +
+          `<td><button class="danger" onclick="removeLine(${i})">削除</button></td>`;
+        tbody.appendChild(tr);
+      });
+    }
+    function removeLine(i) { lines.splice(i, 1); renderLines(); }
+
+    async function submitIssue() {
+      const msg = document.getElementById('resultMsg');
+      if (lines.length === 0) { setMsg(msg, '明細がありません', 'error'); return; }
+      const body = {
+        issueDate: document.getElementById('issueDate').value,
+        details: lines.map((l) => l.kind === 'barcode'
+          ? { barcodeValue: l.barcodeValue }
+          : { productId: l.productId, productDetailId: l.productDetailId, lotNumber: l.lot, expiryDate: l.expiryDate, issueQuantity: l.issueQuantity, packSize: l.packSize }),
+      };
+      const { ok, data } = await api('/api/issues', { method: 'POST', body: JSON.stringify(body) });
+      if (!ok) { setMsg(msg, data.error || '保存失敗', 'error'); return; }
+      let text = `出庫を保存しました（出庫ID:${data.issueId}）`;
+      if (data.message) text += ' / ' + data.message;
+      else if (data.orderPlanCreated) text += ' / 発注予定を作成しました';
+      setMsg(msg, text, 'ok');
+      lines = []; renderLines(); onProductChange();
+    }
+
+    boot();
+  </script>
+</body>
+</html>

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>在庫管理 | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header></header>
+  <main>
+    <div class="card">
+      <h2>在庫管理</h2>
+      <div class="row">
+        <div><label>商品名</label><input id="fName" placeholder="部分一致" /></div>
+        <div><label>ロット</label><input id="fLot" placeholder="部分一致" /></div>
+        <div><label>問屋</label><select id="fSupplier"><option value="">すべて</option></select></div>
+        <div><label>使用期限(まで)</label><input type="date" id="fExpiryTo" /></div>
+      </div>
+      <div class="row">
+        <div style="flex:0;"><label><input type="checkbox" id="fZero" /> 在庫0も表示</label></div>
+        <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">検索</button></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="downloadCsv()">CSV出力</button></div>
+      </div>
+      <p class="msg" id="msg"></p>
+      <table id="tbl">
+        <thead><tr><th>商品名</th><th>部門</th><th>ロット</th><th>使用期限</th><th>在庫数</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <!-- 調整ダイアログ代わりのカード -->
+    <div class="card" id="editCard" style="display:none; background:#fbfcfd;">
+      <h2>在庫の修正・廃棄・返品</h2>
+      <p id="editTarget" style="font-weight:600;"></p>
+      <div class="row">
+        <div>
+          <label>区分</label>
+          <select id="mType" onchange="onTypeChange()">
+            <option value="adjust">在庫修正(絶対値)</option>
+            <option value="disposal">廃棄(減少)</option>
+            <option value="return">返品(減少)</option>
+          </select>
+        </div>
+        <div><label id="qtyLabel">修正後の在庫数</label><input type="number" id="mQty" min="0" value="0" /></div>
+      </div>
+      <div><label>理由(必須)</label><input id="mReason" style="width:100%;" /></div>
+      <div style="margin-top:12px;">
+        <button onclick="submitMovement()">実行</button>
+        <button class="secondary" onclick="closeEdit()">閉じる</button>
+      </div>
+      <p class="msg" id="editMsg"></p>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    let current = null;
+
+    async function boot() {
+      const user = await initPage('inventory');
+      if (!user) return;
+      const { data } = await api('/api/lookup/suppliers');
+      document.getElementById('fSupplier').innerHTML =
+        '<option value="">すべて</option>' + (data.suppliers || []).map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+      load();
+    }
+
+    function queryString() {
+      const p = new URLSearchParams();
+      const name = document.getElementById('fName').value; if (name) p.set('productName', name);
+      const lot = document.getElementById('fLot').value; if (lot) p.set('lotNumber', lot);
+      const sup = document.getElementById('fSupplier').value; if (sup) p.set('supplierId', sup);
+      const exp = document.getElementById('fExpiryTo').value; if (exp) p.set('expiryTo', exp);
+      if (document.getElementById('fZero').checked) p.set('includeZero', 'true');
+      return p.toString();
+    }
+
+    async function load() {
+      const { data } = await api('/api/inventory?' + queryString());
+      const tbody = document.querySelector('#tbl tbody');
+      tbody.innerHTML = '';
+      (data.stocks || []).forEach((s) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          `<td>${s.product_name}</td><td>${s.department || ''}</td><td>${s.lot_number || '(なし)'}</td>` +
+          `<td>${s.expiry_date || '(なし)'}</td><td style="text-align:right;">${s.stock_quantity}</td>` +
+          `<td><button class="secondary" onclick='openEdit(${JSON.stringify(s)})'>修正/廃棄/返品</button></td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function downloadCsv() { window.location = '/api/inventory/csv?' + queryString(); }
+
+    function openEdit(s) {
+      current = s;
+      document.getElementById('editCard').style.display = 'block';
+      document.getElementById('editTarget').textContent =
+        `${s.product_name} / ロット:${s.lot_number || '(なし)'} / 期限:${s.expiry_date || '(なし)'} / 現在庫:${s.stock_quantity}`;
+      document.getElementById('mType').value = 'adjust';
+      document.getElementById('mQty').value = s.stock_quantity;
+      document.getElementById('mReason').value = '';
+      onTypeChange();
+      setMsg(document.getElementById('editMsg'), '', '');
+    }
+    function closeEdit() { document.getElementById('editCard').style.display = 'none'; current = null; }
+
+    function onTypeChange() {
+      const t = document.getElementById('mType').value;
+      document.getElementById('qtyLabel').textContent = t === 'adjust' ? '修正後の在庫数' : '減少するバラ数';
+      if (t === 'adjust' && current) document.getElementById('mQty').value = current.stock_quantity;
+      else document.getElementById('mQty').value = 1;
+    }
+
+    async function submitMovement() {
+      if (!current) return;
+      const body = {
+        productId: current.product_id,
+        lotNumber: current.lot_number,
+        expiryDate: current.expiry_date,
+        movementType: document.getElementById('mType').value,
+        quantity: Number(document.getElementById('mQty').value),
+        reason: document.getElementById('mReason').value,
+      };
+      const { ok, data } = await api('/api/inventory/movement', { method: 'POST', body: JSON.stringify(body) });
+      const msg = document.getElementById('editMsg');
+      if (!ok) { setMsg(msg, data.error || '失敗', 'error'); return; }
+      setMsg(msg, `完了しました（${data.before} → ${data.after}）`, 'ok');
+      await load();
+      const updated = (await (await fetch('/api/inventory?' + queryString())).json()).stocks
+        .find((x) => x.product_id === current.product_id && x.lot_number === current.lot_number && x.expiry_date === current.expiry_date);
+      if (updated) openEdit(updated); else closeEdit();
+    }
+
+    boot();
+  </script>
+</body>
+</html>

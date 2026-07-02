@@ -1,0 +1,169 @@
+'use strict';
+
+const express = require('express');
+const { pool, getClient } = require('../db');
+const { applyStockChange } = require('../services/inventory');
+const { sendCsv } = require('../services/csv');
+const { writeLog } = require('../services/log');
+
+const router = express.Router();
+
+// 在庫一覧の絞り込みクエリを構築
+function buildStockQuery(q) {
+  const where = [];
+  const params = [];
+  const add = (cond, val) => { params.push(val); where.push(cond.replace('$$', '$' + params.length)); };
+
+  if (q.departmentId) add('p.department_id = $$', q.departmentId);
+  if (q.categoryId) add('p.category_id = $$', q.categoryId);
+  if (q.productName) add('p.name ILIKE $$', '%' + q.productName + '%');
+  if (q.lotNumber) add('s.lot_number ILIKE $$', '%' + q.lotNumber + '%');
+  if (q.expiryFrom) add('s.expiry_date >= $$', q.expiryFrom);
+  if (q.expiryTo) add('s.expiry_date <= $$', q.expiryTo);
+  if (q.supplierId) add('EXISTS (SELECT 1 FROM product_details pd WHERE pd.product_id = p.id AND pd.supplier_id = $$)', q.supplierId);
+  if (q.makerId) add('EXISTS (SELECT 1 FROM product_details pd WHERE pd.product_id = p.id AND pd.maker_id = $$)', q.makerId);
+  if (String(q.includeZero) !== 'true') where.push('s.stock_quantity > 0');
+
+  const sql =
+    `SELECT s.id, p.id AS product_id, p.name AS product_name,
+            d.name AS department, c.name AS category,
+            s.lot_number, s.expiry_date, s.stock_quantity,
+            s.first_receipt_date, s.last_receipt_date, s.last_issue_date
+       FROM product_stocks s
+       JOIN products p ON p.id = s.product_id
+       LEFT JOIN departments d ON d.id = p.department_id
+       LEFT JOIN categories c ON c.id = p.category_id
+      ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+      ORDER BY p.name, s.expiry_date NULLS LAST`;
+  return { sql, params };
+}
+
+// 在庫一覧
+router.get('/', async (req, res) => {
+  try {
+    const { sql, params } = buildStockQuery(req.query);
+    const { rows } = await pool.query(sql, params);
+    res.json({ stocks: rows });
+  } catch (err) {
+    console.error('在庫一覧エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 在庫一覧CSV
+router.get('/csv', async (req, res) => {
+  try {
+    const { sql, params } = buildStockQuery(req.query);
+    const { rows } = await pool.query(sql, params);
+    const columns = [
+      { key: 'product_name', label: '商品名' },
+      { key: 'department', label: '部門' },
+      { key: 'category', label: '分類' },
+      { key: 'lot_number', label: 'ロット番号' },
+      { key: 'expiry_date', label: '使用期限' },
+      { key: 'stock_quantity', label: '在庫数(バラ)' },
+      { key: 'first_receipt_date', label: '初回入庫日' },
+      { key: 'last_receipt_date', label: '最終入庫日' },
+      { key: 'last_issue_date', label: '最終出庫日' },
+    ];
+    sendCsv(res, '在庫一覧.csv', columns, rows);
+  } catch (err) {
+    console.error('在庫CSVエラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 使用期限管理: 期限切れ・期限接近の在庫一覧
+// GET /api/inventory/expiry?warnDays=30
+router.get('/expiry', async (req, res) => {
+  try {
+    let warnDays = parseInt(req.query.warnDays, 10);
+    if (Number.isNaN(warnDays)) {
+      const { rows } = await pool.query(`SELECT value FROM app_settings WHERE key = 'expiry_warn_days'`);
+      warnDays = rows.length ? parseInt(rows[0].value, 10) : 30;
+    }
+    const { rows } = await pool.query(
+      `SELECT s.id, p.id AS product_id, p.name AS product_name,
+              s.lot_number, s.expiry_date, s.stock_quantity,
+              (s.expiry_date - CURRENT_DATE) AS days_left,
+              CASE WHEN s.expiry_date < CURRENT_DATE THEN 'expired'
+                   ELSE 'warning' END AS status
+         FROM product_stocks s
+         JOIN products p ON p.id = s.product_id
+        WHERE s.stock_quantity > 0
+          AND s.expiry_date IS NOT NULL
+          AND s.expiry_date <= CURRENT_DATE + ($1 || ' days')::interval
+        ORDER BY s.expiry_date`,
+      [String(warnDays)]
+    );
+    res.json({ warnDays, rows });
+  } catch (err) {
+    console.error('使用期限管理エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 在庫の修正・廃棄・返品
+// body: { productId, lotNumber?, expiryDate?, movementType(adjust|disposal|return),
+//         quantity, reason, barcodeValue? }
+//   adjust  : quantity = 修正後の在庫数(絶対値)
+//   disposal/return : quantity = 減少するバラ数
+router.post('/movement', async (req, res) => {
+  const userId = req.session.user.id;
+  const { productId, lotNumber = '', expiryDate = null, movementType, quantity, reason, barcodeValue } = req.body || {};
+
+  if (!productId || !['adjust', 'disposal', 'return'].includes(movementType)) {
+    return res.status(400).json({ error: '商品IDと移動区分(adjust/disposal/return)は必須です' });
+  }
+  if (!reason) {
+    return res.status(400).json({ error: '理由は必須です' });
+  }
+  const qty = Number(quantity);
+  if (Number.isNaN(qty) || qty < 0) {
+    return res.status(400).json({ error: '数量が不正です' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    let opts = {
+      productId, lotNumber, expiryDate,
+      movementType, userId, reason, relatedId: null,
+    };
+    if (movementType === 'adjust') {
+      opts.targetQuantity = qty;      // 絶対値へ調整
+      opts.allowNegative = false;
+    } else {
+      opts.delta = -qty;              // 廃棄・返品は減少
+      opts.allowNegative = false;
+    }
+
+    const result = await applyStockChange(client, opts);
+
+    // 個体(独自バーコード)対象なら使用済みにする
+    if (barcodeValue) {
+      await client.query(
+        `UPDATE barcodes SET used_flag = TRUE WHERE barcode_value = $1`,
+        [barcodeValue]
+      );
+    }
+
+    await writeLog(client, {
+      userId, targetTable: 'product_stocks', targetId: null, operationType: '在庫調整',
+      before: { stock_quantity: result.before },
+      after: { movementType, productId, lotNumber, expiryDate, stock_quantity: result.after, reason },
+    });
+
+    await client.query('COMMIT');
+    res.json({ ok: true, before: result.before, after: result.after, delta: result.delta });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('在庫調整エラー:', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'サーバーエラー' });
+  } finally {
+    client.release();
+  }
+});
+
+module.exports = router;

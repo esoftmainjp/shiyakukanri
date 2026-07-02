@@ -1,0 +1,28 @@
+# Render デプロイ設定 (Blueprint)
+# 参考: https://render.com/docs/blueprint-spec
+
+databases:
+  - name: reagent-db
+    databaseName: reagent
+    user: reagent
+    plan: free            # 運用時は starter 以上を推奨 (freeは有効期限あり)
+
+services:
+  - type: web
+    name: reagent-inventory
+    runtime: node
+    plan: free            # 運用時は starter 以上を推奨
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: reagent-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+      - key: PGSSL
+        value: "true"
