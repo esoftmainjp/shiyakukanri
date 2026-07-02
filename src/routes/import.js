@@ -11,6 +11,24 @@ function truthy(v) {
   return s === '1' || s === 'true' || s === '○' || s === 'yes' || s === 'y' || s === 'はい';
 }
 
+// メーカーJANコードの桁数(商品JANの先頭何桁をメーカーコードとするか)
+const MAKER_CODE_LEN = 7;
+
+// メーカー名を解決。無ければ商品JANの先頭N桁をJANメーカーコードにして自動追加。
+// 戻り値: { id, created }
+async function resolveMaker(client, name, janCode) {
+  const nm = (name || '').trim();
+  if (!nm) return { id: null, created: false };
+  const found = await client.query(`SELECT id FROM makers WHERE name = $1`, [nm]);
+  if (found.rowCount > 0) return { id: found.rows[0].id, created: false };
+  const code = String(janCode || '').replace(/\D/g, '').slice(0, MAKER_CODE_LEN);
+  const ins = await client.query(
+    `INSERT INTO makers (name, jan_maker_code) VALUES ($1, $2) RETURNING id`,
+    [nm, code]
+  );
+  return { id: ins.rows[0].id, created: true };
+}
+
 // 商品マスターCSVインポート
 // ヘッダー: 名称,カナ,部門,分類,管理コード,精度管理対象
 router.post('/products', async (req, res) => {
@@ -74,6 +92,7 @@ router.post('/product-details', async (req, res) => {
     await client.query('BEGIN');
     const errors = [];
     let inserted = 0;
+    let makersCreated = 0;
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
@@ -85,9 +104,9 @@ router.post('/product-details', async (req, res) => {
 
       let makerId = null, supplierId = null;
       if (r['メーカー']) {
-        const m = await client.query(`SELECT id FROM makers WHERE name = $1`, [r['メーカー'].trim()]);
-        if (m.rowCount === 0) { errors.push({ line: i + 2, error: `メーカーが存在しません: ${r['メーカー']}` }); continue; }
-        makerId = m.rows[0].id;
+        const mk = await resolveMaker(client, r['メーカー'], r['JANコード']);
+        makerId = mk.id;
+        if (mk.created) makersCreated++;
       }
       if (r['問屋']) {
         const s = await client.query(`SELECT id FROM suppliers WHERE name = $1`, [r['問屋'].trim()]);
@@ -127,7 +146,7 @@ router.post('/product-details', async (req, res) => {
       return res.status(400).json({ error: '取込中にエラーがあります(全件取消)', inserted: 0, errors });
     }
     await client.query('COMMIT');
-    res.json({ ok: true, inserted });
+    res.json({ ok: true, inserted, makersCreated });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('商品詳細インポートエラー:', err.message);
@@ -151,6 +170,7 @@ router.post('/products-combined', async (req, res) => {
     const errors = [];
     let productsCreated = 0;
     let detailsCreated = 0;
+    let makersCreated = 0;
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
@@ -173,12 +193,12 @@ router.post('/products-combined', async (req, res) => {
         catId = c.rows[0].id;
       }
 
-      // メーカー・問屋の解決
+      // メーカー(無ければJAN先頭7桁で自動追加)・問屋の解決
       let makerId = null, supplierId = null;
       if (r['メーカー']) {
-        const m = await client.query(`SELECT id FROM makers WHERE name = $1`, [r['メーカー'].trim()]);
-        if (m.rowCount === 0) { errors.push({ line, error: `メーカーが存在しません: ${r['メーカー']}` }); continue; }
-        makerId = m.rows[0].id;
+        const mk = await resolveMaker(client, r['メーカー'], r['JANコード']);
+        makerId = mk.id;
+        if (mk.created) makersCreated++;
       }
       if (r['問屋']) {
         const s = await client.query(`SELECT id FROM suppliers WHERE name = $1`, [r['問屋'].trim()]);
@@ -231,10 +251,10 @@ router.post('/products-combined', async (req, res) => {
 
     if (errors.length > 0) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: '取込中にエラーがあります(全件取消)', productsCreated: 0, detailsCreated: 0, errors });
+      return res.status(400).json({ error: '取込中にエラーがあります(全件取消)', productsCreated: 0, detailsCreated: 0, makersCreated: 0, errors });
     }
     await client.query('COMMIT');
-    res.json({ ok: true, productsCreated, detailsCreated });
+    res.json({ ok: true, productsCreated, detailsCreated, makersCreated });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('商品＋詳細インポートエラー:', err.message);

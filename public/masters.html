@@ -251,9 +251,10 @@
         if (data.errors) t += ' / ' + data.errors.slice(0, 5).map((e) => `${e.line}行:${e.error}`).join(' , ');
         setMsg(msg, t, 'error'); return;
       }
-      const summary = combined
+      let summary = combined
         ? `商品${data.productsCreated}件・詳細${data.detailsCreated}件を取り込みました`
         : `${data.inserted}件取り込みました`;
+      if (data.makersCreated) summary += `（メーカー${data.makersCreated}件を自動追加）`;
       setMsg(msg, summary, 'ok');
       refCache = {};
       loadList();
