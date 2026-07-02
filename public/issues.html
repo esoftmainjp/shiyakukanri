@@ -13,6 +13,7 @@
       <h2>出庫登録</h2>
       <div class="row">
         <div><label>出庫日</label><input type="date" id="issueDate" /></div>
+        <div style="flex:2;"><label>備考</label><input id="note" placeholder="任意" /></div>
       </div>
 
       <h3 style="margin-top:20px;">① バーコードで出庫</h3>
@@ -165,6 +166,7 @@
       if (lines.length === 0) { setMsg(msg, '明細がありません', 'error'); return; }
       const body = {
         issueDate: document.getElementById('issueDate').value,
+        note: document.getElementById('note').value,
         details: lines.map((l) => l.kind === 'barcode'
           ? { barcodeValue: l.barcodeValue }
           : { productId: l.productId, productDetailId: l.productDetailId, lotNumber: l.lot, expiryDate: l.expiryDate, issueQuantity: l.issueQuantity, packSize: l.packSize }),

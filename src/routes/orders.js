@@ -54,12 +54,13 @@ router.get('/', async (req, res) => {
 router.post('/:id/place', async (req, res) => {
   const orderId = req.params.id;
   const orderDate = (req.body && req.body.orderDate) || today();
+  const note = (req.body && req.body.note) || '';
   try {
     const r = await pool.query(
-      `UPDATE orders SET order_status = 'ordered', order_date = $2
+      `UPDATE orders SET order_status = 'ordered', order_date = $2, note = $3
         WHERE id = $1 AND order_status = 'unordered'
         RETURNING id`,
-      [orderId, orderDate]
+      [orderId, orderDate, note]
     );
     if (r.rowCount === 0) {
       return res.status(400).json({ error: '未発注の発注のみ発注処理できます' });

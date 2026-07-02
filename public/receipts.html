@@ -16,6 +16,10 @@
           <label>入庫日</label>
           <input type="date" id="receiptDate" />
         </div>
+        <div style="flex:2;">
+          <label>備考</label>
+          <input id="note" placeholder="任意" />
+        </div>
       </div>
 
       <h3 style="margin-top:20px;">GS1-128 バーコード読取</h3>
@@ -52,8 +56,8 @@
           <input type="number" id="pack" value="1" min="1" />
         </div>
         <div>
-          <label>単価</label>
-          <input type="number" id="price" value="0" min="0" />
+          <label>現在庫（バラ）</label>
+          <input id="curStock" value="0" readonly style="background:#eef2f5;" />
         </div>
         <div style="flex:0;">
           <label>&nbsp;</label>
@@ -63,7 +67,7 @@
       <p class="msg" id="addMsg"></p>
 
       <table id="lineTable">
-        <thead><tr><th>商品</th><th>ロット</th><th>使用期限</th><th>入庫個数</th><th>梱包数</th><th>加算バラ数</th><th>単価</th><th>BC</th><th></th></tr></thead>
+        <thead><tr><th>商品</th><th>ロット</th><th>使用期限</th><th>入庫個数</th><th>梱包数</th><th>加算バラ数</th><th>BC</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
 
@@ -91,11 +95,25 @@
         return `<option value="${p.productId}">${p.productName}${d && d.spec ? '（' + d.spec + '）' : ''}</option>`;
       }).join('');
       sel.addEventListener('change', fillDefaults);
+      document.getElementById('lot').addEventListener('input', updateCurrentStock);
+      document.getElementById('expiry').addEventListener('change', updateCurrentStock);
       fillDefaults();
 
       // GS1-128スキャン: Enterで確定
       const scan = document.getElementById('scan');
       scan.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); handleScan(scan.value); } });
+    }
+
+    // 選択中の商品＋ロット＋使用期限の現在庫を表示
+    async function updateCurrentStock() {
+      const pid = document.getElementById('product').value;
+      const lot = document.getElementById('lot').value || '';
+      const exp = document.getElementById('expiry').value || null;
+      const el = document.getElementById('curStock');
+      if (!pid) { el.value = 0; return; }
+      const { data } = await api('/api/lookup/stocks?productId=' + pid);
+      const row = (data.stocks || []).find((s) => (s.lot_number || '') === lot && (s.expiry_date || null) === exp);
+      el.value = row ? row.stock_quantity : 0;
     }
 
     async function handleScan(raw) {
@@ -110,10 +128,10 @@
       // フォームに反映
       document.getElementById('product').value = p.productId;
       document.getElementById('pack').value = p.packSize;
-      document.getElementById('price').value = p.unitPrice;
       document.getElementById('lot').value = info.lot || '';
       document.getElementById('expiry').value = info.expiry || '';
       document.getElementById('qty').value = 1;
+      await updateCurrentStock();
       setMsg(msg, `読取: ${p.productName} / ロット:${info.lot || '-'} / 期限:${info.expiry || '-'}（数量を確認して「明細に追加」）`, 'ok');
       document.getElementById('scan').value = '';
       document.getElementById('qty').focus();
@@ -129,7 +147,7 @@
       const cur = currentDetail();
       if (!cur || !cur.detail) return;
       document.getElementById('pack').value = cur.detail.packSize;
-      document.getElementById('price').value = cur.detail.unitPrice;
+      updateCurrentStock();
     }
 
     function addLine() {
@@ -146,7 +164,6 @@
         expiryDate: document.getElementById('expiry').value || null,
         receiptQuantity: qty,
         packSize: pack,
-        unitPrice: Number(document.getElementById('price').value),
         barcode: cur.detail.barcodeIssueFlag,
       };
       lines.push(line);
@@ -162,7 +179,7 @@
         tr.innerHTML =
           `<td>${l.productName}</td><td>${l.lotNumber || '(なし)'}</td><td>${l.expiryDate || '(なし)'}</td>` +
           `<td style="text-align:right;">${l.receiptQuantity}</td><td style="text-align:right;">${l.packSize}</td>` +
-          `<td style="text-align:right;">${l.receiptQuantity * l.packSize}</td><td style="text-align:right;">${l.unitPrice}</td>` +
+          `<td style="text-align:right;">${l.receiptQuantity * l.packSize}</td>` +
           `<td>${l.barcode ? '○' : ''}</td>` +
           `<td><button class="danger" onclick="removeLine(${i})">削除</button></td>`;
         tbody.appendChild(tr);
@@ -175,17 +192,18 @@
       if (lines.length === 0) { setMsg(msg, '明細がありません', 'error'); return; }
       const body = {
         receiptDate: document.getElementById('receiptDate').value,
+        note: document.getElementById('note').value,
         details: lines.map((l) => ({
           productId: l.productId, productDetailId: l.productDetailId,
           lotNumber: l.lotNumber, expiryDate: l.expiryDate,
-          receiptQuantity: l.receiptQuantity, packSize: l.packSize, unitPrice: l.unitPrice,
+          receiptQuantity: l.receiptQuantity, packSize: l.packSize,
         })),
       };
       const { ok, data } = await api('/api/receipts', { method: 'POST', body: JSON.stringify(body) });
       if (!ok) { setMsg(msg, data.error || '保存失敗', 'error'); return; }
       const bc = data.details.reduce((a, d) => a + d.barcodesIssued, 0);
       setMsg(msg, `入庫を保存しました（入庫ID:${data.receiptId}／発行バーコード:${bc}本）`, 'ok');
-      lines = []; renderLines();
+      lines = []; renderLines(); await updateCurrentStock();
     }
 
     boot();
