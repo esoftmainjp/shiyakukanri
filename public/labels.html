@@ -14,9 +14,10 @@
       overflow: hidden; background: #fff;
     }
     .label svg { max-width: 100%; }
-    .label .txt { width: 100%; text-align: center; line-height: 1.25; }
-    .label .pname { font-weight: 600; }
-    .label .sub { color: #333; }
+    /* バーコードを優先。周辺文字は小さく・1行に収める */
+    .label .txt { width: 100%; text-align: center; line-height: 1.05; margin-top: 0.5mm; }
+    .label .pname { font-weight: 600; font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .label .sub { color: #333; font-size: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .label input.pick { position: absolute; }
     .label-wrap { position: relative; }
     .label-wrap .pick { position: absolute; top: 2px; left: 2px; z-index: 2; }
@@ -55,7 +56,7 @@
       <div class="row">
         <div style="flex:0;"><label>ラベル幅(mm)</label><input type="number" id="lw" value="52" min="10" max="200" style="width:90px;" oninput="applySize()" /></div>
         <div style="flex:0;"><label>ラベル高(mm)</label><input type="number" id="lh" value="29" min="10" max="200" style="width:90px;" oninput="applySize()" /></div>
-        <div style="flex:0;"><label>バーコード高(px)</label><input type="number" id="bh" value="40" min="20" max="120" style="width:90px;" oninput="render()" /></div>
+        <div style="flex:0;"><label>バーコード高(px)</label><input type="number" id="bh" value="60" min="20" max="140" style="width:90px;" oninput="render()" /></div>
         <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="toggleAll(true)">全選択</button></div>
         <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="toggleAll(false)">全解除</button></div>
         <div style="flex:0;"><label>&nbsp;</label><button onclick="printSelected()">選択分を印刷</button></div>
@@ -155,8 +156,8 @@
         box.appendChild(wrap);
         try {
           JsBarcode(svg, b.barcode_value, {
-            format: 'CODE128', displayValue: true, fontSize: 12,
-            height: bh, margin: 2, width: 1.6,
+            format: 'CODE128', displayValue: true, fontSize: 11, textMargin: 0,
+            height: bh, margin: 0, width: 2,
           });
         } catch (e) { svg.outerHTML = `<div style="color:red;">描画失敗:${b.barcode_value}</div>`; }
       });
