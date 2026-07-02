@@ -50,6 +50,7 @@
 
     <div class="card">
       <h3>一覧</h3>
+      <div class="row" id="filterArea" style="margin-bottom:8px;"></div>
       <div style="overflow-x:auto;"><table id="tbl"><thead></thead><tbody></tbody></table></div>
     </div>
   </main>
@@ -72,7 +73,7 @@
         ref('department_id','部門','departments'),
         ref('category_id','分類','categories'),
         f('management_code','管理コード'),
-        chk('qc_target_flag','精度管理対象'), f('note','備考'),
+        chk('qc_target_flag','試薬管理対象'), f('note','備考'),
       ],
       'product-details': [
         ref('product_id','商品','products'),
@@ -91,16 +92,16 @@
     function chk(key, label) { return { key, label, type: 'checkbox' }; }
 
     const IMPORT_HINTS = {
-      products: 'ヘッダー: 名称,カナ,部門,分類,管理コード,精度管理対象',
+      products: 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象',
       'product-details': 'ヘッダー: 商品名,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行',
     };
-    const COMBINED_HINT = 'ヘッダー: 名称,カナ,部門,分類,管理コード,精度管理対象,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行';
+    const COMBINED_HINT = 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行';
 
     // 一覧ヘッダーの日本語ラベル(全マスター共通)
     const COL_LABELS = {
       id: 'ID', name: '名称', kana: 'カナ', note: '備考', is_active: '有効',
       jan_maker_code: 'JANメーカーコード',
-      department_id: '部門', category_id: '分類', management_code: '管理コード', qc_target_flag: '精度管理対象',
+      department_id: '部門', category_id: '分類', management_code: '管理コード', qc_target_flag: '試薬管理対象',
       product_id: '商品', apply_start_date: '適用開始日', apply_end_date: '適用終了日',
       quantity_unit: '数量単位', pack_size: '梱包数', pack_unit: '梱包単位', spec: '規格',
       unit_price: '単価', test_count: 'テスト数', min_quantity: '最低個数', order_quantity: '発注個数',
@@ -231,28 +232,63 @@
       loadList();
     }
 
+    let listRows = [];
+    let listKeys = [];
+    let listRefMaps = {};
+
     async function loadList() {
       const t = curType();
       const { data } = await api('/api/masters/' + t);
-      const rows = data.rows || [];
+      listRows = data.rows || [];
       const thead = document.querySelector('#tbl thead');
       const tbody = document.querySelector('#tbl tbody');
-      if (rows.length === 0) { thead.innerHTML = ''; tbody.innerHTML = '<tr><td>データがありません</td></tr>'; return; }
+      await buildFilter();
+      if (listRows.length === 0) { thead.innerHTML = ''; tbody.innerHTML = '<tr><td>データがありません</td></tr>'; return; }
       // id と日時列は非表示。参照ID列は名称表示にする。
-      const keys = Object.keys(rows[0]).filter((k) => !['id', 'created_at', 'updated_at'].includes(k));
-
+      listKeys = Object.keys(listRows[0]).filter((k) => !['id', 'created_at', 'updated_at'].includes(k));
       // 参照マスターの id→名称 マップを準備
-      const refMaps = {};
-      for (const k of keys) {
+      listRefMaps = {};
+      for (const k of listKeys) {
         if (REF_COLS[k]) {
           const list = await loadRef(REF_COLS[k]);
-          refMaps[k] = Object.fromEntries(list.map((x) => [String(x.id), x.name]));
+          listRefMaps[k] = Object.fromEntries(list.map((x) => [String(x.id), x.name]));
         }
       }
+      thead.innerHTML = '<tr>' + listKeys.map((k) => `<th>${COL_LABELS[k] || k}</th>`).join('') + '<th>操作</th></tr>';
+      applyListFilter();
+    }
 
-      thead.innerHTML = '<tr>' + keys.map((k) => `<th>${COL_LABELS[k] || k}</th>`).join('') + '<th>操作</th></tr>';
+    // 種別に応じた絞り込みUIを構築 (商品詳細=商品コンボ、その他=名称テキスト)
+    async function buildFilter() {
+      const t = curType();
+      const area = document.getElementById('filterArea');
+      if (t === 'product-details') {
+        const prods = await loadRef('products');
+        area.innerHTML = `<div style="flex:0; min-width:280px;"><label>商品で絞り込み</label>
+          <select id="listFilterProduct" onchange="applyListFilter()">
+            <option value="">すべて</option>
+            ${prods.map((p) => `<option value="${p.id}">${p.name}</option>`).join('')}
+          </select></div>`;
+      } else {
+        area.innerHTML = `<div style="flex:0; min-width:280px;"><label>名称で絞り込み</label>
+          <input id="listFilterName" placeholder="部分一致" oninput="applyListFilter()" /></div>`;
+      }
+    }
+
+    function applyListFilter() {
+      const t = curType();
+      let rows = listRows;
+      if (t === 'product-details') {
+        const pid = (document.getElementById('listFilterProduct') || {}).value || '';
+        if (pid) rows = rows.filter((r) => String(r.product_id) === String(pid));
+      } else {
+        const kw = ((document.getElementById('listFilterName') || {}).value || '').trim();
+        if (kw) rows = rows.filter((r) => String(r.name || '').includes(kw));
+      }
+      const tbody = document.querySelector('#tbl tbody');
+      if (rows.length === 0) { tbody.innerHTML = '<tr><td>該当データがありません</td></tr>'; return; }
       tbody.innerHTML = rows.map((r) => {
-        const tds = keys.map((k) => `<td>${cellValue(k, r[k], refMaps)}</td>`).join('');
+        const tds = listKeys.map((k) => `<td>${cellValue(k, r[k], listRefMaps)}</td>`).join('');
         const hasActive = 'is_active' in r;
         const toggleBtn = hasActive ? `<button class="${r.is_active ? 'danger' : ''}" onclick="toggle('${r.id}')">${r.is_active ? '無効化' : '有効化'}</button>` : '';
         const editData = JSON.stringify(r).replace(/'/g, '&#39;');

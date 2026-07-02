@@ -165,6 +165,27 @@ async function addOrderPlan(client, {
   return { orderId, orderDetailId, plannedOrderQuantity: planned };
 }
 
+// 使用記録を count 件作成する(非バーコードの試薬管理対象品用)。
+// 内容物コードは商品単位で採番。使用開始日=出庫日。
+async function createUsageRecords(client, { productId, lotNumber = '', expiryDate = null, count, useStartDate, issueId = null }) {
+  if (!count || count < 1) return 0;
+  const c = await client.query(
+    `SELECT COALESCE(MAX(content_code), 0) AS m FROM usage_records WHERE product_id = $1`,
+    [productId]
+  );
+  let content = Number(c.rows[0].m);
+  for (let i = 0; i < count; i++) {
+    content += 1;
+    await client.query(
+      `INSERT INTO usage_records
+         (product_id, lot_number, expiry_date, content_code, use_start_date, issue_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [productId, lotNumber, expiryDate, content, useStartDate, issueId]
+    );
+  }
+  return count;
+}
+
 // 発注が全明細入庫済みかを判定し、満たしていれば発注状態を received にする。
 async function refreshOrderReceiptStatus(client, orderId) {
   const details = await client.query(
@@ -198,5 +219,6 @@ module.exports = {
   applyStockChange,
   issueBarcodes,
   addOrderPlan,
+  createUsageRecords,
   refreshOrderReceiptStatus,
 };

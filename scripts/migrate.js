@@ -26,6 +26,24 @@ async function runSqlFile(label, file) {
 
 async function main() {
   const args = process.argv.slice(2);
+
+  // 任意SQLファイルの実行: node scripts/migrate.js --file path/to.sql
+  const fileIdx = args.indexOf('--file');
+  if (fileIdx >= 0) {
+    const target = args[fileIdx + 1];
+    if (!target) { console.error('--file にSQLファイルのパスを指定してください'); process.exitCode = 1; await pool.end(); return; }
+    try {
+      await runSqlFile('MIGRATION', path.isAbsolute(target) ? target : path.join(ROOT, target));
+      console.log('マイグレーションが正常に完了しました。');
+    } catch (err) {
+      console.error('マイグレーション失敗:', err.message);
+      process.exitCode = 1;
+    } finally {
+      await pool.end();
+    }
+    return;
+  }
+
   const doSeed = args.includes('--seed') || args.includes('--all');
   const doDdl = args.includes('--all') || !args.includes('--seed');
 

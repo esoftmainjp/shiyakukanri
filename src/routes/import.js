@@ -30,7 +30,7 @@ async function resolveMaker(client, name, janCode) {
 }
 
 // 商品マスターCSVインポート
-// ヘッダー: 名称,カナ,部門,分類,管理コード,精度管理対象
+// ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象
 router.post('/products', async (req, res) => {
   const rows = parseCsv(req.body && req.body.csv);
   if (rows.length === 0) return res.status(400).json({ error: 'データがありません' });
@@ -67,7 +67,7 @@ router.post('/products', async (req, res) => {
       await client.query(
         `INSERT INTO products (name, kana, department_id, category_id, management_code, qc_target_flag)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [name, r['カナ'] || '', deptId, catId, r['管理コード'] || '', truthy(r['精度管理対象'])]
+        [name, r['カナ'] || '', deptId, catId, r['管理コード'] || '', truthy(r['試薬管理対象'] || r['精度管理対象'])]
       );
       inserted++;
     }
@@ -165,7 +165,7 @@ router.post('/product-details', async (req, res) => {
 });
 
 // 商品＋商品詳細 同時インポート
-// ヘッダー: 名称,カナ,部門,分類,管理コード,精度管理対象,
+// ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,
 //           適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行
 // 各行: 商品名で商品を検索(あれば再利用/なければ新規作成)し、続けて商品詳細を1件作成する。
 // 商品と商品詳細は商品ID(内部)で紐付ける。管理コードは顧客用の任意コードで、システムキーではない。
@@ -223,7 +223,7 @@ router.post('/products-combined', async (req, res) => {
         const ins = await client.query(
           `INSERT INTO products (name, kana, department_id, category_id, management_code, qc_target_flag)
            VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-          [name, r['カナ'] || '', deptId, catId, code, truthy(r['精度管理対象'])]
+          [name, r['カナ'] || '', deptId, catId, code, truthy(r['試薬管理対象'] || r['精度管理対象'])]
         );
         productId = ins.rows[0].id;
         productsCreated++;

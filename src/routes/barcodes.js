@@ -5,50 +5,77 @@ const { pool } = require('../db');
 
 const router = express.Router();
 
-// 使用中(出庫済み・使用開始日あり・使用終了日未登録)の独自バーコード一覧
-// GET /api/barcodes/in-use?query=
+// 使用中(使用開始済み・使用終了日未登録)の一覧
+//  - 独自バーコード(barcodes): kind='barcode', key=バーコード値
+//  - 使用記録(usage_records): kind='usage', key=id
+// フィルタ: query(部分一致) / productId / lot
 router.get('/in-use', async (req, res) => {
-  const { query } = req.query;
+  const { query, productId, lot } = req.query;
   try {
-    const params = [];
-    let cond = 'b.used_flag = TRUE AND b.use_start_date IS NOT NULL AND b.use_end_date IS NULL';
-    if (query) {
-      params.push('%' + query + '%');
-      cond += ` AND (b.barcode_value ILIKE $1 OR p.name ILIKE $1 OR CAST(b.content_code AS text) ILIKE $1)`;
-    }
-    const { rows } = await pool.query(
-      `SELECT b.barcode_value, b.content_code, b.product_id, p.name AS product_name,
-              rd.lot_number, rd.expiry_date, b.use_start_date
+    // 独自バーコード
+    const bcParams = [];
+    let bcCond = 'b.used_flag = TRUE AND b.use_start_date IS NOT NULL AND b.use_end_date IS NULL';
+    if (query) { bcParams.push('%' + query + '%'); bcCond += ` AND (b.barcode_value ILIKE $${bcParams.length} OR p.name ILIKE $${bcParams.length} OR CAST(b.content_code AS text) ILIKE $${bcParams.length})`; }
+    if (productId) { bcParams.push(productId); bcCond += ` AND b.product_id = $${bcParams.length}`; }
+    if (lot) { bcParams.push(lot); bcCond += ` AND rd.lot_number = $${bcParams.length}`; }
+    const bc = await pool.query(
+      `SELECT 'barcode' AS kind, b.barcode_value AS key, b.content_code, b.product_id,
+              p.name AS product_name, rd.lot_number, rd.expiry_date, b.use_start_date
          FROM barcodes b
          JOIN products p ON p.id = b.product_id
          JOIN receipt_details rd ON rd.id = b.receipt_detail_id
-        WHERE ${cond}
+        WHERE ${bcCond}
         ORDER BY b.use_start_date, p.name`,
-      params
+      bcParams
     );
-    res.json({ barcodes: rows });
+
+    // 使用記録
+    const urParams = [];
+    let urCond = 'u.use_end_date IS NULL';
+    if (query) { urParams.push('%' + query + '%'); urCond += ` AND (p.name ILIKE $${urParams.length} OR CAST(u.content_code AS text) ILIKE $${urParams.length})`; }
+    if (productId) { urParams.push(productId); urCond += ` AND u.product_id = $${urParams.length}`; }
+    if (lot) { urParams.push(lot); urCond += ` AND u.lot_number = $${urParams.length}`; }
+    const ur = await pool.query(
+      `SELECT 'usage' AS kind, u.id::text AS key, u.content_code, u.product_id,
+              p.name AS product_name, u.lot_number, u.expiry_date, u.use_start_date
+         FROM usage_records u
+         JOIN products p ON p.id = u.product_id
+        WHERE ${urCond}
+        ORDER BY u.use_start_date, p.name`,
+      urParams
+    );
+
+    res.json({ items: [...bc.rows, ...ur.rows] });
   } catch (err) {
-    console.error('使用中バーコード一覧エラー:', err.message);
+    console.error('使用中一覧エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
   }
 });
 
-// 使用終了日の登録/更新
-// POST /api/barcodes/:value/use-end  body: { useEndDate }
-router.post('/:value/use-end', async (req, res) => {
-  const { useEndDate } = req.body || {};
-  if (!useEndDate) return res.status(400).json({ error: '使用終了日は必須です' });
+// 使用終了日の登録/更新 (kind と key で対象を指定)
+// POST /api/barcodes/use-end  body: { kind, key, useEndDate }
+router.post('/use-end', async (req, res) => {
+  const { kind, key, useEndDate } = req.body || {};
+  if (!kind || !key || !useEndDate) return res.status(400).json({ error: 'kind・key・使用終了日は必須です' });
   try {
-    const r = await pool.query(
-      `UPDATE barcodes SET use_end_date = $1
-        WHERE barcode_value = $2 AND used_flag = TRUE AND use_start_date IS NOT NULL
-        RETURNING barcode_value, use_end_date`,
-      [useEndDate, req.params.value]
-    );
-    if (r.rowCount === 0) {
-      return res.status(400).json({ error: '対象のバーコードが見つからないか、使用開始されていません' });
+    if (kind === 'barcode') {
+      const r = await pool.query(
+        `UPDATE barcodes SET use_end_date = $1
+          WHERE barcode_value = $2 AND used_flag = TRUE AND use_start_date IS NOT NULL
+          RETURNING barcode_value`,
+        [useEndDate, key]
+      );
+      if (r.rowCount === 0) return res.status(400).json({ error: '対象の独自バーコードが見つかりません' });
+    } else if (kind === 'usage') {
+      const r = await pool.query(
+        `UPDATE usage_records SET use_end_date = $1 WHERE id = $2 RETURNING id`,
+        [useEndDate, key]
+      );
+      if (r.rowCount === 0) return res.status(400).json({ error: '対象の使用記録が見つかりません' });
+    } else {
+      return res.status(400).json({ error: '不明な種別です' });
     }
-    res.json({ ok: true, barcode: r.rows[0] });
+    res.json({ ok: true });
   } catch (err) {
     console.error('使用終了日登録エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });

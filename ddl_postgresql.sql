@@ -127,7 +127,7 @@ COMMENT ON COLUMN products.kana            IS 'カナ名称';
 COMMENT ON COLUMN products.department_id   IS '部門ID';
 COMMENT ON COLUMN products.category_id     IS '分類ID';
 COMMENT ON COLUMN products.management_code IS '管理コード';
-COMMENT ON COLUMN products.qc_target_flag  IS '精度管理対象フラグ';
+COMMENT ON COLUMN products.qc_target_flag  IS '試薬管理対象フラグ';
 COMMENT ON COLUMN products.note            IS '備考';
 COMMENT ON COLUMN products.is_active       IS '有効フラグ';
 
@@ -493,6 +493,31 @@ COMMENT ON COLUMN operation_logs.after_data     IS '変更後データ(JSON)';
 
 CREATE INDEX idx_operation_logs_user    ON operation_logs(user_id);
 CREATE INDEX idx_operation_logs_created ON operation_logs(created_at);
+
+-- 使用記録 (バーコード発行OFFの試薬管理対象品の使用開始/終了を管理)
+-- 独自バーコードを発行しない商品は、GS1-128(JAN)で識別し、出庫時に本記録を作成する。
+CREATE TABLE usage_records (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    product_id     BIGINT      NOT NULL REFERENCES products(id),
+    lot_number     VARCHAR(64) NOT NULL DEFAULT '',
+    expiry_date    DATE,
+    content_code   INTEGER     NOT NULL,             -- 商品ごとの通し番号(内容物コード相当)
+    use_start_date DATE        NOT NULL,             -- 使用開始日(=出庫日)
+    use_end_date   DATE,                             -- 使用終了日(使用終了日登録画面で登録)
+    issue_id       BIGINT      REFERENCES issues(id),-- 作成元の出庫情報(任意)
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE  usage_records                IS '使用記録(非バーコード品の使用開始/終了)';
+COMMENT ON COLUMN usage_records.product_id     IS '商品ID';
+COMMENT ON COLUMN usage_records.lot_number     IS 'ロット番号';
+COMMENT ON COLUMN usage_records.expiry_date    IS '使用期限';
+COMMENT ON COLUMN usage_records.content_code   IS '内容物コード(商品ごとの通し番号)';
+COMMENT ON COLUMN usage_records.use_start_date IS '使用開始日(=出庫日)';
+COMMENT ON COLUMN usage_records.use_end_date   IS '使用終了日';
+COMMENT ON COLUMN usage_records.issue_id       IS '作成元の出庫情報ID';
+
+CREATE INDEX idx_usage_records_product ON usage_records(product_id);
+CREATE INDEX idx_usage_records_open    ON usage_records(product_id, lot_number) WHERE use_end_date IS NULL;
 
 -- 運用設定 (使用期限の警告日数、期限切れ出庫の許可など)
 CREATE TABLE app_settings (

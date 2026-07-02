@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { getClient } = require('../db');
-const { applyStockChange, addOrderPlan } = require('../services/inventory');
+const { applyStockChange, addOrderPlan, createUsageRecords } = require('../services/inventory');
 const { writeLog } = require('../services/log');
 
 const router = express.Router();
@@ -113,6 +113,19 @@ router.post('/', async (req, res) => {
           `UPDATE barcodes SET used_flag = TRUE, use_start_date = $1 WHERE id = $2`,
           [issueDate, barcodeId]
         );
+      } else if (productDetailId) {
+        // 数量出庫: 試薬管理対象かつバーコード発行OFFの商品は使用記録を作成(使用開始日=出庫日)
+        const flags = await client.query(
+          `SELECT p.qc_target_flag, pd.barcode_issue_flag
+             FROM product_details pd JOIN products p ON p.id = pd.product_id
+            WHERE pd.id = $1`,
+          [productDetailId]
+        );
+        if (flags.rowCount && flags.rows[0].qc_target_flag && !flags.rows[0].barcode_issue_flag) {
+          await createUsageRecords(client, {
+            productId, lotNumber, expiryDate, count: totalBara, useStartDate: issueDate, issueId,
+          });
+        }
       }
 
       processed.push({ issueDetailId, productId, productDetailId, issuePieceQty: totalBara });

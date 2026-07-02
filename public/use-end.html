@@ -11,52 +11,73 @@
   <main>
     <div class="card">
       <h2>使用終了日登録</h2>
-      <p>使用中（出庫済みで使用終了日が未登録）の独自バーコードを対象とします。</p>
+      <p>使用中（使用開始済み・使用終了日が未登録）の対象を検索して終了日を登録します。<br>
+        独自バーコード品はバーコード値/内容物コード、GS1-128（JAN）品はバーコードをスキャンして絞り込めます。</p>
       <div class="row">
-        <div style="flex:2;"><label>検索（バーコード / 商品名 / 内容物コード）</label><input id="q" /></div>
-        <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">検索</button></div>
+        <div style="flex:2;"><label>検索（バーコード / 商品名 / 内容物コード / GS1-128スキャン）</label><input id="q" placeholder="入力またはスキャン(Enter)" /></div>
+        <div style="flex:0;"><label>&nbsp;</label><button onclick="search()">検索</button></div>
         <div style="flex:0;"><label>使用終了日</label><input type="date" id="endDate" /></div>
       </div>
       <p class="msg" id="msg"></p>
       <table id="tbl">
-        <thead><tr><th>バーコード</th><th>商品名</th><th>内容物コード</th><th>ロット</th><th>使用開始日</th><th>操作</th></tr></thead>
+        <thead><tr><th>種別</th><th>商品名</th><th>内容物コード</th><th>ロット</th><th>使用開始日</th><th>操作</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
   </main>
 
   <script src="/common.js"></script>
+  <script src="/gs1.js"></script>
   <script>
     async function boot() {
       const user = await initPage('useend');
       if (!user) return;
       document.getElementById('endDate').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
       load();
     }
 
-    async function load() {
-      const q = document.getElementById('q').value;
-      const { data } = await api('/api/barcodes/in-use' + (q ? '?query=' + encodeURIComponent(q) : ''));
+    // 検索: GS1-128ならJAN→商品＋ロットで絞り込み、それ以外は文字列検索
+    async function search() {
+      const v = document.getElementById('q').value.trim();
+      if (isGs1(v)) {
+        const info = extractGs1(v);
+        const r = await api('/api/lookup/by-jan/' + encodeURIComponent(info.jan));
+        if (!r.ok) { setMsg(document.getElementById('msg'), `${r.data.error || '照合失敗'}（JAN:${info.jan}）`, 'error'); load(); return; }
+        setMsg(document.getElementById('msg'), `GS1-128読取: ${r.data.product.productName} / ロット:${info.lot || '-'}`, 'ok');
+        load({ productId: r.data.product.productId, lot: info.lot || '' });
+      } else {
+        load({ query: v });
+      }
+    }
+
+    async function load(params = {}) {
+      const qs = new URLSearchParams();
+      if (params.query) qs.set('query', params.query);
+      if (params.productId) qs.set('productId', params.productId);
+      if (params.lot) qs.set('lot', params.lot);
+      const { data } = await api('/api/barcodes/in-use' + (qs.toString() ? '?' + qs.toString() : ''));
       const tbody = document.querySelector('#tbl tbody');
       tbody.innerHTML = '';
-      const list = data.barcodes || [];
-      if (list.length === 0) { tbody.innerHTML = '<tr><td colspan="6">対象がありません。</td></tr>'; return; }
-      list.forEach((b) => {
+      const items = data.items || [];
+      if (items.length === 0) { tbody.innerHTML = '<tr><td colspan="6">対象がありません。</td></tr>'; return; }
+      items.forEach((b) => {
         const tr = document.createElement('tr');
+        const kindLabel = b.kind === 'barcode' ? '独自BC' : 'JAN(使用記録)';
         tr.innerHTML =
-          `<td>${b.barcode_value}</td><td>${b.product_name}</td><td>${b.content_code}</td>` +
+          `<td>${kindLabel}</td><td>${b.product_name}</td><td>${b.content_code}</td>` +
           `<td>${b.lot_number || '(なし)'}</td><td>${b.use_start_date || ''}</td>` +
-          `<td><button onclick="register('${b.barcode_value}')">終了登録</button></td>`;
+          `<td><button onclick="register('${b.kind}','${b.key}')">終了登録</button></td>`;
         tbody.appendChild(tr);
       });
     }
 
-    async function register(value) {
+    async function register(kind, key) {
       const useEndDate = document.getElementById('endDate').value;
       if (!useEndDate) { setMsg(document.getElementById('msg'), '使用終了日を入力してください', 'error'); return; }
-      const { ok, data } = await api(`/api/barcodes/${encodeURIComponent(value)}/use-end`, { method: 'POST', body: JSON.stringify({ useEndDate }) });
-      setMsg(document.getElementById('msg'), ok ? `${value} の使用終了日を登録しました` : (data.error || '失敗'), ok ? 'ok' : 'error');
-      load();
+      const { ok, data } = await api('/api/barcodes/use-end', { method: 'POST', body: JSON.stringify({ kind, key, useEndDate }) });
+      setMsg(document.getElementById('msg'), ok ? '使用終了日を登録しました' : (data.error || '失敗'), ok ? 'ok' : 'error');
+      search();
     }
 
     boot();
