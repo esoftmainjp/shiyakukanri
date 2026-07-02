@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>バーコード印刷 | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+  <style>
+    /* ラベルプレビュー(画面表示) */
+    .labels { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .label {
+      box-sizing: border-box; border: 1px dashed #bbb; padding: 2mm;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      overflow: hidden; background: #fff;
+    }
+    .label svg { max-width: 100%; }
+    .label .txt { width: 100%; text-align: center; line-height: 1.25; }
+    .label .pname { font-weight: 600; }
+    .label .sub { color: #333; }
+    .label input.pick { position: absolute; }
+    .label-wrap { position: relative; }
+    .label-wrap .pick { position: absolute; top: 2px; left: 2px; z-index: 2; }
+
+    /* 印刷時: ラベルのみ・1ラベル=1ページ */
+    @media print {
+      header, .no-print { display: none !important; }
+      body { margin: 0; background: #fff; }
+      main { padding: 0; margin: 0; max-width: none; }
+      .labels { display: block; margin: 0; gap: 0; }
+      .label-wrap .pick { display: none; }
+      .label {
+        border: none; padding: 0; page-break-after: always; break-after: page;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .label:last-child { page-break-after: auto; break-after: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header></header>
+  <main>
+    <div class="card no-print">
+      <h2>バーコード印刷</h2>
+      <p>発行済みの独自バーコード（Code128）を検索し、Brother QL 等の感熱ラベルプリンタで印刷します。<br>
+        プリンタのDKラベルに合わせて<b>ラベルサイズ(mm)</b>を設定し、ブラウザの印刷（1ラベル＝1枚）で出力してください。</p>
+      <div class="row">
+        <div><label>発行日(自)</label><input type="date" id="from" /></div>
+        <div><label>発行日(至)</label><input type="date" id="to" /></div>
+        <div style="flex:2;"><label>商品</label><select id="productId"><option value="">(すべて)</option></select></div>
+        <div style="flex:1;"><label>検索(値/商品名)</label><input id="query" placeholder="部分一致" /></div>
+        <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">検索</button></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="setToday()">本日発行分</button></div>
+      </div>
+      <hr>
+      <div class="row">
+        <div style="flex:0;"><label>ラベル幅(mm)</label><input type="number" id="lw" value="62" min="10" max="200" style="width:90px;" oninput="applySize()" /></div>
+        <div style="flex:0;"><label>ラベル高(mm)</label><input type="number" id="lh" value="29" min="10" max="200" style="width:90px;" oninput="applySize()" /></div>
+        <div style="flex:0;"><label>バーコード高(px)</label><input type="number" id="bh" value="40" min="20" max="120" style="width:90px;" oninput="render()" /></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="toggleAll(true)">全選択</button></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="toggleAll(false)">全解除</button></div>
+        <div style="flex:0;"><label>&nbsp;</label><button onclick="printSelected()">選択分を印刷</button></div>
+      </div>
+      <p class="msg" id="msg"></p>
+      <p id="count" style="color:#555;"></p>
+    </div>
+
+    <div class="labels" id="labels"></div>
+  </main>
+
+  <script src="/common.js"></script>
+  <!-- Code128描画: JsBarcode(CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <script>
+    let items = [];
+
+    async function boot() {
+      const user = await initPage('labels');
+      if (!user) return;
+      if (typeof JsBarcode === 'undefined') {
+        setMsg(document.getElementById('msg'), 'バーコード描画ライブラリの読込に失敗しました（ネット接続をご確認ください）', 'error');
+      }
+      const sel = document.getElementById('productId');
+      const products = await getProducts();
+      products.forEach((p) => {
+        const o = document.createElement('option');
+        o.value = p.productId; o.textContent = p.productName;
+        sel.appendChild(o);
+      });
+      setToday();
+      applySize();
+    }
+
+    function setToday() {
+      const t = new Date().toISOString().slice(0, 10);
+      document.getElementById('from').value = t;
+      document.getElementById('to').value = t;
+      load();
+    }
+
+    async function load() {
+      const qs = new URLSearchParams();
+      const from = document.getElementById('from').value;
+      const to = document.getElementById('to').value;
+      const productId = document.getElementById('productId').value;
+      const query = document.getElementById('query').value.trim();
+      if (from) qs.set('from', from);
+      if (to) qs.set('to', to);
+      if (productId) qs.set('productId', productId);
+      if (query) qs.set('query', query);
+      const { ok, data } = await api('/api/barcodes/list?' + qs.toString());
+      if (!ok) { setMsg(document.getElementById('msg'), data.error || '取得失敗', 'error'); return; }
+      items = data.items || [];
+      setMsg(document.getElementById('msg'), '', '');
+      render();
+    }
+
+    function applySize() {
+      const w = Number(document.getElementById('lw').value) || 62;
+      const h = Number(document.getElementById('lh').value) || 29;
+      let st = document.getElementById('pageStyle');
+      if (!st) { st = document.createElement('style'); st.id = 'pageStyle'; document.head.appendChild(st); }
+      // 画面プレビュー・印刷ページの両方にサイズを反映
+      st.textContent =
+        `.label{width:${w}mm;height:${h}mm;}` +
+        `@media print{@page{size:${w}mm ${h}mm;margin:0;}}`;
+      render();
+    }
+
+    function render() {
+      const box = document.getElementById('labels');
+      box.innerHTML = '';
+      const bh = Number(document.getElementById('bh').value) || 40;
+      document.getElementById('count').textContent = `${items.length} 件`;
+      if (items.length === 0) { box.innerHTML = '<p style="color:#888;">対象がありません。</p>'; return; }
+      items.forEach((b, i) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'label-wrap';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.className = 'pick'; cb.checked = true; cb.dataset.idx = i;
+        const label = document.createElement('div');
+        label.className = 'label';
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        label.appendChild(svg);
+        const txt = document.createElement('div');
+        txt.className = 'txt';
+        const exp = b.expiry_date ? `期限:${b.expiry_date}` : '';
+        const lot = b.lot_number ? `Lot:${b.lot_number}` : '';
+        txt.innerHTML =
+          `<div class="pname">${escapeHtml(b.product_name)}</div>` +
+          `<div class="sub">${[lot, exp].filter(Boolean).map(escapeHtml).join('　')}</div>` +
+          `<div class="sub">内容物コード:${b.content_code}</div>`;
+        label.appendChild(txt);
+        wrap.appendChild(cb);
+        wrap.appendChild(label);
+        box.appendChild(wrap);
+        try {
+          JsBarcode(svg, b.barcode_value, {
+            format: 'CODE128', displayValue: true, fontSize: 12,
+            height: bh, margin: 2, width: 1.6,
+          });
+        } catch (e) { svg.outerHTML = `<div style="color:red;">描画失敗:${b.barcode_value}</div>`; }
+      });
+    }
+
+    function toggleAll(v) {
+      document.querySelectorAll('.pick').forEach((cb) => { cb.checked = v; });
+    }
+
+    function printSelected() {
+      const picks = [...document.querySelectorAll('.pick')];
+      const chosen = new Set(picks.filter((c) => c.checked).map((c) => Number(c.dataset.idx)));
+      if (chosen.size === 0) { setMsg(document.getElementById('msg'), '印刷対象を選択してください', 'error'); return; }
+      // 選択外のラベルを印刷時のみ非表示にする
+      const wraps = document.querySelectorAll('#labels .label-wrap');
+      wraps.forEach((w, i) => { w.classList.toggle('skip-print', !chosen.has(i)); });
+      window.print();
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    boot();
+  </script>
+  <style>
+    @media print { .skip-print { display: none !important; } }
+  </style>
+</body>
+</html>

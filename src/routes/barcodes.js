@@ -5,6 +5,37 @@ const { pool } = require('../db');
 
 const router = express.Router();
 
+// 発行済み独自バーコードの一覧(印刷用)
+// フィルタ: from/to(発行日) / productId / query(バーコード値・商品名の部分一致)
+router.get('/list', async (req, res) => {
+  const { from, to, productId, query } = req.query;
+  const limit = Math.min(Number(req.query.limit) || 1000, 5000);
+  try {
+    const params = [];
+    let cond = '1 = 1';
+    if (from) { params.push(from); cond += ` AND b.issue_date >= $${params.length}`; }
+    if (to) { params.push(to); cond += ` AND b.issue_date <= $${params.length}`; }
+    if (productId) { params.push(productId); cond += ` AND b.product_id = $${params.length}`; }
+    if (query) { params.push('%' + query + '%'); cond += ` AND (b.barcode_value ILIKE $${params.length} OR p.name ILIKE $${params.length})`; }
+    params.push(limit);
+    const { rows } = await pool.query(
+      `SELECT b.barcode_value, b.content_code, b.product_id, p.name AS product_name,
+              rd.lot_number, rd.expiry_date, b.issue_date, b.used_flag
+         FROM barcodes b
+         JOIN products p ON p.id = b.product_id
+         JOIN receipt_details rd ON rd.id = b.receipt_detail_id
+        WHERE ${cond}
+        ORDER BY b.issue_date DESC, p.name, b.content_code
+        LIMIT $${params.length}`,
+      params
+    );
+    res.json({ items: rows });
+  } catch (err) {
+    console.error('バーコード一覧エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 // 使用中(使用開始済み・使用終了日未登録)の一覧
 //  - 独自バーコード(barcodes): kind='barcode', key=バーコード値
 //  - 使用記録(usage_records): kind='usage', key=id
