@@ -40,11 +40,16 @@ router.post('/products', async (req, res) => {
     await client.query('BEGIN');
     const errors = [];
     let inserted = 0;
+    let skipped = 0;
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const name = (r['名称'] || '').trim();
       if (!name) { errors.push({ line: i + 2, error: '名称が空です' }); continue; }
+
+      // 重複チェックは商品名で行う(既存があればスキップ)
+      const dup = await client.query(`SELECT id FROM products WHERE name = $1`, [name]);
+      if (dup.rowCount > 0) { skipped++; continue; }
 
       let deptId = null, catId = null;
       if (r['部門']) {
@@ -58,6 +63,7 @@ router.post('/products', async (req, res) => {
         catId = c.rows[0].id;
       }
 
+      // 管理コードは顧客用の任意コード(システムキーではない)
       await client.query(
         `INSERT INTO products (name, kana, department_id, category_id, management_code, qc_target_flag)
          VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -71,7 +77,7 @@ router.post('/products', async (req, res) => {
       return res.status(400).json({ error: '取込中にエラーがあります(全件取消)', inserted: 0, errors });
     }
     await client.query('COMMIT');
-    res.json({ ok: true, inserted });
+    res.json({ ok: true, inserted, skipped });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('商品インポートエラー:', err.message);
@@ -82,7 +88,8 @@ router.post('/products', async (req, res) => {
 });
 
 // 商品詳細マスターCSVインポート
-// ヘッダー: 管理コード,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行
+// ヘッダー: 商品名,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行
+// 商品は「商品名」で特定する(管理コードは使わない)。同名商品が複数ある場合はエラー。
 router.post('/product-details', async (req, res) => {
   const rows = parseCsv(req.body && req.body.csv);
   if (rows.length === 0) return res.status(400).json({ error: 'データがありません' });
@@ -96,11 +103,12 @@ router.post('/product-details', async (req, res) => {
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const code = (r['管理コード'] || '').trim();
-      if (!code) { errors.push({ line: i + 2, error: '管理コードが空です' }); continue; }
+      const pname = (r['商品名'] || '').trim();
+      if (!pname) { errors.push({ line: i + 2, error: '商品名が空です' }); continue; }
 
-      const p = await client.query(`SELECT id FROM products WHERE management_code = $1`, [code]);
-      if (p.rowCount === 0) { errors.push({ line: i + 2, error: `商品(管理コード)が存在しません: ${code}` }); continue; }
+      const p = await client.query(`SELECT id FROM products WHERE name = $1`, [pname]);
+      if (p.rowCount === 0) { errors.push({ line: i + 2, error: `商品が存在しません: ${pname}` }); continue; }
+      if (p.rowCount > 1) { errors.push({ line: i + 2, error: `同名の商品が複数あります: ${pname}` }); continue; }
 
       let makerId = null, supplierId = null;
       if (r['メーカー']) {
@@ -159,7 +167,8 @@ router.post('/product-details', async (req, res) => {
 // 商品＋商品詳細 同時インポート
 // ヘッダー: 名称,カナ,部門,分類,管理コード,精度管理対象,
 //           適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行
-// 各行: 管理コードで商品を検索(あれば再利用/なければ新規作成)し、続けて商品詳細を1件作成する。
+// 各行: 商品名で商品を検索(あれば再利用/なければ新規作成)し、続けて商品詳細を1件作成する。
+// 商品と商品詳細は商品ID(内部)で紐付ける。管理コードは顧客用の任意コードで、システムキーではない。
 router.post('/products-combined', async (req, res) => {
   const rows = parseCsv(req.body && req.body.csv);
   if (rows.length === 0) return res.status(400).json({ error: 'データがありません' });
@@ -176,9 +185,8 @@ router.post('/products-combined', async (req, res) => {
       const r = rows[i];
       const line = i + 2;
       const name = (r['名称'] || '').trim();
-      const code = (r['管理コード'] || '').trim();
+      const code = (r['管理コード'] || '').trim(); // 顧客用の任意コード(システムキーではない)
       if (!name) { errors.push({ line, error: '名称が空です' }); continue; }
-      if (!code) { errors.push({ line, error: '管理コードが空です(商品と詳細の紐付けに必須)' }); continue; }
 
       // 部門・分類の解決
       let deptId = null, catId = null;
@@ -206,9 +214,9 @@ router.post('/products-combined', async (req, res) => {
         supplierId = s.rows[0].id;
       }
 
-      // 商品: 管理コードで検索し、あれば再利用/なければ新規作成
+      // 商品: 商品名で検索し、あれば再利用/なければ新規作成(重複チェックは商品名)
       let productId;
-      const ex = await client.query(`SELECT id FROM products WHERE management_code = $1`, [code]);
+      const ex = await client.query(`SELECT id FROM products WHERE name = $1`, [name]);
       if (ex.rowCount > 0) {
         productId = ex.rows[0].id;
       } else {
