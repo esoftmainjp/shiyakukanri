@@ -66,17 +66,29 @@ router.get('/in-use', async (req, res) => {
     if (query) { urParams.push('%' + query + '%'); urCond += ` AND (p.name ILIKE $${urParams.length} OR CAST(u.content_code AS text) ILIKE $${urParams.length})`; }
     if (productId) { urParams.push(productId); urCond += ` AND u.product_id = $${urParams.length}`; }
     if (lot) { urParams.push(lot); urCond += ` AND u.lot_number = $${urParams.length}`; }
-    const ur = await pool.query(
-      `SELECT 'usage' AS kind, u.id::text AS key, u.content_code, u.product_id,
-              p.name AS product_name, u.lot_number, u.expiry_date, u.use_start_date
-         FROM usage_records u
-         JOIN products p ON p.id = u.product_id
-        WHERE ${urCond}
-        ORDER BY u.use_start_date, p.name`,
-      urParams
-    );
+    // usage_records未作成(本番マイグレーション前)でもバーコード分は表示できるよう、
+    // テーブル不在(42P01)の場合は空扱いにフォールバックする。
+    let urRows = [];
+    try {
+      const ur = await pool.query(
+        `SELECT 'usage' AS kind, u.id::text AS key, u.content_code, u.product_id,
+                p.name AS product_name, u.lot_number, u.expiry_date, u.use_start_date
+           FROM usage_records u
+           JOIN products p ON p.id = u.product_id
+          WHERE ${urCond}
+          ORDER BY u.use_start_date, p.name`,
+        urParams
+      );
+      urRows = ur.rows;
+    } catch (e) {
+      if (e.code === '42P01') {
+        console.warn('usage_recordsテーブルが未作成です。マイグレーションを実行してください。');
+      } else {
+        throw e;
+      }
+    }
 
-    res.json({ items: [...bc.rows, ...ur.rows] });
+    res.json({ items: [...bc.rows, ...urRows] });
   } catch (err) {
     console.error('使用中一覧エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
