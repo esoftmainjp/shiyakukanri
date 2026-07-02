@@ -60,6 +60,10 @@
       products = await getProducts();
       document.getElementById('product').innerHTML =
         products.map((p) => `<option value="${p.productId}">${p.productName}</option>`).join('');
+      // バーコード欄: Enter(スキャナ送出)で読取実行
+      document.getElementById('barcode').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); addBarcode(); }
+      });
       onProductChange();
     }
 
