@@ -16,8 +16,8 @@
     .label svg { max-width: 100%; }
     /* バーコードを優先。周辺文字は小さく・1行に収める */
     .label .txt { width: 100%; text-align: center; line-height: 1.05; margin-top: 0.5mm; }
-    .label .pname { font-weight: 600; font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .label .sub { color: #333; font-size: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .label .pname { font-weight: 600; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .label .sub { color: #333; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .label input.pick { position: absolute; }
     .label-wrap { position: relative; }
     .label-wrap .pick { position: absolute; top: 2px; left: 2px; z-index: 2; }
@@ -158,7 +158,7 @@
         box.appendChild(wrap);
         try {
           JsBarcode(svg, b.barcode_value, {
-            format: 'CODE128', displayValue: true, fontSize: 11, textMargin: 0,
+            format: 'CODE128', displayValue: true, fontSize: 8, textMargin: 0,
             height: bh, margin: 0, width: bw,
           });
         } catch (e) { svg.outerHTML = `<div style="color:red;">描画失敗:${b.barcode_value}</div>`; }
