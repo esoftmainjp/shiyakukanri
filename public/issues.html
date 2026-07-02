@@ -15,10 +15,11 @@
         <div><label>出庫日</label><input type="date" id="issueDate" /></div>
       </div>
 
-      <h3 style="margin-top:20px;">① バーコードで出庫（バラ1個）</h3>
+      <h3 style="margin-top:20px;">① バーコードで出庫</h3>
+      <p style="font-size:0.85rem; color:#555;">独自バーコード＝バラ1個を出庫。GS1-128＝商品・ロット・期限を特定して数量出庫欄へ反映（数量を入力して追加）。</p>
       <div class="row">
-        <div style="flex:2;"><label>バーコードを読み取り/入力</label><input id="barcode" placeholder="バーコード値" /></div>
-        <div style="flex:0;"><label>&nbsp;</label><button onclick="addBarcode()">追加</button></div>
+        <div style="flex:2;"><label>バーコードを読み取り/入力（独自 / GS1-128）</label><input id="barcode" placeholder="バーコード値" /></div>
+        <div style="flex:0;"><label>&nbsp;</label><button onclick="addBarcode()">読取</button></div>
       </div>
       <p class="msg" id="bcMsg"></p>
 
@@ -46,6 +47,7 @@
   </main>
 
   <script src="/common.js"></script>
+  <script src="/gs1.js"></script>
   <script>
     let products = [];
     let lines = [];
@@ -85,6 +87,36 @@
       const msg = document.getElementById('bcMsg');
       const value = document.getElementById('barcode').value.trim();
       if (!value) return;
+
+      // GS1-128の場合: JAN→商品特定、ロット・期限で在庫を選び、数量出庫欄へ反映
+      if (isGs1(value)) {
+        const info = extractGs1(value);
+        const r = await api('/api/lookup/by-jan/' + encodeURIComponent(info.jan));
+        if (!r.ok) { setMsg(msg, `${r.data.error || '照合失敗'}（JAN:${info.jan}）`, 'error'); return; }
+        const p = r.data.product;
+        // 商品を選択してロット別在庫を読み込み、該当ロット/期限を選択
+        document.getElementById('product').value = p.productId;
+        await onProductChange();
+        const stockSel = document.getElementById('stock');
+        let matched = false;
+        for (const opt of stockSel.options) {
+          if (!opt.value) continue;
+          const st = JSON.parse(opt.value);
+          if ((st.lot || '') === (info.lot || '') && (st.exp || null) === (info.expiry || null)) {
+            stockSel.value = opt.value; matched = true; break;
+          }
+        }
+        document.getElementById('pack').value = p.packSize;
+        setMsg(msg, matched
+          ? `読取: ${p.productName} / ロット:${info.lot || '-'} / 期限:${info.expiry || '-'}（数量を入力して「追加」）`
+          : `読取: ${p.productName}（該当ロット/期限の在庫が見つかりません。ロット:${info.lot || '-'} 期限:${info.expiry || '-'}）`,
+          matched ? 'ok' : 'error');
+        document.getElementById('barcode').value = '';
+        document.getElementById('qty').focus();
+        return;
+      }
+
+      // 独自バーコードの場合: バラ1個出庫
       const { ok, data } = await api('/api/lookup/barcode/' + encodeURIComponent(value));
       if (!ok) { setMsg(msg, data.error || '照会失敗', 'error'); return; }
       const b = data.barcode;

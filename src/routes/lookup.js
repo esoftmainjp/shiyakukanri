@@ -87,6 +87,40 @@ router.get('/stocks', async (req, res) => {
   }
 });
 
+// JANコードから商品を照合 (GS1-128のGTIN用。先頭ゼロ差を正規化して一致)
+router.get('/by-jan/:jan', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.id AS product_id, p.name AS product_name,
+              pd.id AS product_detail_id, pd.spec, pd.pack_size, pd.unit_price,
+              pd.supplier_id, s.name AS supplier_name, pd.barcode_issue_flag, pd.jan_code
+         FROM product_details pd
+         JOIN products p ON p.id = pd.product_id
+         LEFT JOIN suppliers s ON s.id = pd.supplier_id
+        WHERE p.is_active = TRUE
+          AND pd.jan_code <> ''
+          AND regexp_replace(pd.jan_code, '^0+', '') = regexp_replace($1, '^0+', '')
+        ORDER BY pd.apply_start_date DESC
+        LIMIT 1`,
+      [req.params.jan]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: '該当する商品(JAN)が見つかりません' });
+    const r = rows[0];
+    res.json({
+      product: {
+        productId: r.product_id, productName: r.product_name,
+        productDetailId: r.product_detail_id, spec: r.spec,
+        packSize: r.pack_size, unitPrice: r.unit_price,
+        supplierId: r.supplier_id, supplierName: r.supplier_name,
+        barcodeIssueFlag: r.barcode_issue_flag, janCode: r.jan_code,
+      },
+    });
+  } catch (err) {
+    console.error('JAN照合エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 // バーコード照会
 router.get('/barcode/:value', async (req, res) => {
   try {
