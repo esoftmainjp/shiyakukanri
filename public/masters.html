@@ -65,14 +65,14 @@
       users: [
         sel('user_type','タイプ',[['admin','管理者'],['general','一般'],['supplier','問屋']]),
         f('name','氏名'), f('kana','カナ'), f('login_id','ログインID'),
-        f('password','パスワード', 'password'),
+        f('password','パスワード', 'password'), f('note','備考'),
       ],
       products: [
         f('name','名称'), f('kana','カナ'),
         ref('department_id','部門','departments'),
         ref('category_id','分類','categories'),
         f('management_code','管理コード'),
-        chk('qc_target_flag','精度管理対象'),
+        chk('qc_target_flag','精度管理対象'), f('note','備考'),
       ],
       'product-details': [
         ref('product_id','商品','products'),
@@ -82,7 +82,7 @@
         f('min_quantity','最低個数','number'), f('order_quantity','発注個数','number'),
         f('jan_code','JANコード'),
         ref('maker_id','メーカー','makers'), ref('supplier_id','問屋','suppliers'),
-        chk('barcode_issue_flag','バーコード発行'),
+        chk('barcode_issue_flag','バーコード発行'), f('note','備考'),
       ],
     };
     function f(key, label, type='text') { return { key, label, type }; }
@@ -95,6 +95,21 @@
       'product-details': 'ヘッダー: 商品名,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行',
     };
     const COMBINED_HINT = 'ヘッダー: 名称,カナ,部門,分類,管理コード,精度管理対象,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行';
+
+    // 一覧ヘッダーの日本語ラベル(全マスター共通)
+    const COL_LABELS = {
+      id: 'ID', name: '名称', kana: 'カナ', note: '備考', is_active: '有効',
+      jan_maker_code: 'JANメーカーコード',
+      department_id: '部門', category_id: '分類', management_code: '管理コード', qc_target_flag: '精度管理対象',
+      product_id: '商品', apply_start_date: '適用開始日', apply_end_date: '適用終了日',
+      quantity_unit: '数量単位', pack_size: '梱包数', pack_unit: '梱包単位', spec: '規格',
+      unit_price: '単価', test_count: 'テスト数', min_quantity: '最低個数', order_quantity: '発注個数',
+      jan_code: 'JANコード', maker_id: 'メーカー', supplier_id: '問屋', barcode_issue_flag: 'バーコード発行',
+      user_type: 'タイプ', login_id: 'ログインID',
+    };
+    // ID列 → 参照マスター種別(名称表示に使う)
+    const REF_COLS = { department_id: 'departments', category_id: 'categories', maker_id: 'makers', supplier_id: 'suppliers', product_id: 'products' };
+    const USER_TYPE_LABEL = { admin: '管理者', general: '一般', supplier: '問屋' };
 
     let editId = null;
     let refCache = {};
@@ -223,15 +238,31 @@
       const thead = document.querySelector('#tbl thead');
       const tbody = document.querySelector('#tbl tbody');
       if (rows.length === 0) { thead.innerHTML = ''; tbody.innerHTML = '<tr><td>データがありません</td></tr>'; return; }
-      const keys = Object.keys(rows[0]).filter((k) => !['created_at', 'updated_at'].includes(k));
-      thead.innerHTML = '<tr>' + keys.map((k) => `<th>${k}</th>`).join('') + '<th>操作</th></tr>';
+      // id と日時列は非表示。参照ID列は名称表示にする。
+      const keys = Object.keys(rows[0]).filter((k) => !['id', 'created_at', 'updated_at'].includes(k));
+
+      // 参照マスターの id→名称 マップを準備
+      const refMaps = {};
+      for (const k of keys) {
+        if (REF_COLS[k]) {
+          const list = await loadRef(REF_COLS[k]);
+          refMaps[k] = Object.fromEntries(list.map((x) => [String(x.id), x.name]));
+        }
+      }
+
+      thead.innerHTML = '<tr>' + keys.map((k) => `<th>${COL_LABELS[k] || k}</th>`).join('') + '<th>操作</th></tr>';
       tbody.innerHTML = rows.map((r) => {
-        const tds = keys.map((k) => `<td>${fmt(r[k])}</td>`).join('');
+        const tds = keys.map((k) => `<td>${cellValue(k, r[k], refMaps)}</td>`).join('');
         const hasActive = 'is_active' in r;
         const toggleBtn = hasActive ? `<button class="${r.is_active ? 'danger' : ''}" onclick="toggle('${r.id}')">${r.is_active ? '無効化' : '有効化'}</button>` : '';
         const editData = JSON.stringify(r).replace(/'/g, '&#39;');
         return `<tr>${tds}<td><button class="secondary" onclick='edit(${editData})'>編集</button> ${toggleBtn}</td></tr>`;
       }).join('');
+    }
+    function cellValue(key, v, refMaps) {
+      if (REF_COLS[key]) return v == null ? '' : (refMaps[key][String(v)] || v);
+      if (key === 'user_type') return USER_TYPE_LABEL[v] || v;
+      return fmt(v);
     }
     function fmt(v) {
       if (v === true) return '○'; if (v === false) return '';
