@@ -11,11 +11,19 @@
   <main>
     <div class="card">
       <h2>問屋を選択</h2>
-      <p style="font-size:0.85rem; color:#555;">発注は問屋ごとに行います。まず問屋を選択してください。選択した問屋の発注のみ表示・操作できます。</p>
+      <p style="font-size:0.85rem; color:#555;">発注は問屋ごとに行います。まず問屋を選択してください。選択した問屋の発注のみ表示・操作できます。発注日・備考は「発注する」際に反映されます。</p>
       <div class="row">
-        <div style="flex:1; min-width:220px;">
+        <div>
+          <label>発注日</label>
+          <input type="date" id="orderDate" />
+        </div>
+        <div style="flex:2; min-width:220px;">
           <label>問屋 <span style="color:#c0392b;">*</span></label>
           <select id="supplier" onchange="onSupplierChange()"><option value="">（選択してください）</option></select>
+        </div>
+        <div style="flex:2;">
+          <label>備考（発注全体）</label>
+          <input id="note" placeholder="任意" />
         </div>
       </div>
     </div>
@@ -70,6 +78,7 @@
       if (!user) return;
       canEdit = (user.userType === 'admin' || user.userType === 'general');
       products = await getProducts();
+      document.getElementById('orderDate').value = new Date().toISOString().slice(0, 10);
       // 問屋コンボを構築(初期未選択)
       const supSel = document.getElementById('supplier');
       const sr = await api('/api/lookup/suppliers');
@@ -204,9 +213,6 @@
           `<td style="text-align:right;">${qtyCell}</td>` +
           `<td>${noteCell}</td>${actionCell}</tr>`;
       }).join('');
-      const noteField = o.order_status === 'unordered'
-        ? `<div class="row" style="margin-top:8px;"><div style="flex:3;"><label>備考</label><input id="note_${o.id}" value="${o.note || ''}" placeholder="任意" /></div></div>`
-        : '';
       const cancelBtn = canEdit ? ` <button class="danger" onclick="cancelOrder('${o.id}')">発注をキャンセル</button>` : '';
       // キャンセル絞込表示中は操作ボタンを出さない(閲覧用)
       const actions = canceledView
@@ -229,7 +235,6 @@
           <div class="spacer"></div>
         </div>
         <table><thead><tr><th>商品</th><th>発注バラ数</th><th>商品内容数</th><th>発注推奨数(梱包)</th><th>発注数(梱包)</th><th>備考</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-        ${noteField}
         <div style="margin-top:10px;">${actions}</div>
       </div>`;
     }
@@ -243,10 +248,10 @@
     }
 
     async function place(id) {
-      const noteEl = document.getElementById('note_' + id);
-      const note = noteEl ? noteEl.value : '';
+      const note = document.getElementById('note').value;
+      const orderDate = document.getElementById('orderDate').value;
       const wantPrint = (document.getElementById('print_' + id) || {}).checked;
-      const { ok, data } = await api(`/api/orders/${id}/place`, { method: 'POST', body: JSON.stringify({ note }) });
+      const { ok, data } = await api(`/api/orders/${id}/place`, { method: 'POST', body: JSON.stringify({ note, orderDate }) });
       setMsg(document.getElementById('msg'), ok ? `発注 #${id} を発注済みにしました` : (data.error || '失敗'), ok ? 'ok' : 'error');
       if (ok && wantPrint) printOrder(id);
       load();
