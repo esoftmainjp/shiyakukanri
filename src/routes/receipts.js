@@ -97,6 +97,34 @@ router.post('/', async (req, res) => {
         );
         const od = await client.query(`SELECT order_id FROM order_details WHERE id = $1`, [d.orderDetailId]);
         if (od.rowCount) affectedOrders.add(od.rows[0].order_id);
+      } else if (supplierId) {
+        // 発注紐付けが無い明細は、その問屋の発注済み・未入庫(同一商品)を古い順に自動消し込み
+        let remain = addedBara;
+        const pend = await client.query(
+          `SELECT od.id, od.order_id,
+                  (od.order_quantity * COALESCE(pd.pack_size, 1)
+                   - COALESCE((SELECT SUM(rp.receipt_piece_quantity) FROM receipt_plans rp WHERE rp.order_detail_id = od.id), 0)) AS remaining
+             FROM order_details od
+             JOIN orders o ON o.id = od.order_id
+             LEFT JOIN product_details pd ON pd.id = od.product_detail_id
+            WHERE o.supplier_id = $1 AND o.order_status = 'ordered'
+              AND od.product_id = $2 AND od.canceled_flag = FALSE
+            ORDER BY o.order_date NULLS LAST, o.id`,
+          [supplierId, d.productId]
+        );
+        for (const od of pend.rows) {
+          if (remain <= 0) break;
+          const rem = Number(od.remaining);
+          if (rem <= 0) continue;
+          const apply = Math.min(rem, remain);
+          await client.query(
+            `INSERT INTO receipt_plans (order_detail_id, receipt_detail_id, receipt_piece_quantity)
+             VALUES ($1, $2, $3)`,
+            [od.id, receiptDetailId, apply]
+          );
+          affectedOrders.add(od.order_id);
+          remain -= apply;
+        }
       }
 
       resultDetails.push({
