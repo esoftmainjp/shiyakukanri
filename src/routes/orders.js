@@ -56,6 +56,51 @@ router.get('/', async (req, res) => {
   }
 });
 
+// ホーム用サマリー: 発注予定(未発注)と入庫予定(発注済み・未入庫)
+// GET /api/orders/summary
+router.get('/summary', async (req, res) => {
+  try {
+    // 発注予定(未発注): これから発注する分
+    const plans = await pool.query(
+      `SELECT o.id AS order_id, o.supplier_id, s.name AS supplier_name,
+              od.id AS order_detail_id, p.name AS product_name,
+              od.planned_order_quantity, od.order_quantity,
+              COALESCE(pd.pack_size, 1) AS pack_size
+         FROM orders o
+         JOIN order_details od ON od.order_id = o.id
+         JOIN products p ON p.id = od.product_id
+         LEFT JOIN suppliers s ON s.id = o.supplier_id
+         LEFT JOIN product_details pd ON pd.id = od.product_detail_id
+        WHERE o.order_status = 'unordered' AND od.order_quantity > 0
+        ORDER BY s.name, p.name`
+    );
+
+    // 入庫予定(発注済み・未入庫): これから入ってくる分(残バラ数>0)
+    const incoming = await pool.query(
+      `SELECT o.id AS order_id, o.order_date, o.supplier_id, s.name AS supplier_name,
+              p.name AS product_name, od.order_quantity,
+              COALESCE(pd.pack_size, 1) AS pack_size,
+              COALESCE((SELECT SUM(rp.receipt_piece_quantity) FROM receipt_plans rp WHERE rp.order_detail_id = od.id), 0) AS received_bara
+         FROM orders o
+         JOIN order_details od ON od.order_id = o.id
+         JOIN products p ON p.id = od.product_id
+         LEFT JOIN suppliers s ON s.id = o.supplier_id
+         LEFT JOIN product_details pd ON pd.id = od.product_detail_id
+        WHERE o.order_status = 'ordered'
+        ORDER BY o.order_date, s.name, p.name`
+    );
+    const receiptPlans = incoming.rows.map((r) => {
+      const orderedBara = Number(r.order_quantity) * Number(r.pack_size);
+      return { ...r, ordered_bara: orderedBara, remaining_bara: orderedBara - Number(r.received_bara) };
+    }).filter((r) => r.remaining_bara > 0);
+
+    res.json({ orderPlans: plans.rows, receiptPlans });
+  } catch (err) {
+    console.error('発注サマリーエラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 // 発注明細詳細
 // GET /api/orders/:id
 router.get('/:id', async (req, res) => {

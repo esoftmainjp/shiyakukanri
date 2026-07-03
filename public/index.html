@@ -22,6 +22,27 @@
 
     <!-- ログイン後 -->
     <div id="appArea" style="display:none;">
+      <div class="row" style="align-items:stretch; gap:16px;">
+        <div class="card" style="flex:1; min-width:300px;">
+          <h2>発注予定（未発注）</h2>
+          <p style="color:#666; font-size:0.85rem; margin:4px 0;">出庫から自動作成された、これから発注する分です。</p>
+          <table id="orderPlanTable">
+            <thead><tr><th>問屋</th><th>商品</th><th>発注予定数<br>(梱包)</th><th>発注数<br>(梱包)</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <div style="margin-top:8px;"><a href="/orders.html">発注画面へ →</a></div>
+        </div>
+        <div class="card" style="flex:1; min-width:300px;">
+          <h2>入庫予定（発注済み・未入庫）</h2>
+          <p style="color:#666; font-size:0.85rem; margin:4px 0;">発注済みで、これから入ってくる予定の分です。</p>
+          <table id="receiptPlanTable">
+            <thead><tr><th>発注日</th><th>問屋</th><th>商品</th><th>残バラ数</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <div style="margin-top:8px;"><a href="/receipts.html">入庫画面へ →</a></div>
+        </div>
+      </div>
+
       <div class="card">
         <h2>在庫一覧</h2>
         <button class="secondary" onclick="loadStocks()">再読み込み</button>
@@ -52,6 +73,35 @@
       document.getElementById('appArea').style.display = 'block';
       renderHeader(user, 'dashboard');
       loadStocks();
+      loadPlans();
+    }
+    async function loadPlans() {
+      const { ok, data } = await api('/api/orders/summary');
+      if (!ok) return;
+      const opb = document.querySelector('#orderPlanTable tbody');
+      opb.innerHTML = '';
+      const plans = data.orderPlans || [];
+      if (plans.length === 0) opb.innerHTML = '<tr><td colspan="4">発注予定はありません。</td></tr>';
+      plans.forEach((r) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${esc(r.supplier_name || '-')}</td><td>${esc(r.product_name)}</td>` +
+          `<td style="text-align:right;">${r.planned_order_quantity}</td><td style="text-align:right;">${r.order_quantity}</td>`;
+        opb.appendChild(tr);
+      });
+      const rpb = document.querySelector('#receiptPlanTable tbody');
+      rpb.innerHTML = '';
+      const rps = data.receiptPlans || [];
+      if (rps.length === 0) rpb.innerHTML = '<tr><td colspan="4">入庫予定はありません。</td></tr>';
+      rps.forEach((r) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${r.order_date || '-'}</td><td>${esc(r.supplier_name || '-')}</td>` +
+          `<td>${esc(r.product_name)}</td><td style="text-align:right;">${r.remaining_bara}</td>`;
+        rpb.appendChild(tr);
+      });
+    }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
     async function loadStocks() {
       const { data } = await api('/api/lookup/stocks');
