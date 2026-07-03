@@ -10,6 +10,17 @@
   <header></header>
   <main>
     <div class="card">
+      <h2>バーコードで発注予定に追加</h2>
+      <p style="font-size:0.85rem; color:#555;">商品のバーコード（独自 / GS1-128）を読み取り、その問屋の発注予定（未発注）に追加します。</p>
+      <div class="row">
+        <div style="flex:2;"><label>バーコードを読み取り/入力</label><input id="obc" placeholder="バーコード値（Enterで追加）" /></div>
+        <div style="flex:0;"><label>発注数(梱包)</label><input type="number" id="obcQty" value="1" min="1" style="width:100px;" /></div>
+        <div style="flex:0;"><label>&nbsp;</label><button onclick="addByBarcode()">追加</button></div>
+      </div>
+      <p class="msg" id="obcMsg"></p>
+    </div>
+
+    <div class="card">
       <h2>発注一覧</h2>
       <div class="row">
         <div style="flex:0; min-width:160px;">
@@ -30,6 +41,7 @@
   </main>
 
   <script src="/common.js"></script>
+  <script src="/gs1.js"></script>
   <script>
     let products = [];
     let canEdit = false; // 削除は管理者/一般のみ
@@ -40,6 +52,35 @@
       if (!user) return;
       canEdit = (user.userType === 'admin' || user.userType === 'general');
       products = await getProducts();
+      document.getElementById('obc').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); addByBarcode(); }
+      });
+      load();
+    }
+
+    // バーコードから商品を特定し、発注予定(未発注)に追加
+    async function addByBarcode() {
+      const msg = document.getElementById('obcMsg');
+      const value = document.getElementById('obc').value.trim();
+      if (!value) return;
+      let productDetailId = null, label = '';
+      if (isGs1(value)) {
+        const info = extractGs1(value);
+        const r = await api('/api/lookup/by-jan/' + encodeURIComponent(info.jan));
+        if (!r.ok) { setMsg(msg, `${r.data.error || '照合失敗'}（JAN:${info.jan}）`, 'error'); return; }
+        productDetailId = r.data.product.productDetailId; label = r.data.product.productName;
+      } else {
+        const r = await api('/api/lookup/barcode/' + encodeURIComponent(value));
+        if (!r.ok) { setMsg(msg, r.data.error || '照会失敗', 'error'); return; }
+        productDetailId = r.data.barcode.product_detail_id; label = r.data.barcode.product_name;
+      }
+      if (!productDetailId) { setMsg(msg, '商品詳細を特定できませんでした', 'error'); return; }
+      const qty = Number(document.getElementById('obcQty').value) || 1;
+      const { ok, data } = await api('/api/orders/add-product', { method: 'POST', body: JSON.stringify({ productDetailId, orderQuantity: qty }) });
+      if (!ok) { setMsg(msg, data.error || '追加に失敗しました', 'error'); return; }
+      setMsg(msg, `${label} を発注予定に追加しました（発注数:${data.orderQuantity}）`, 'ok');
+      document.getElementById('obc').value = '';
+      document.getElementById('statusFilter').value = 'unordered';
       load();
     }
 

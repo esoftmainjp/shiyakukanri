@@ -109,6 +109,72 @@ router.get('/summary', async (req, res) => {
   }
 });
 
+// バーコード等から商品を発注予定(未発注)に追加。問屋の未発注発注を確保して明細を追加/加算。
+// POST /api/orders/add-product  body: { productDetailId, orderQuantity? }
+router.post('/add-product', async (req, res) => {
+  const { productDetailId } = req.body || {};
+  const qty = Math.max(1, Number(req.body && req.body.orderQuantity) || 1);
+  if (!productDetailId) return res.status(400).json({ error: '商品詳細IDは必須です' });
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const pd = await client.query(
+      `SELECT product_id, supplier_id FROM product_details WHERE id = $1`, [productDetailId]
+    );
+    if (pd.rowCount === 0) { await client.query('ROLLBACK'); return res.status(400).json({ error: '商品詳細が見つかりません' }); }
+    const productId = pd.rows[0].product_id;
+    const supplierId = pd.rows[0].supplier_id;
+    if (!supplierId) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'この商品は問屋が未設定のため発注予定に追加できません' }); }
+
+    // 未発注の発注を問屋単位で確保(なければ作成)
+    let orderId;
+    const o = await client.query(
+      `SELECT id FROM orders WHERE supplier_id = $1 AND order_status = 'unordered' ORDER BY id LIMIT 1`, [supplierId]
+    );
+    if (o.rowCount) {
+      orderId = o.rows[0].id;
+    } else {
+      const ins = await client.query(
+        `INSERT INTO orders (supplier_id, order_status, user_id) VALUES ($1, 'unordered', $2) RETURNING id`,
+        [supplierId, req.session.user.id]
+      );
+      orderId = ins.rows[0].id;
+    }
+
+    // 発注明細を商品単位で確保(あれば発注数を加算)
+    const d = await client.query(
+      `SELECT id, order_quantity FROM order_details WHERE order_id = $1 AND product_id = $2 LIMIT 1`, [orderId, productId]
+    );
+    let orderDetailId, newQty;
+    if (d.rowCount) {
+      orderDetailId = d.rows[0].id;
+      newQty = Number(d.rows[0].order_quantity) + qty;
+      await client.query(`UPDATE order_details SET order_quantity = $1 WHERE id = $2`, [newQty, orderDetailId]);
+    } else {
+      newQty = qty;
+      const ins = await client.query(
+        `INSERT INTO order_details (order_id, product_id, product_detail_id, planned_order_quantity, order_quantity)
+         VALUES ($1, $2, $3, $4, $4) RETURNING id`,
+        [orderId, productId, productDetailId, qty]
+      );
+      orderDetailId = ins.rows[0].id;
+    }
+
+    await writeLog(client, {
+      userId: req.session.user.id, targetTable: 'order_details', targetId: orderDetailId, operationType: '登録',
+      after: { order_id: orderId, order_quantity: newQty, via: 'barcode' },
+    });
+    await client.query('COMMIT');
+    res.json({ ok: true, orderId, orderDetailId, orderQuantity: newQty });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('発注予定追加エラー:', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'サーバーエラー' });
+  } finally {
+    client.release();
+  }
+});
+
 // 発注明細詳細
 // GET /api/orders/:id
 router.get('/:id', async (req, res) => {
