@@ -4,3 +4,7 @@ node_modules/
 npm-debug.log*
 .DS_Store
 Backup/
+
+# 実データ(インポート用CSV・作業ファイル)
+商品マスタ インポート用.csv
+*.import.csv
