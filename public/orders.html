@@ -33,6 +33,7 @@
   <script>
     let products = [];
     let canEdit = false; // 削除は管理者/一般のみ
+    let canceledView = false; // キャンセル絞込表示中か
 
     async function boot() {
       const user = await initPage('orders');
@@ -44,9 +45,18 @@
 
     async function load() {
       const status = document.getElementById('statusFilter').value;
+      canceledView = (status === 'canceled');
       const { data } = await api('/api/orders' + (status ? '?status=' + status : ''));
       const wrap = document.getElementById('orderList');
-      const orders = data.orders || [];
+      let orders = data.orders || [];
+      if (canceledView) {
+        // 一部キャンセルの発注(状態はcanceledでない)は、キャンセルした商品のみ表示
+        orders = orders
+          .map((o) => o.order_status === 'canceled'
+            ? o
+            : Object.assign({}, o, { details: (o.details || []).filter((d) => d.canceled_flag) }))
+          .filter((o) => (o.details || []).length > 0);
+      }
       if (orders.length === 0) { wrap.innerHTML = '<p>該当する発注はありません。</p>'; return; }
       wrap.innerHTML = orders.map(renderOrder).join('');
     }
@@ -80,12 +90,19 @@
         ? `<div class="row" style="margin-top:8px;"><div style="flex:3;"><label>備考</label><input id="note_${o.id}" value="${o.note || ''}" placeholder="任意" /></div></div>`
         : '';
       const cancelBtn = canEdit ? ` <button class="danger" onclick="cancelOrder('${o.id}')">発注をキャンセル</button>` : '';
-      const actions = o.order_status === 'unordered'
-        ? `<button onclick="place('${o.id}')">発注する</button>` +
-          ` <label style="display:inline-flex; align-items:center; gap:6px; margin-left:10px; font-weight:normal;"><input type="checkbox" id="print_${o.id}" style="width:auto;" />発注後に発注書を印刷</label>`
-        : o.order_status === 'ordered'
-          ? `<button class="secondary" onclick="printOrder('${o.id}')">発注書を印刷</button>${cancelBtn}`
-          : '';
+      // キャンセル絞込表示中は操作ボタンを出さない(閲覧用)
+      const actions = canceledView
+        ? ''
+        : o.order_status === 'unordered'
+          ? `<button onclick="place('${o.id}')">発注する</button>` +
+            ` <label style="display:inline-flex; align-items:center; gap:6px; margin-left:10px; font-weight:normal;"><input type="checkbox" id="print_${o.id}" style="width:auto;" />発注後に発注書を印刷</label>`
+          : o.order_status === 'ordered'
+            ? `<button class="secondary" onclick="printOrder('${o.id}')">発注書を印刷</button>${cancelBtn}`
+            : '';
+      // キャンセル画面で「一部キャンセル」(発注自体はキャンセルでない)を明示
+      const partialTag = (canceledView && o.order_status !== 'canceled')
+        ? ` <span class="pill canceled">一部キャンセル</span>`
+        : '';
       // 未発注のみ商品手動追加フォーム(その問屋の商品のみ)
       let addForm = '';
       if (o.order_status === 'unordered') {
@@ -102,7 +119,7 @@
       }
       return `<div class="card" style="background:#fafcfe;">
         <div class="row" style="align-items:center;">
-          <div><strong>発注 #${o.id}</strong> <span class="pill ${o.order_status}">${statusLabel(o.order_status)}</span></div>
+          <div><strong>発注 #${o.id}</strong> <span class="pill ${o.order_status}">${statusLabel(o.order_status)}</span>${partialTag}</div>
           <div>問屋: ${o.supplier_name || '-'}</div>
           <div>発注日: ${o.order_date || '-'}</div>
           <div class="spacer"></div>

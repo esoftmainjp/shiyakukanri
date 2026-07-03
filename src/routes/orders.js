@@ -25,7 +25,11 @@ router.get('/', async (req, res) => {
   try {
     const params = [];
     let where = '';
-    if (status) {
+    if (status === 'canceled') {
+      // キャンセル: 発注全体がキャンセル、または商品ごとにキャンセルした明細を持つ発注
+      where = `WHERE (o.order_status = 'canceled'
+                      OR EXISTS (SELECT 1 FROM order_details od WHERE od.order_id = o.id AND od.canceled_flag = TRUE))`;
+    } else if (status) {
       params.push(status);
       where = 'WHERE o.order_status = $1';
     }
