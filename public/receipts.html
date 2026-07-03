@@ -26,6 +26,19 @@
         </div>
       </div>
 
+      <!-- 問屋選択時に入庫予定(発注済み・未入庫)を表示。選択して明細に追加 -->
+      <div id="incomingArea" style="display:none; margin:10px 0; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:#f6fbff;">
+        <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+          <strong>入庫予定（この問屋・発注済み未入庫）</strong>
+          <label style="display:inline-flex; align-items:center; gap:6px; margin:0; font-weight:normal;"><input type="checkbox" id="incAll" onchange="toggleIncoming(this.checked)" style="width:auto;" />全選択</label>
+          <button class="secondary" onclick="addSelectedIncoming()">選択を明細に追加</button>
+        </div>
+        <table id="incomingTable" style="margin-top:8px;">
+          <thead><tr><th style="width:34px;"></th><th>発注日</th><th>商品</th><th>発注数(梱包)</th><th>残(バラ)</th><th>残(梱包)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
       <h3 style="margin-top:20px;">GS1-128 バーコード読取</h3>
       <div class="row">
         <div style="flex:3;">
@@ -97,6 +110,7 @@
   <script>
     let products = [];
     let lines = [];
+    let incomingItems = [];
 
     async function boot() {
       const user = await initPage('receipts');
@@ -110,6 +124,7 @@
         const o = document.createElement('option');
         o.value = s.id; o.textContent = s.name; supSel.appendChild(o);
       });
+      supSel.addEventListener('change', loadIncoming);
       const sel = document.getElementById('product');
       sel.innerHTML = products.map((p) => {
         const d = p.details[0];
@@ -205,7 +220,9 @@
       lines.forEach((l, i) => {
         const tr = document.createElement('tr');
         tr.innerHTML =
-          `<td>${l.productName}</td><td>${l.lotNumber || '(なし)'}</td><td>${l.expiryDate || '(なし)'}</td>` +
+          `<td>${attr(l.productName)}</td>` +
+          `<td><input value="${attr(l.lotNumber)}" oninput="lines[${i}].lotNumber=this.value" placeholder="空欄可" style="width:90px;" /></td>` +
+          `<td><input type="date" value="${l.expiryDate || ''}" oninput="lines[${i}].expiryDate=this.value||null" style="width:140px;" /></td>` +
           `<td style="text-align:right;">${l.receiptQuantity}</td><td style="text-align:right;">${l.packSize}</td>` +
           `<td style="text-align:right;">${l.receiptQuantity * l.packSize}</td>` +
           `<td>${l.barcode ? '○' : ''}</td>` +
@@ -215,6 +232,45 @@
       });
     }
     function removeLine(i) { lines.splice(i, 1); renderLines(); }
+
+    // 入庫予定(この問屋の発注済み・未入庫)を読み込み
+    async function loadIncoming() {
+      const sid = document.getElementById('supplier').value;
+      const area = document.getElementById('incomingArea');
+      const tbody = document.querySelector('#incomingTable tbody');
+      if (!sid) { area.style.display = 'none'; tbody.innerHTML = ''; incomingItems = []; return; }
+      const { data } = await api('/api/orders/incoming?supplierId=' + encodeURIComponent(sid));
+      incomingItems = data.items || [];
+      if (incomingItems.length === 0) { area.style.display = 'none'; tbody.innerHTML = ''; return; }
+      area.style.display = 'block';
+      document.getElementById('incAll').checked = false;
+      tbody.innerHTML = incomingItems.map((r, i) =>
+        `<tr><td style="text-align:center;"><input type="checkbox" class="incpick" data-idx="${i}" style="width:auto;" /></td>` +
+        `<td>${r.order_date || '-'}</td><td>${attr(r.product_name)}</td>` +
+        `<td style="text-align:right;">${r.order_quantity}</td><td style="text-align:right;">${r.remaining_bara}</td><td style="text-align:right;">${r.remaining_packs}</td></tr>`
+      ).join('');
+    }
+    function toggleIncoming(v) { document.querySelectorAll('.incpick').forEach((c) => { c.checked = v; }); }
+
+    // 選択した入庫予定を明細に追加(発注明細IDを紐付け=部分入庫対応)
+    function addSelectedIncoming() {
+      const picks = [...document.querySelectorAll('.incpick:checked')];
+      if (picks.length === 0) { setMsg(document.getElementById('addMsg'), '入庫予定を選択してください', 'error'); return; }
+      picks.forEach((c) => {
+        const r = incomingItems[Number(c.dataset.idx)];
+        lines.push({
+          productId: r.product_id, productName: r.product_name, productDetailId: r.product_detail_id,
+          lotNumber: '', expiryDate: null,
+          receiptQuantity: r.remaining_packs || 1, packSize: r.pack_size,
+          barcode: r.barcode_issue_flag, note: '', orderDetailId: r.order_detail_id,
+        });
+        c.checked = false;
+      });
+      document.getElementById('incAll').checked = false;
+      renderLines();
+      setMsg(document.getElementById('addMsg'), `${picks.length}件を明細に追加しました。ロット・使用期限を入力してください`, 'ok');
+    }
+
     // input value属性用のエスケープ
     function attr(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
@@ -234,7 +290,7 @@
           productId: l.productId, productDetailId: l.productDetailId,
           lotNumber: l.lotNumber, expiryDate: l.expiryDate,
           receiptQuantity: l.receiptQuantity, packSize: l.packSize,
-          note: l.note || '',
+          note: l.note || '', orderDetailId: l.orderDetailId,
         })),
       };
       const { ok, data } = await api('/api/receipts', { method: 'POST', body: JSON.stringify(body) });

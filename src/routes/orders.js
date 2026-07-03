@@ -175,6 +175,42 @@ router.post('/add-product', async (req, res) => {
   }
 });
 
+// 指定問屋の入庫予定(発注済み・未入庫の残あり)明細。入庫画面で選んで取り込む用。
+// GET /api/orders/incoming?supplierId=
+router.get('/incoming', async (req, res) => {
+  const { supplierId } = req.query;
+  if (!supplierId) return res.status(400).json({ error: '問屋IDは必須です' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT o.id AS order_id, o.order_date, od.id AS order_detail_id,
+              od.product_id, p.name AS product_name, od.product_detail_id, od.note,
+              od.order_quantity, COALESCE(pd.pack_size, 1) AS pack_size,
+              COALESCE(pd.barcode_issue_flag, FALSE) AS barcode_issue_flag,
+              COALESCE((SELECT SUM(rp.receipt_piece_quantity) FROM receipt_plans rp WHERE rp.order_detail_id = od.id), 0) AS received_bara
+         FROM orders o
+         JOIN order_details od ON od.order_id = o.id
+         JOIN products p ON p.id = od.product_id
+         LEFT JOIN product_details pd ON pd.id = od.product_detail_id
+        WHERE o.supplier_id = $1 AND o.order_status = 'ordered' AND od.canceled_flag = FALSE
+        ORDER BY o.order_date, p.name`,
+      [supplierId]
+    );
+    const items = rows.map((r) => {
+      const pack = Math.max(1, Number(r.pack_size) || 1);
+      const orderedBara = Number(r.order_quantity) * pack;
+      const remainingBara = orderedBara - Number(r.received_bara);
+      return {
+        ...r, ordered_bara: orderedBara, remaining_bara: remainingBara,
+        remaining_packs: Math.max(0, Math.round(remainingBara / pack)),
+      };
+    }).filter((r) => r.remaining_bara > 0);
+    res.json({ items });
+  } catch (err) {
+    console.error('入庫予定取得エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 // 発注明細詳細
 // GET /api/orders/:id
 router.get('/:id', async (req, res) => {
