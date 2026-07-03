@@ -61,6 +61,9 @@
   .role-s { color: #9a6416; font-weight: bold; }
   @page { size: A4 portrait; margin: 18mm 16mm 16mm; }
   .small { font-size: 9pt; color: #667; }
+  figure { margin: 10px auto 14px; page-break-inside: avoid; text-align: center; width: 92%; }
+  figure img { width: 100%; border: 1px solid #c3d3e2; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  figcaption { font-size: 8.6pt; color: #6a7b8c; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -168,6 +171,7 @@
 <!-- 4 -->
 <section>
   <h2>4. ホーム画面</h2>
+  <figure><img src="img/home.jpg" alt="ホーム画面"><figcaption>ホーム画面</figcaption></figure>
   <p>ログイン直後に表示されます。日々の確認事項をまとめています。</p>
   <ul>
     <li><strong>使用期限情報</strong>：期限切れ・期限間近の在庫を一覧表示します。個数（そのロットの数）と在庫数（商品全体）を確認できます。</li>
@@ -179,6 +183,7 @@
 <!-- 5 -->
 <section>
   <h2>5. 入庫登録</h2>
+  <figure><img src="img/receipts.jpg" alt="入庫登録画面"><figcaption>入庫登録画面</figcaption></figure>
   <p>納品された試薬を在庫に登録します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>・<span class="role-s">問屋</span>が使用できます。</p>
   <h3>基本の流れ</h3>
   <ol class="step">
@@ -200,6 +205,7 @@
 <!-- 6 -->
 <section>
   <h2>6. 出庫登録</h2>
+  <figure><img src="img/issues.jpg" alt="出庫登録画面"><figcaption>出庫登録画面</figcaption></figure>
   <p>試薬の払い出し（使用開始）を登録します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>が使用できます。</p>
   <h3>基本の流れ</h3>
   <ol class="step">
@@ -219,6 +225,7 @@
 <!-- 7 -->
 <section>
   <h2>7. 発注</h2>
+  <figure><img src="img/orders.jpg" alt="発注画面"><figcaption>発注画面</figcaption></figure>
   <p>問屋ごとに発注を作成します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>・<span class="role-s">問屋</span>が使用できます。</p>
   <h3>基本の流れ</h3>
   <ol class="step">
@@ -247,6 +254,7 @@
 <!-- 8 -->
 <section>
   <h2>8. 在庫管理</h2>
+  <figure><img src="img/inventory.jpg" alt="在庫管理画面"><figcaption>在庫管理画面</figcaption></figure>
   <p>現在の在庫（ロット・使用期限ごと）を確認します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>。</p>
   <ul>
     <li><strong>検索条件</strong>：商品名・問屋・メーカー・部門・分類・ロット・使用期限・備考などで絞り込めます。</li>
@@ -259,6 +267,7 @@
 <!-- 9 -->
 <section>
   <h2>9. 使用期限</h2>
+  <figure><img src="img/expiry.jpg" alt="使用期限画面"><figcaption>使用期限画面</figcaption></figure>
   <p>期限切れ・期限間近の試薬を管理します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>。</p>
   <ul>
     <li><strong>色分け</strong>：期限切れ・期限間近を淡い色で区別します。</li>
@@ -271,6 +280,7 @@
 <!-- 10 -->
 <section>
   <h2>10. 使用終了日登録</h2>
+  <figure><img src="img/use-end.jpg" alt="使用終了日登録画面"><figcaption>使用終了日登録画面</figcaption></figure>
   <p>使用を終えた試薬の「使用終了日」を登録します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>。</p>
   <ol class="step">
     <li>対象の独自バーコードを読み取る、または使用中の一覧から対象を選びます。</li>
@@ -282,6 +292,7 @@
 <!-- 11 -->
 <section>
   <h2>11. バーコード印刷</h2>
+  <figure><img src="img/labels.jpg" alt="バーコード印刷画面"><figcaption>バーコード印刷画面</figcaption></figure>
   <p>発行済みの独自バーコードを印刷（再発行）します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>。</p>
   <ul>
     <li><strong>絞り込み</strong>：発行日・商品・キーワードで対象を検索します。</li>
@@ -295,6 +306,7 @@
 <!-- 12 -->
 <section>
   <h2>12. 履歴（入庫・出庫・発注）</h2>
+  <figure><img src="img/history.jpg" alt="履歴画面"><figcaption>履歴画面</figcaption></figure>
   <p>過去の入庫・出庫・発注を確認・訂正します。閲覧は<span class="role-g">一般</span>以上、編集・削除は<span class="role-a">管理者</span>・<span class="role-g">一般</span>。</p>
   <h3>できること</h3>
   <ul>
@@ -308,6 +320,7 @@
 <!-- 13 -->
 <section>
   <h2>13. 試薬管理台帳</h2>
+  <figure><img src="img/ledger.jpg" alt="試薬管理台帳画面"><figcaption>試薬管理台帳画面</figcaption></figure>
   <p>精度管理対象試薬について、入庫〜使用開始／終了を台帳として出力します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>。</p>
   <ol class="step">
     <li>期間（開始・終了）を指定して「表示」。</li>
@@ -320,6 +333,7 @@
 <!-- 14 -->
 <section>
   <h2>14. マスター編集（管理者）</h2>
+  <figure><img src="img/masters.jpg" alt="マスター編集画面"><figcaption>マスター編集画面</figcaption></figure>
   <p>各種マスターを管理します。<span class="role-a">管理者</span>専用です。</p>
   <table>
     <tr><th>マスター</th><th>主な項目</th></tr>
@@ -334,6 +348,7 @@
 <!-- 15 -->
 <section>
   <h2>15. 操作ログ（管理者）</h2>
+  <figure><img src="img/logs.jpg" alt="操作ログ画面"><figcaption>操作ログ画面</figcaption></figure>
   <p>システムの操作履歴を確認します。<span class="role-a">管理者</span>専用です。</p>
   <ul>
     <li><strong>記録される操作</strong>：登録・更新・削除・ログイン・印刷・CSV出力・バーコード印刷 など。</li>
@@ -347,6 +362,7 @@
 <!-- 16 -->
 <section>
   <h2>16. 設定（管理者）</h2>
+  <figure><img src="img/settings.jpg" alt="設定画面"><figcaption>設定画面</figcaption></figure>
   <p>システム全体の設定を行います。<span class="role-a">管理者</span>専用です。</p>
   <table>
     <tr><th>設定項目</th><th>内容</th></tr>
@@ -362,6 +378,7 @@
 <!-- 17 -->
 <section>
   <h2>17. パスワード変更</h2>
+  <figure><img src="img/password.jpg" alt="パスワード変更画面"><figcaption>パスワード変更画面</figcaption></figure>
   <p>ログイン中のご自身のパスワードを変更します。<strong>全ユーザー</strong>が使用できます。</p>
   <ol class="step">
     <li>メニューの「パスワード変更」を開きます。</li>

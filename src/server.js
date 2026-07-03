@@ -219,6 +219,13 @@ app.use('/api/import',    requireLogin, requireRole('admin'), require('./routes/
 app.use('/api/logs',      requireLogin, requireRole('admin'), require('./routes/logs'));
 
 // ------------------------------------------------------------
+// 取扱説明書(PDF)。ログインユーザーが閲覧可能。
+// ------------------------------------------------------------
+app.get('/manual.pdf', requireLogin, (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'docs', '取扱説明書.pdf'));
+});
+
+// ------------------------------------------------------------
 // 静的ファイル (public/ があれば配信)
 // ------------------------------------------------------------
 app.use(express.static(path.join(__dirname, '..', 'public')));

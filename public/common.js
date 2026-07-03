@@ -55,6 +55,7 @@ function renderHeader(user, activeKey) {
       ['receipts', '/receipts.html', '入庫'],
       ['orders', '/orders.html', '発注'],
       ['password', '/password.html', 'パスワード変更'],
+      ['manual', '/manual.pdf', '取扱説明書'],
     ];
   } else {
     nav = [
@@ -75,12 +76,14 @@ function renderHeader(user, activeKey) {
       nav.push(['settings', '/settings.html', '設定']);
     }
     nav.push(['password', '/password.html', 'パスワード変更']);
+    nav.push(['manual', '/manual.pdf', '取扱説明書']);
   }
   header.innerHTML =
     '<h1>試薬在庫管理システム</h1>' +
-    '<nav>' + nav.map(([k, href, label]) =>
-      `<a href="${href}" class="${k === activeKey ? 'active' : ''}">${label}</a>`
-    ).join('') + '</nav>' +
+    '<nav>' + nav.map(([k, href, label]) => {
+      const ext = /\.pdf(\?|$)/.test(href) ? ' target="_blank" rel="noopener"' : '';
+      return `<a href="${href}"${ext} class="${k === activeKey ? 'active' : ''}">${label}</a>`;
+    }).join('') + '</nav>' +
     '<span class="spacer"></span>' +
     `<span class="user">${user.name}（${roleLabel(user.userType)}）</span>` +
     '<button class="secondary" onclick="logout()">ログアウト</button>';
