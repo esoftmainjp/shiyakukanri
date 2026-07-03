@@ -13,7 +13,7 @@
       <h2>出庫登録</h2>
       <div class="row">
         <div><label>出庫日</label><input type="date" id="issueDate" /></div>
-        <div style="flex:2;"><label>備考</label><input id="note" placeholder="任意" /></div>
+        <div style="flex:2;"><label>備考（出庫全体）</label><input id="note" placeholder="任意" /></div>
       </div>
 
       <h3 style="margin-top:20px;">① バーコードで出庫</h3>
@@ -38,7 +38,7 @@
 
       <h3 style="margin-top:20px;">出庫明細</h3>
       <table id="lineTable">
-        <thead><tr><th>種別</th><th>商品/バーコード</th><th>ロット</th><th>出庫バラ数</th><th></th></tr></thead>
+        <thead><tr><th>種別</th><th>商品/バーコード</th><th>ロット</th><th>出庫バラ数</th><th>備考</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
 
@@ -164,11 +164,16 @@
           `<td>${l.kind === 'barcode' ? 'バーコード' : '数量'}</td>` +
           `<td>${l.kind === 'barcode' ? l.barcodeValue + ' ' + l.label : l.label}</td>` +
           `<td>${l.lot || '(なし)'}</td><td style="text-align:right;">${l.bara}</td>` +
+          `<td><input value="${attr(l.note)}" oninput="lines[${i}].note=this.value" placeholder="任意" style="width:130px;" /></td>` +
           `<td><button class="danger" onclick="removeLine(${i})">削除</button></td>`;
         tbody.appendChild(tr);
       });
     }
     function removeLine(i) { lines.splice(i, 1); renderLines(); }
+    function attr(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
 
     async function submitIssue() {
       const msg = document.getElementById('resultMsg');
@@ -177,8 +182,8 @@
         issueDate: document.getElementById('issueDate').value,
         note: document.getElementById('note').value,
         details: lines.map((l) => l.kind === 'barcode'
-          ? { barcodeValue: l.barcodeValue }
-          : { productId: l.productId, productDetailId: l.productDetailId, lotNumber: l.lot, expiryDate: l.expiryDate, issueQuantity: l.issueQuantity, packSize: l.packSize }),
+          ? { barcodeValue: l.barcodeValue, note: l.note || '' }
+          : { productId: l.productId, productDetailId: l.productDetailId, lotNumber: l.lot, expiryDate: l.expiryDate, issueQuantity: l.issueQuantity, packSize: l.packSize, note: l.note || '' }),
       };
       const { ok, data } = await api('/api/issues', { method: 'POST', body: JSON.stringify(body) });
       if (!ok) { setMsg(msg, data.error || '保存失敗', 'error'); return; }

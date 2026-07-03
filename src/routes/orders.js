@@ -248,29 +248,43 @@ router.post('/:id/details', async (req, res) => {
   }
 });
 
-// 発注明細の発注数を変更(未発注のみ)
-// PATCH /api/orders/:id/details/:detailId  body: { orderQuantity }
+// 発注明細の発注数・備考を変更(未発注のみ)
+// PATCH /api/orders/:id/details/:detailId  body: { orderQuantity?, note? }
 router.patch('/:id/details/:detailId', async (req, res) => {
   const { id: orderId, detailId } = req.params;
-  const qty = Math.max(1, Number(req.body && req.body.orderQuantity) || 1);
+  const body = req.body || {};
+  const sets = [];
+  const params = [];
+  if (body.orderQuantity !== undefined) {
+    params.push(Math.max(1, Number(body.orderQuantity) || 1));
+    sets.push(`order_quantity = $${params.length}`);
+  }
+  if (body.note !== undefined) {
+    params.push(String(body.note));
+    sets.push(`note = $${params.length}`);
+  }
+  if (sets.length === 0) return res.status(400).json({ error: '変更項目がありません' });
   try {
     const ord = await pool.query(`SELECT order_status FROM orders WHERE id = $1`, [orderId]);
     if (ord.rowCount === 0) return res.status(404).json({ error: '発注が見つかりません' });
     if (ord.rows[0].order_status !== 'unordered') {
-      return res.status(400).json({ error: '未発注の発注のみ発注数を変更できます' });
+      return res.status(400).json({ error: '未発注の発注のみ変更できます' });
     }
+    params.push(detailId, orderId);
     const r = await pool.query(
-      `UPDATE order_details SET order_quantity = $1 WHERE id = $2 AND order_id = $3 RETURNING id`,
-      [qty, detailId, orderId]
+      `UPDATE order_details SET ${sets.join(', ')}
+        WHERE id = $${params.length - 1} AND order_id = $${params.length}
+        RETURNING order_quantity, note`,
+      params
     );
     if (r.rowCount === 0) return res.status(404).json({ error: '発注明細が見つかりません' });
     await writeLog(pool, {
       userId: req.session.user.id, targetTable: 'order_details', targetId: detailId,
-      operationType: '更新', after: { order_quantity: qty },
+      operationType: '更新', after: r.rows[0],
     });
-    res.json({ ok: true, orderQuantity: qty });
+    res.json({ ok: true, orderQuantity: r.rows[0].order_quantity, note: r.rows[0].note });
   } catch (err) {
-    console.error('発注数変更エラー:', err.message);
+    console.error('発注明細変更エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
   }
 });

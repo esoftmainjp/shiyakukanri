@@ -17,7 +17,7 @@
           <input type="date" id="receiptDate" />
         </div>
         <div style="flex:2;">
-          <label>備考</label>
+          <label>備考（入庫全体）</label>
           <input id="note" placeholder="任意" />
         </div>
       </div>
@@ -45,6 +45,10 @@
           <label>使用期限</label>
           <input type="date" id="expiry" />
         </div>
+        <div style="flex:2;">
+          <label>備考（この商品）</label>
+          <input id="lineNote" placeholder="任意" />
+        </div>
       </div>
       <div class="row">
         <div>
@@ -67,7 +71,7 @@
       <p class="msg" id="addMsg"></p>
 
       <table id="lineTable">
-        <thead><tr><th>商品</th><th>ロット</th><th>使用期限</th><th>入庫個数</th><th>梱包数</th><th>加算バラ数</th><th>BC</th><th></th></tr></thead>
+        <thead><tr><th>商品</th><th>ロット</th><th>使用期限</th><th>入庫個数</th><th>梱包数</th><th>加算バラ数</th><th>BC</th><th>備考</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
 
@@ -168,8 +172,10 @@
         receiptQuantity: qty,
         packSize: pack,
         barcode: cur.detail.barcodeIssueFlag,
+        note: document.getElementById('lineNote').value || '',
       };
       lines.push(line);
+      document.getElementById('lineNote').value = '';
       setMsg(document.getElementById('addMsg'), '', '');
       renderLines();
     }
@@ -184,11 +190,17 @@
           `<td style="text-align:right;">${l.receiptQuantity}</td><td style="text-align:right;">${l.packSize}</td>` +
           `<td style="text-align:right;">${l.receiptQuantity * l.packSize}</td>` +
           `<td>${l.barcode ? '○' : ''}</td>` +
+          `<td><input value="${attr(l.note)}" oninput="lines[${i}].note=this.value" placeholder="任意" style="width:130px;" /></td>` +
           `<td><button class="danger" onclick="removeLine(${i})">削除</button></td>`;
         tbody.appendChild(tr);
       });
     }
     function removeLine(i) { lines.splice(i, 1); renderLines(); }
+    // input value属性用のエスケープ
+    function attr(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
 
     async function submitReceipt() {
       const msg = document.getElementById('resultMsg');
@@ -200,6 +212,7 @@
           productId: l.productId, productDetailId: l.productDetailId,
           lotNumber: l.lotNumber, expiryDate: l.expiryDate,
           receiptQuantity: l.receiptQuantity, packSize: l.packSize,
+          note: l.note || '',
         })),
       };
       const { ok, data } = await api('/api/receipts', { method: 'POST', body: JSON.stringify(body) });

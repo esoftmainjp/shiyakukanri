@@ -61,6 +61,9 @@
         const qtyCell = editable
           ? `<input type="number" id="oq_${d.id}" value="${d.order_quantity}" min="1" style="width:80px; text-align:right;" onchange="updateQty('${o.id}','${d.id}')" />`
           : d.order_quantity;
+        const noteCell = editable
+          ? `<input value="${escHtml(d.note)}" placeholder="任意" style="width:130px;" onchange="updateNote('${o.id}','${d.id}', this.value)" />`
+          : escHtml(d.note);
         const actionCell = rowActionLabel
           ? `<td style="text-align:center;"><button class="danger" style="padding:4px 10px; font-size:0.82rem;" onclick="delDetail('${o.id}','${d.id}','${rowActionLabel}')">${rowActionLabel}</button></td>`
           : '<td></td>';
@@ -69,7 +72,7 @@
           `<td style="text-align:right;">${d.pack_size}</td>` +
           `<td style="text-align:right;">${d.planned_order_quantity}</td>` +
           `<td style="text-align:right;">${qtyCell}</td>` +
-          `<td>${escHtml(d.note)}</td>${actionCell}</tr>`;
+          `<td>${noteCell}</td>${actionCell}</tr>`;
       }).join('');
       const noteField = o.order_status === 'unordered'
         ? `<div class="row" style="margin-top:8px;"><div style="flex:3;"><label>備考</label><input id="note_${o.id}" value="${o.note || ''}" placeholder="任意" /></div></div>`
@@ -136,6 +139,13 @@
       if (!ok) { setMsg(document.getElementById('msg'), data.error || '発注数の変更に失敗', 'error'); return; }
       el.value = data.orderQuantity;
       setMsg(document.getElementById('msg'), '発注数を変更しました', 'ok');
+    }
+    // 明細の備考(商品ごと)を変更(未発注のみ)
+    async function updateNote(orderId, detailId, note) {
+      const { ok, data } = await api(`/api/orders/${orderId}/details/${detailId}`, {
+        method: 'PATCH', body: JSON.stringify({ note }),
+      });
+      setMsg(document.getElementById('msg'), ok ? '備考を変更しました' : (data.error || '備考の変更に失敗'), ok ? 'ok' : 'error');
     }
     async function addDetail(orderId) {
       const sel = document.getElementById('add_' + orderId);
