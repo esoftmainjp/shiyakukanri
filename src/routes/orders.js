@@ -44,7 +44,7 @@ router.get('/', async (req, res) => {
     );
     const details = await pool.query(
       `SELECT od.id, od.order_id, od.product_id, p.name AS product_name,
-              od.product_detail_id, od.planned_order_quantity, od.order_quantity, od.note, od.canceled_flag,
+              od.product_detail_id, od.planned_order_quantity, od.order_quantity, od.note, od.canceled_flag, od.held_flag,
               COALESCE(pd.pack_size, 1) AS pack_size,
               COALESCE((SELECT SUM(op.issue_piece_quantity) FROM order_plans op WHERE op.order_detail_id = od.id), 0) AS order_bara
          FROM order_details od
@@ -79,7 +79,7 @@ router.get('/summary', async (req, res) => {
          JOIN products p ON p.id = od.product_id
          LEFT JOIN suppliers s ON s.id = o.supplier_id
          LEFT JOIN product_details pd ON pd.id = od.product_detail_id
-        WHERE o.order_status = 'unordered' AND od.order_quantity > 0
+        WHERE o.order_status = 'unordered' AND od.order_quantity > 0 AND od.held_flag = FALSE
         ORDER BY s.name, p.name`
     );
 
@@ -227,7 +227,7 @@ router.get('/:id', async (req, res) => {
     if (head.rowCount === 0) return res.status(404).json({ error: '発注が見つかりません' });
     const details = await pool.query(
       `SELECT od.id, od.product_id, p.name AS product_name, od.product_detail_id,
-              od.planned_order_quantity, od.order_quantity, od.note, od.canceled_flag,
+              od.planned_order_quantity, od.order_quantity, od.note, od.canceled_flag, od.held_flag,
               COALESCE(pd.pack_size, 1) AS pack_size,
               COALESCE((SELECT SUM(rp.receipt_piece_quantity) FROM receipt_plans rp WHERE rp.order_detail_id = od.id), 0) AS received_bara
          FROM order_details od
@@ -244,29 +244,69 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// 発注処理: 未発注 → 発注済み
+// 発注処理: 未発注 → 発注済み。保留(held)明細は新しい未発注へ退避して残す。
 // POST /api/orders/:id/place  body: { orderDate? }
 router.post('/:id/place', async (req, res) => {
   const orderId = req.params.id;
   const orderDate = (req.body && req.body.orderDate) || today();
   const note = (req.body && req.body.note) || '';
+  const client = await getClient();
   try {
-    const r = await pool.query(
-      `UPDATE orders SET order_status = 'ordered', order_date = $2, note = $3
-        WHERE id = $1 AND order_status = 'unordered'
-        RETURNING id`,
-      [orderId, orderDate, note]
-    );
-    if (r.rowCount === 0) {
+    await client.query('BEGIN');
+    const ord = await client.query(`SELECT supplier_id, order_status FROM orders WHERE id = $1 FOR UPDATE`, [orderId]);
+    if (ord.rowCount === 0 || ord.rows[0].order_status !== 'unordered') {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: '未発注の発注のみ発注処理できます' });
     }
-    await writeLog(pool, {
+    const active = await client.query(`SELECT COUNT(*) AS c FROM order_details WHERE order_id = $1 AND held_flag = FALSE`, [orderId]);
+    if (Number(active.rows[0].c) === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: '発注する商品がありません（すべて保留中です）' });
+    }
+    // 保留明細を新しい未発注へ退避(発注予定として残す)
+    const held = await client.query(`SELECT COUNT(*) AS c FROM order_details WHERE order_id = $1 AND held_flag = TRUE`, [orderId]);
+    if (Number(held.rows[0].c) > 0) {
+      const nw = await client.query(
+        `INSERT INTO orders (supplier_id, order_status, user_id) VALUES ($1, 'unordered', $2) RETURNING id`,
+        [ord.rows[0].supplier_id, req.session.user.id]
+      );
+      await client.query(`UPDATE order_details SET order_id = $1 WHERE order_id = $2 AND held_flag = TRUE`, [nw.rows[0].id, orderId]);
+    }
+    await client.query(`UPDATE orders SET order_status = 'ordered', order_date = $2, note = $3 WHERE id = $1`, [orderId, orderDate, note]);
+    await writeLog(client, {
       userId: req.session.user.id, targetTable: 'orders', targetId: orderId,
       operationType: '更新', before: { order_status: 'unordered' }, after: { order_status: 'ordered', order_date: orderDate },
     });
+    await client.query('COMMIT');
     res.json({ ok: true, orderId, orderStatus: 'ordered' });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('発注処理エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  } finally {
+    client.release();
+  }
+});
+
+// 発注明細の保留/解除(未発注のみ)
+// POST /api/orders/:id/details/:detailId/hold  body: { held: true|false }
+router.post('/:id/details/:detailId/hold', requireEditor, async (req, res) => {
+  const { id: orderId, detailId } = req.params;
+  const held = !(req.body && req.body.held === false); // 既定true。releaseはheld:false
+  try {
+    const ord = await pool.query(`SELECT order_status FROM orders WHERE id = $1`, [orderId]);
+    if (ord.rowCount === 0) return res.status(404).json({ error: '発注が見つかりません' });
+    if (ord.rows[0].order_status !== 'unordered') {
+      return res.status(400).json({ error: '未発注の発注のみ保留できます' });
+    }
+    const r = await pool.query(
+      `UPDATE order_details SET held_flag = $1 WHERE id = $2 AND order_id = $3 RETURNING id`,
+      [held, detailId, orderId]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: '発注明細が見つかりません' });
+    res.json({ ok: true, held });
+  } catch (err) {
+    console.error('発注保留エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
   }
 });

@@ -299,6 +299,7 @@ CREATE TABLE order_details (
     planned_order_quantity INTEGER NOT NULL DEFAULT 0,  -- 推奨発注数(梱包単位)=出庫バラ合計÷梱包数(切上/最低1)
     order_quantity         INTEGER NOT NULL DEFAULT 0,  -- 実際の発注数(梱包単位)。初期値=発注予定数
     canceled_flag          BOOLEAN NOT NULL DEFAULT FALSE, -- 明細キャンセル(発注済みの商品ごとキャンセル)。入庫予定/判定から除外
+    held_flag              BOOLEAN NOT NULL DEFAULT FALSE, -- 保留(発注予定から一時的に外す)。発注対象外
     note                   TEXT    NOT NULL DEFAULT ''
 );
 COMMENT ON TABLE  order_details                        IS '発注明細';
@@ -308,6 +309,7 @@ COMMENT ON COLUMN order_details.product_detail_id      IS '商品詳細ID';
 COMMENT ON COLUMN order_details.planned_order_quantity IS '発注予定数(梱包単位。出庫バラ合計÷梱包数,切上/最低1)';
 COMMENT ON COLUMN order_details.order_quantity         IS '発注個数(梱包単位。実際の確定数,初期値=発注予定数)';
 COMMENT ON COLUMN order_details.canceled_flag          IS '明細キャンセルフラグ(発注済みの商品ごとキャンセル)。TRUEは入庫予定・入庫判定から除外';
+COMMENT ON COLUMN order_details.held_flag              IS '保留フラグ(発注予定から一時的に外す)。TRUEは発注対象外';
 COMMENT ON COLUMN order_details.note                   IS '備考';
 
 CREATE INDEX idx_order_details_order   ON order_details(order_id);

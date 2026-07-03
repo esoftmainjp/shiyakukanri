@@ -116,10 +116,16 @@
         const btnStyle = 'style="padding:4px 10px; font-size:0.82rem;"';
         let actionCell = '<td></td>';
         if (isCanceled) actionCell = '<td style="text-align:center; color:#b23b3b;">キャンセル済</td>';
-        else if (canEdit && o.order_status === 'unordered') actionCell = `<td style="text-align:center;"><button class="danger" ${btnStyle} onclick="delDetail('${o.id}','${d.id}','削除')">削除</button></td>`;
-        else if (canEdit && o.order_status === 'ordered') actionCell = `<td style="text-align:center;"><button class="danger" ${btnStyle} onclick="cancelDetail('${o.id}','${d.id}')">キャンセル</button></td>`;
-        const rowStyle = isCanceled ? ' style="color:#999;"' : '';
-        const nameCell = isCanceled ? `<span style="text-decoration:line-through;">${d.product_name}</span>` : d.product_name;
+        else if (canEdit && o.order_status === 'unordered') {
+          const holdBtn = d.held_flag
+            ? `<button ${btnStyle} onclick="holdDetail('${o.id}','${d.id}',false)">解除</button>`
+            : `<button class="secondary" ${btnStyle} onclick="holdDetail('${o.id}','${d.id}',true)">保留</button>`;
+          actionCell = `<td style="text-align:center; white-space:nowrap;"><button class="danger" ${btnStyle} onclick="delDetail('${o.id}','${d.id}','削除')">削除</button> ${holdBtn}</td>`;
+        } else if (canEdit && o.order_status === 'ordered') actionCell = `<td style="text-align:center;"><button class="danger" ${btnStyle} onclick="cancelDetail('${o.id}','${d.id}')">キャンセル</button></td>`;
+        const rowStyle = (isCanceled || d.held_flag) ? ' style="color:#999;"' : '';
+        const nameCell = isCanceled
+          ? `<span style="text-decoration:line-through;">${d.product_name}</span>`
+          : (d.held_flag ? `${escHtml(d.product_name)} <span class="pill canceled">保留中</span>` : d.product_name);
         return `<tr${rowStyle}><td>${nameCell}</td>` +
           `<td style="text-align:right;">${d.order_bara}</td>` +
           `<td style="text-align:right;">${d.pack_size}</td>` +
@@ -235,6 +241,13 @@
       setMsg(document.getElementById('msg'), ok ? (data.message || `商品を${label}しました`) : (data.error || `${label}できませんでした`), ok ? 'ok' : 'error');
       load();
     }
+    // 明細(商品)の保留/解除(未発注のみ)。保留は発注から外れ、発注時は退避して残る。
+    async function holdDetail(orderId, detailId, held) {
+      const { ok, data } = await api(`/api/orders/${orderId}/details/${detailId}/hold`, { method: 'POST', body: JSON.stringify({ held }) });
+      setMsg(document.getElementById('msg'), ok ? (held ? '保留にしました（発注対象から外れます）' : '保留を解除しました') : (data.error || '失敗'), ok ? 'ok' : 'error');
+      load();
+    }
+
     // 明細(商品)ごとのキャンセル(発注済みのみ)
     async function cancelDetail(orderId, detailId) {
       if (!confirm('この商品をキャンセルします。よろしいですか？')) return;
