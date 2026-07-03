@@ -1,5 +1,26 @@
 'use strict';
 
+// ===== 画面テーマ(パステル数種類) =====
+// ページ読込時に端末キャッシュ(localStorage)で即時適用し、ログイン後にサーバー設定へ同期
+function applyTheme(name) {
+  const t = name || 'blue';
+  document.documentElement.setAttribute('data-theme', t);
+  try { localStorage.setItem('appTheme', t); } catch (e) { /* ignore */ }
+}
+(function () {
+  try {
+    const t = localStorage.getItem('appTheme');
+    if (t) document.documentElement.setAttribute('data-theme', t);
+  } catch (e) { /* ignore */ }
+})();
+// サーバー(設定画面)のテーマを取得して反映
+async function syncTheme() {
+  try {
+    const { ok, data } = await api('/api/settings');
+    if (ok && data.settings && data.settings.theme) applyTheme(data.settings.theme);
+  } catch (e) { /* ignore */ }
+}
+
 // 共通APIヘルパー
 async function api(path, options = {}) {
   const res = await fetch(path, Object.assign({
@@ -19,6 +40,7 @@ async function initPage(activeKey) {
     return null;
   }
   renderHeader(data.user, activeKey);
+  syncTheme();
   return data.user;
 }
 

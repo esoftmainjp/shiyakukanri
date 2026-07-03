@@ -18,6 +18,28 @@
   --focus:       rgba(142,197,230,0.40);
 }
 
+/* ===== テーマ(パステル数種類) 設定画面で選択 ===== */
+:root[data-theme="green"] {
+  --bg:#eef8f1; --line:#dcefe3; --primary:#93d3ac; --primary-deep:#4fa274; --primary-hov:#428a63;
+  --header-a:#b7e6c8; --header-b:#c3e6da; --th-bg:#e6f4ec; --focus:rgba(120,200,160,0.40);
+}
+:root[data-theme="pink"] {
+  --bg:#fdf2f6; --line:#f5e0e8; --primary:#f0a9c0; --primary-deep:#d2708f; --primary-hov:#bd5c7c;
+  --header-a:#f7c8d8; --header-b:#eec8ea; --th-bg:#fbe8ef; --focus:rgba(230,160,190,0.40);
+}
+:root[data-theme="purple"] {
+  --bg:#f4f2fb; --line:#e6e0f4; --primary:#b6a4e0; --primary-deep:#836dc0; --primary-hov:#7059ab;
+  --header-a:#cebdee; --header-b:#c4c1ef; --th-bg:#eee9fb; --focus:rgba(160,140,220,0.40);
+}
+:root[data-theme="warm"] {
+  --bg:#fdf5ee; --line:#f3e4d5; --primary:#f2bf94; --primary-deep:#d38b4c; --primary-hov:#bd783d;
+  --header-a:#f7d2ac; --header-b:#f3dabf; --th-bg:#fbeee1; --focus:rgba(230,180,130,0.40);
+}
+:root[data-theme="gray"] {
+  --bg:#f3f5f8; --line:#e2e7ee; --primary:#aebccb; --primary-deep:#6c8298; --primary-hov:#5b7085;
+  --header-a:#ccd6e1; --header-b:#d6dbe3; --th-bg:#eef2f7; --focus:rgba(150,170,190,0.40);
+}
+
 body {
   font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
   margin: 0;
@@ -129,7 +151,7 @@ input:focus, select:focus {
   border: 2px solid var(--primary-deep);
   border-radius: 11px;
   background:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%235e97c1' stroke-width='2'><rect x='3' y='6' width='2' height='12'/><rect x='7' y='6' width='1' height='12'/><rect x='10' y='6' width='2' height='12'/><rect x='14' y='6' width='1' height='12'/><rect x='17' y='6' width='2' height='12'/><rect x='21' y='6' width='1' height='12'/></svg>") 12px center / 20px no-repeat,
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23889ab0' stroke-width='2'><rect x='3' y='6' width='2' height='12'/><rect x='7' y='6' width='1' height='12'/><rect x='10' y='6' width='2' height='12'/><rect x='14' y='6' width='1' height='12'/><rect x='17' y='6' width='2' height='12'/><rect x='21' y='6' width='1' height='12'/></svg>") 12px center / 20px no-repeat,
     #f1f8ff;
   box-shadow: inset 0 1px 3px rgba(94, 151, 193, 0.12);
 }

@@ -79,7 +79,10 @@
     }
     async function loadSettingsThenStocks() {
       const { ok, data } = await api('/api/settings');
-      if (ok) lowStockThreshold = Number((data.settings || {}).low_stock_threshold) || 0;
+      if (ok) {
+        lowStockThreshold = Number((data.settings || {}).low_stock_threshold) || 0;
+        if (data.settings && data.settings.theme) applyTheme(data.settings.theme);
+      }
       loadStocks();
     }
     async function loadPlans() {

@@ -126,6 +126,7 @@ VALUES
 --   label_*/barcode_*     : バーコードラベルの既定サイズ(全端末共通)
 -- ------------------------------------------------------------
 INSERT INTO app_settings (key, value) VALUES
+    ('theme', 'blue'),
     ('expiry_warn_days', '30'),
     ('allow_expired_issue', 'false'),
     ('low_stock_threshold', '0'),
