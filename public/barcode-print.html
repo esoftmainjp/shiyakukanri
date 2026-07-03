@@ -46,8 +46,12 @@
   <script src="/common.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script>
-    // バーコード印刷画面と共有する設定(localStorage)。未設定は既定値。
+    // ラベル設定: サーバー(設定画面)優先→端末(localStorage)→既定値。
+    let srv = {};
+    const SKEY = { lw: 'label_width_mm', lh: 'label_height_mm', bh: 'barcode_height_px', bwmm: 'barcode_width_mm' };
     function setting(k, def) {
+      const sv = srv[SKEY[k]];
+      if (sv !== undefined && sv !== null && sv !== '') return Number(sv);
       const v = localStorage.getItem('bcLabel_' + k);
       return (v !== null && v !== '') ? Number(v) : def;
     }
@@ -55,6 +59,8 @@
     async function boot() {
       const user = await initPage('');
       if (!user) return;
+      const cs = await api('/api/settings');
+      if (cs.ok) srv = cs.data.settings || {};
       const receiptId = new URLSearchParams(location.search).get('receiptId');
       if (!receiptId) { document.getElementById('info').textContent = '入庫が指定されていません。'; return; }
       if (typeof JsBarcode === 'undefined') {

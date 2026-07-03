@@ -91,11 +91,17 @@
         o.value = p.productId; o.textContent = p.productName;
         sel.appendChild(o);
       });
-      // 保存済みラベル設定を復元(入庫時の印刷と共有)
+      // ラベル設定を復元: 端末(localStorage)→サーバー(設定画面)の順で上書き(サーバー優先)
       ['lw', 'lh', 'bh', 'bwmm'].forEach((k) => {
         const v = localStorage.getItem('bcLabel_' + k);
         if (v !== null && v !== '') document.getElementById(k).value = v;
       });
+      const cs = await api('/api/settings');
+      if (cs.ok) {
+        const s = cs.data.settings || {};
+        const map = { lw: 'label_width_mm', lh: 'label_height_mm', bh: 'barcode_height_px', bwmm: 'barcode_width_mm' };
+        Object.entries(map).forEach(([k, sk]) => { if (s[sk] !== undefined && s[sk] !== '') document.getElementById(k).value = s[sk]; });
+      }
       setToday();
       applySize();
     }

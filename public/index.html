@@ -46,6 +46,7 @@
       <div class="card">
         <h2>在庫一覧</h2>
         <button class="secondary" onclick="loadStocks()">再読み込み</button>
+        <span id="lowStockNote" style="margin-left:12px; color:#c0575d; font-weight:600; font-size:0.88rem;"></span>
         <table id="stockTable">
           <thead><tr><th>商品名</th><th>ロット</th><th>使用期限</th><th>在庫数(バラ)</th></tr></thead>
           <tbody></tbody>
@@ -68,12 +69,18 @@
       if (!ok) { setMsg(document.getElementById('loginMsg'), data.error || 'ログイン失敗', 'error'); return; }
       showApp(data.user);
     }
+    let lowStockThreshold = 0;
     function showApp(user) {
       document.getElementById('loginCard').style.display = 'none';
       document.getElementById('appArea').style.display = 'block';
       renderHeader(user, 'dashboard');
-      loadStocks();
+      loadSettingsThenStocks();
       loadPlans();
+    }
+    async function loadSettingsThenStocks() {
+      const { ok, data } = await api('/api/settings');
+      if (ok) lowStockThreshold = Number((data.settings || {}).low_stock_threshold) || 0;
+      loadStocks();
     }
     async function loadPlans() {
       const { ok, data } = await api('/api/orders/summary');
@@ -107,11 +114,20 @@
       const { data } = await api('/api/lookup/stocks');
       const tbody = document.querySelector('#stockTable tbody');
       tbody.innerHTML = '';
+      let lowCount = 0;
       (data.stocks || []).forEach((s) => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${s.product_name}</td><td>${s.lot_number || '(なし)'}</td><td>${s.expiry_date || '(なし)'}</td><td style="text-align:right;">${s.stock_quantity}</td>`;
+        const low = lowStockThreshold > 0 && Number(s.stock_quantity) <= lowStockThreshold;
+        if (low) { tr.style.background = '#fdeaea'; lowCount++; }
+        const qtyStyle = low ? 'text-align:right; color:#c0575d; font-weight:700;' : 'text-align:right;';
+        tr.innerHTML = `<td>${esc(s.product_name)}</td><td>${esc(s.lot_number) || '(なし)'}</td><td>${s.expiry_date || '(なし)'}</td>` +
+          `<td style="${qtyStyle}">${s.stock_quantity}${low ? ' ⚠' : ''}</td>`;
         tbody.appendChild(tr);
       });
+      const note = document.getElementById('lowStockNote');
+      if (note) note.textContent = (lowStockThreshold > 0)
+        ? `在庫僅少（${lowStockThreshold}以下）: ${lowCount} 件`
+        : '';
     }
     boot();
   </script>

@@ -46,7 +46,10 @@ function renderHeader(user, activeKey) {
       ['history', '/history.html', '履歴'],
       ['ledger', '/ledger.html', '試薬台帳'],
     ];
-    if (user.userType === 'admin') nav.push(['masters', '/masters.html', 'マスター編集']);
+    if (user.userType === 'admin') {
+      nav.push(['masters', '/masters.html', 'マスター編集']);
+      nav.push(['settings', '/settings.html', '設定']);
+    }
   }
   header.innerHTML =
     '<h1>試薬在庫管理システム</h1>' +

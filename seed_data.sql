@@ -121,10 +121,22 @@ VALUES
 -- 運用設定 (初期値)
 --   expiry_warn_days      : 使用期限の警告日数(この日数以内で警告)
 --   allow_expired_issue   : 期限切れ商品の出庫を許可するか(true/false)
+--   low_stock_threshold   : 在庫僅少アラートのしきい値(バラ数。0で無効)
+--   company_*             : 自社情報(伝票・発注書ヘッダー)
+--   label_*/barcode_*     : バーコードラベルの既定サイズ(全端末共通)
 -- ------------------------------------------------------------
 INSERT INTO app_settings (key, value) VALUES
     ('expiry_warn_days', '30'),
-    ('allow_expired_issue', 'false');
+    ('allow_expired_issue', 'false'),
+    ('low_stock_threshold', '0'),
+    ('company_name', ''),
+    ('company_address', ''),
+    ('company_tel', ''),
+    ('company_person', ''),
+    ('label_width_mm', '52'),
+    ('label_height_mm', '29'),
+    ('barcode_height_px', '60'),
+    ('barcode_width_mm', '45');
 
 -- ============================================================
 -- 以上

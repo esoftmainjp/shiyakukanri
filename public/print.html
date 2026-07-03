@@ -44,6 +44,8 @@
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
+    let company = {};
+
     async function boot() {
       // ログインヘッダは描画するが、未ログインでも印刷内容は表示を試みる
       await initPage('');
@@ -51,6 +53,9 @@
         document.getElementById('sheet').innerHTML = '<p>印刷対象が不正です。</p>';
         return;
       }
+      // 自社情報(伝票ヘッダー用)を取得
+      const cs = await api('/api/settings');
+      if (cs.ok) company = cs.data.settings || {};
       const { ok, data } = await api('/api/' + type + '/' + id);
       if (!ok) {
         document.getElementById('sheet').innerHTML = '<p>' + esc(data.error || '取得に失敗しました') + '</p>';
@@ -61,8 +66,19 @@
       setTimeout(() => { window.print(); }, 300);
     }
 
+    function companyHeader() {
+      const lines = [];
+      if (company.company_name) lines.push(`<div style="font-weight:700; font-size:1.05rem;">${esc(company.company_name)}</div>`);
+      if (company.company_address) lines.push(`<div>${esc(company.company_address)}</div>`);
+      const tel = company.company_tel ? 'TEL: ' + esc(company.company_tel) : '';
+      const person = company.company_person ? '担当: ' + esc(company.company_person) : '';
+      if (tel || person) lines.push(`<div>${[tel, person].filter(Boolean).join('　')}</div>`);
+      if (lines.length === 0) return '';
+      return `<div style="text-align:right; font-size:0.85rem; margin-bottom:6px; color:#333;">${lines.join('')}</div>`;
+    }
+
     function render(data) {
-      let html = `<h1>${TITLES[type]}</h1>`;
+      let html = companyHeader() + `<h1>${TITLES[type]}</h1>`;
       if (type === 'receipts') html += receiptBody(data);
       else if (type === 'issues') html += issueBody(data);
       else html += orderBody(data);
