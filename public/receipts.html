@@ -124,7 +124,7 @@
         const o = document.createElement('option');
         o.value = s.id; o.textContent = s.name; supSel.appendChild(o);
       });
-      supSel.addEventListener('change', loadIncoming);
+      supSel.addEventListener('change', onSupplierChange);
       const sel = document.getElementById('product');
       sel.innerHTML = products.map((p) => {
         const d = p.details[0];
@@ -161,14 +161,15 @@
       const { ok, data } = await api('/api/lookup/by-jan/' + encodeURIComponent(info.jan));
       if (!ok) { setMsg(msg, `${data.error || '照合失敗'}（JAN:${info.jan}）`, 'error'); return; }
       const p = data.product;
+      // 読み取った商品の問屋に合わせて絞り込み直す(商品が選択肢に含まれるように)
+      const supEl = document.getElementById('supplier');
+      if (p.supplierId) { supEl.value = p.supplierId; rebuildProductOptions(); loadIncoming(); }
       // フォームに反映
       document.getElementById('product').value = p.productId;
       document.getElementById('pack').value = p.packSize;
       document.getElementById('lot').value = info.lot || '';
       document.getElementById('expiry').value = info.expiry || '';
       document.getElementById('qty').value = 1;
-      const supEl = document.getElementById('supplier');
-      if (supEl && !supEl.value && p.supplierId) supEl.value = p.supplierId;
       await updateCurrentStock();
       setMsg(msg, `読取: ${p.productName} / ロット:${info.lot || '-'} / 期限:${info.expiry || '-'}（数量を確認して「明細に追加」）`, 'ok');
       document.getElementById('scan').value = '';
@@ -179,7 +180,23 @@
     function currentDetail() {
       const pid = document.getElementById('product').value;
       const p = products.find((x) => String(x.productId) === String(pid));
-      return p ? { product: p, detail: p.details[0] } : null;
+      if (!p) return null;
+      const sid = document.getElementById('supplier').value;
+      const detail = (p.details || []).find((d) => String(d.supplierId) === String(sid)) || p.details[0];
+      return { product: p, detail };
+    }
+
+    // 問屋変更時: 商品を「その問屋の商品のみ」に絞り、入庫予定も更新
+    function onSupplierChange() { rebuildProductOptions(); loadIncoming(); }
+    function rebuildProductOptions() {
+      const sid = document.getElementById('supplier').value;
+      const sel = document.getElementById('product');
+      const list = sid ? products.filter((p) => (p.details || []).some((d) => String(d.supplierId) === String(sid))) : products;
+      sel.innerHTML = list.map((p) => {
+        const d = (p.details || []).find((x) => String(x.supplierId) === String(sid)) || p.details[0];
+        return `<option value="${p.productId}">${p.productName}${d && d.spec ? '（' + d.spec + '）' : ''}</option>`;
+      }).join('') || '<option value="">（この問屋の商品がありません）</option>';
+      fillDefaults();
     }
     function fillDefaults() {
       const cur = currentDetail();
