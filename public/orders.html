@@ -53,19 +53,23 @@
 
     function renderOrder(o) {
       const editable = o.order_status === 'unordered';
-      // 明細ごとの操作: 未発注のみ「削除」(発注予定から商品を外す)。管理者・一般のみ。
-      const rowActionLabel = (canEdit && o.order_status === 'unordered') ? '削除' : '';
+      // 明細ごとの操作: 未発注→削除 / 発注済み→キャンセル(商品ごと)。管理者・一般のみ。
       const rows = o.details.map((d) => {
+        const isCanceled = d.canceled_flag;
         const qtyCell = editable
           ? `<input type="number" id="oq_${d.id}" value="${d.order_quantity}" min="1" style="width:80px; text-align:right;" onchange="updateQty('${o.id}','${d.id}')" />`
           : d.order_quantity;
         const noteCell = editable
           ? `<input value="${escHtml(d.note)}" placeholder="任意" style="width:130px;" onchange="updateNote('${o.id}','${d.id}', this.value)" />`
           : escHtml(d.note);
-        const actionCell = rowActionLabel
-          ? `<td style="text-align:center;"><button class="danger" style="padding:4px 10px; font-size:0.82rem;" onclick="delDetail('${o.id}','${d.id}','${rowActionLabel}')">${rowActionLabel}</button></td>`
-          : '<td></td>';
-        return `<tr><td>${d.product_name}</td>` +
+        const btnStyle = 'style="padding:4px 10px; font-size:0.82rem;"';
+        let actionCell = '<td></td>';
+        if (isCanceled) actionCell = '<td style="text-align:center; color:#b23b3b;">キャンセル済</td>';
+        else if (canEdit && o.order_status === 'unordered') actionCell = `<td style="text-align:center;"><button class="danger" ${btnStyle} onclick="delDetail('${o.id}','${d.id}','削除')">削除</button></td>`;
+        else if (canEdit && o.order_status === 'ordered') actionCell = `<td style="text-align:center;"><button class="danger" ${btnStyle} onclick="cancelDetail('${o.id}','${d.id}')">キャンセル</button></td>`;
+        const rowStyle = isCanceled ? ' style="color:#999;"' : '';
+        const nameCell = isCanceled ? `<span style="text-decoration:line-through;">${d.product_name}</span>` : d.product_name;
+        return `<tr${rowStyle}><td>${nameCell}</td>` +
           `<td style="text-align:right;">${d.order_bara}</td>` +
           `<td style="text-align:right;">${d.pack_size}</td>` +
           `<td style="text-align:right;">${d.planned_order_quantity}</td>` +
@@ -171,6 +175,13 @@
       if (!confirm(`この商品を発注から${label}します。よろしいですか？`)) return;
       const { ok, data } = await api(`/api/orders/${orderId}/details/${detailId}`, { method: 'DELETE' });
       setMsg(document.getElementById('msg'), ok ? (data.message || `商品を${label}しました`) : (data.error || `${label}できませんでした`), ok ? 'ok' : 'error');
+      load();
+    }
+    // 明細(商品)ごとのキャンセル(発注済みのみ)
+    async function cancelDetail(orderId, detailId) {
+      if (!confirm('この商品をキャンセルします。よろしいですか？')) return;
+      const { ok, data } = await api(`/api/orders/${orderId}/details/${detailId}/cancel`, { method: 'POST' });
+      setMsg(document.getElementById('msg'), ok ? (data.message || '商品をキャンセルしました') : (data.error || 'キャンセルできませんでした'), ok ? 'ok' : 'error');
       load();
     }
 

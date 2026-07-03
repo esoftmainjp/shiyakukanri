@@ -354,7 +354,7 @@ async function refreshOrderReceiptStatus(client, orderId) {
                         FROM receipt_plans rp WHERE rp.order_detail_id = od.id), 0) AS received_bara
        FROM order_details od
        LEFT JOIN product_details pd ON pd.id = od.product_detail_id
-      WHERE od.order_id = $1`,
+      WHERE od.order_id = $1 AND od.canceled_flag = FALSE`,
     [orderId]
   );
   if (details.rowCount === 0) return false;

@@ -40,7 +40,7 @@ router.get('/', async (req, res) => {
     );
     const details = await pool.query(
       `SELECT od.id, od.order_id, od.product_id, p.name AS product_name,
-              od.product_detail_id, od.planned_order_quantity, od.order_quantity, od.note,
+              od.product_detail_id, od.planned_order_quantity, od.order_quantity, od.note, od.canceled_flag,
               COALESCE(pd.pack_size, 1) AS pack_size,
               COALESCE((SELECT SUM(op.issue_piece_quantity) FROM order_plans op WHERE op.order_detail_id = od.id), 0) AS order_bara
          FROM order_details od
@@ -90,7 +90,7 @@ router.get('/summary', async (req, res) => {
          JOIN products p ON p.id = od.product_id
          LEFT JOIN suppliers s ON s.id = o.supplier_id
          LEFT JOIN product_details pd ON pd.id = od.product_detail_id
-        WHERE o.order_status = 'ordered'
+        WHERE o.order_status = 'ordered' AND od.canceled_flag = FALSE
         ORDER BY o.order_date, s.name, p.name`
     );
     const receiptPlans = incoming.rows.map((r) => {
@@ -121,7 +121,7 @@ router.get('/:id', async (req, res) => {
     if (head.rowCount === 0) return res.status(404).json({ error: '発注が見つかりません' });
     const details = await pool.query(
       `SELECT od.id, od.product_id, p.name AS product_name, od.product_detail_id,
-              od.planned_order_quantity, od.order_quantity, od.note,
+              od.planned_order_quantity, od.order_quantity, od.note, od.canceled_flag,
               COALESCE(pd.pack_size, 1) AS pack_size,
               COALESCE((SELECT SUM(rp.receipt_piece_quantity) FROM receipt_plans rp WHERE rp.order_detail_id = od.id), 0) AS received_bara
          FROM order_details od
@@ -336,6 +336,61 @@ router.delete('/:id/details/:detailId', requireEditor, async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('発注明細削除エラー:', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'サーバーエラー' });
+  } finally {
+    client.release();
+  }
+});
+
+// 発注明細(商品)ごとのキャンセル(発注済みのみ)。行は残し canceled_flag=TRUE。
+// 全明細がキャンセルされたら発注自体を canceled にする。入庫済み明細は不可。
+// POST /api/orders/:id/details/:detailId/cancel
+router.post('/:id/details/:detailId/cancel', requireEditor, async (req, res) => {
+  const { id: orderId, detailId } = req.params;
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const ord = await client.query(`SELECT order_status FROM orders WHERE id = $1 FOR UPDATE`, [orderId]);
+    if (ord.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: '発注が見つかりません' }); }
+    if (ord.rows[0].order_status !== 'ordered') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: '発注済みの発注のみ商品をキャンセルできます' });
+    }
+    const od = await client.query(`SELECT id, canceled_flag FROM order_details WHERE id = $1 AND order_id = $2`, [detailId, orderId]);
+    if (od.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: '発注明細が見つかりません' }); }
+    if (od.rows[0].canceled_flag) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'この商品は既にキャンセル済みです' }); }
+
+    // 入庫済み(部分入庫含む)の商品はキャンセル不可
+    const rp = await client.query(`SELECT COUNT(*) AS c FROM receipt_plans WHERE order_detail_id = $1`, [detailId]);
+    if (Number(rp.rows[0].c) > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'この商品は入庫済みのためキャンセルできません' });
+    }
+
+    await client.query(`UPDATE order_details SET canceled_flag = TRUE WHERE id = $1`, [detailId]);
+
+    // 有効(未キャンセル)明細が残っていなければ発注自体をキャンセル
+    const active = await client.query(
+      `SELECT COUNT(*) AS c FROM order_details WHERE order_id = $1 AND canceled_flag = FALSE`, [orderId]
+    );
+    let orderCanceled = false;
+    if (Number(active.rows[0].c) === 0) {
+      await client.query(`UPDATE orders SET order_status = 'canceled' WHERE id = $1`, [orderId]);
+      orderCanceled = true;
+    } else {
+      // 残りが全て入庫済みなら received に更新
+      await refreshOrderReceiptStatus(client, orderId);
+    }
+
+    await writeLog(client, {
+      userId: req.session.user.id, targetTable: 'order_details', targetId: detailId, operationType: '更新',
+      after: { canceled_flag: true },
+    });
+    await client.query('COMMIT');
+    res.json({ ok: true, orderCanceled, message: orderCanceled ? '商品をキャンセルし、発注全体をキャンセルしました' : '商品をキャンセルしました' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('発注明細キャンセルエラー:', err.message);
     res.status(err.status || 500).json({ error: err.message || 'サーバーエラー' });
   } finally {
     client.release();
