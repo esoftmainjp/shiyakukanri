@@ -70,13 +70,15 @@
       setTimeout(() => { window.print(); }, 300);
     }
 
-    function companyHeader() {
+    function companyHeader(nameOnly) {
       const lines = [];
       if (company.company_name) lines.push(`<div style="font-weight:700; font-size:1.05rem;">${esc(company.company_name)}</div>`);
-      if (company.company_address) lines.push(`<div>${esc(company.company_address)}</div>`);
-      const tel = company.company_tel ? 'TEL: ' + esc(company.company_tel) : '';
-      const person = company.company_person ? '担当: ' + esc(company.company_person) : '';
-      if (tel || person) lines.push(`<div>${[tel, person].filter(Boolean).join('　')}</div>`);
+      if (!nameOnly) {
+        if (company.company_address) lines.push(`<div>${esc(company.company_address)}</div>`);
+        const tel = company.company_tel ? 'TEL: ' + esc(company.company_tel) : '';
+        const person = company.company_person ? '担当: ' + esc(company.company_person) : '';
+        if (tel || person) lines.push(`<div>${[tel, person].filter(Boolean).join('　')}</div>`);
+      }
       if (lines.length === 0) return '';
       return `<div style="text-align:right; font-size:0.85rem; margin-bottom:6px; color:#333;">${lines.join('')}</div>`;
     }
@@ -89,7 +91,8 @@
     }
 
     function render(data) {
-      let html = printStamp() + companyHeader() + `<h1>${TITLES[type]}</h1>`;
+      // 台帳は会社名のみ(電話番号・住所・担当者は印字しない)
+      let html = printStamp() + companyHeader(type === 'ledger') + `<h1>${TITLES[type]}</h1>`;
       if (type === 'receipts') html += receiptBody(data);
       else if (type === 'issues') html += issueBody(data);
       else if (type === 'ledger') html += ledgerBody(data);
