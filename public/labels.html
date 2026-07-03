@@ -52,18 +52,17 @@
         <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">検索</button></div>
         <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="setToday()">本日発行分</button></div>
       </div>
-      <hr>
-      <div class="row">
-        <div style="flex:0;"><label>&nbsp;</label>
-          <label style="display:inline-flex; align-items:center; gap:6px; font-weight:normal; white-space:nowrap;">
-            <input type="checkbox" id="checkAll" checked style="width:auto;" onchange="toggleAll(this.checked)" />全てチェック
-          </label>
-        </div>
-        <div style="flex:0;"><label>&nbsp;</label><button onclick="printSelected()">選択分を印刷</button></div>
-        <div style="flex:1;"><span style="color:#6b7280; font-size:0.83rem;">ラベルサイズ・バーコードの大きさは「設定」画面で変更できます。</span></div>
-      </div>
       <p class="msg" id="msg"></p>
-      <p id="count" style="color:#555;"></p>
+      <p style="color:#6b7280; font-size:0.83rem; margin:6px 0 0;">ラベルサイズ・バーコードの大きさは「設定」画面で変更できます。</p>
+    </div>
+
+    <!-- 操作バー: バーコード一覧のすぐ上に配置 -->
+    <div class="no-print" style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:8px; padding:8px 12px; background:#fff; border:1px solid var(--line); border-radius:12px;">
+      <label style="display:inline-flex; align-items:center; gap:6px; margin:0; font-weight:700;">
+        <input type="checkbox" id="checkAll" checked style="width:auto;" onchange="toggleAll(this.checked)" />全てチェック
+      </label>
+      <button onclick="printSelected()">選択分を印刷</button>
+      <span id="count" style="color:#555;"></span>
     </div>
 
     <div class="labels" id="labels"></div>
