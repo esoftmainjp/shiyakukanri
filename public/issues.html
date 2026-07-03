@@ -19,7 +19,7 @@
       <h3 style="margin-top:20px;">① バーコードで出庫</h3>
       <p style="font-size:0.85rem; color:#555;">独自バーコード＝バラ1個を出庫。GS1-128＝商品・ロット・期限を特定して数量出庫欄へ反映（数量を入力して追加）。</p>
       <div class="row">
-        <div style="flex:2;"><label>バーコードを読み取り/入力（独自 / GS1-128）</label><input id="barcode" placeholder="バーコード値" /></div>
+        <div style="flex:2;"><label class="barcode-label">バーコードを読み取り/入力（独自 / GS1-128）</label><input id="barcode" class="barcode-input" placeholder="ここにスキャン（Enterで読取）" /></div>
         <div style="flex:0;"><label>&nbsp;</label><button onclick="addBarcode()">読取</button></div>
       </div>
       <p class="msg" id="bcMsg"></p>
