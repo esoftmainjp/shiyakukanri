@@ -34,7 +34,7 @@
 
   <script src="/common.js"></script>
   <script>
-    const TITLES = { receipts: '入 庫 伝 票', issues: '出 庫 伝 票', orders: '発 注 書' };
+    const TITLES = { receipts: '入 庫 伝 票', issues: '出 庫 伝 票', orders: '発 注 書', ledger: '試 薬 管 理 台 帳' };
     const q = new URLSearchParams(location.search);
     const type = q.get('type');
     const id = q.get('id');
@@ -49,14 +49,18 @@
     async function boot() {
       // ログインヘッダは描画するが、未ログインでも印刷内容は表示を試みる
       await initPage('');
-      if (!type || !id || !TITLES[type]) {
+      // ledger は id ではなく期間(from/to)で出力
+      if (!type || !TITLES[type] || (type !== 'ledger' && !id)) {
         document.getElementById('sheet').innerHTML = '<p>印刷対象が不正です。</p>';
         return;
       }
       // 自社情報(伝票ヘッダー用)を取得
       const cs = await api('/api/settings');
       if (cs.ok) company = cs.data.settings || {};
-      const { ok, data } = await api('/api/' + type + '/' + id);
+      const url = type === 'ledger'
+        ? '/api/ledger?' + q.toString()
+        : '/api/' + type + '/' + id;
+      const { ok, data } = await api(url);
       if (!ok) {
         document.getElementById('sheet').innerHTML = '<p>' + esc(data.error || '取得に失敗しました') + '</p>';
         return;
@@ -88,6 +92,7 @@
       let html = printStamp() + companyHeader() + `<h1>${TITLES[type]}</h1>`;
       if (type === 'receipts') html += receiptBody(data);
       else if (type === 'issues') html += issueBody(data);
+      else if (type === 'ledger') html += ledgerBody(data);
       else html += orderBody(data);
       document.getElementById('sheet').innerHTML = html;
     }
@@ -139,6 +144,26 @@
           `<td class="num">${d.order_quantity}</td><td class="num">${d.pack_size}</td><td>${esc(d.note)}</td></tr>`;
       });
       h += `</tbody></table>` + noteLine(o.note);
+      return h;
+    }
+
+    function ledgerBody(data) {
+      const from = q.get('from') || '';
+      const to = q.get('to') || '';
+      let h = metaRow([['期間', `${from || '—'} ～ ${to || '—'}`]]);
+      h += `<table><thead><tr><th>入庫日</th><th>商品名</th><th>ロット</th><th>内容物コード</th>` +
+        `<th>有効期限</th><th>使用開始日</th><th>使用終了日</th><th class="num">在庫数</th></tr></thead><tbody>`;
+      const rows = data.rows || [];
+      if (rows.length === 0) {
+        h += `<tr><td colspan="8" style="text-align:center;">該当データがありません。</td></tr>`;
+      } else {
+        rows.forEach((r) => {
+          h += `<tr><td>${r.receipt_date || ''}</td><td>${esc(r.product_name)}</td><td>${esc(r.lot_number) || '(なし)'}</td>` +
+            `<td>${esc(r.content_code)}</td><td>${r.expiry_date || ''}</td><td>${r.use_start_date || ''}</td>` +
+            `<td>${r.use_end_date || ''}</td><td class="num">${r.stock_quantity}</td></tr>`;
+        });
+      }
+      h += `</tbody></table>`;
       return h;
     }
 

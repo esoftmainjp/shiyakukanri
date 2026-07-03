@@ -17,7 +17,7 @@
         <div><label>期間(終了)</label><input type="date" id="to" /></div>
         <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">表示</button></div>
         <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="downloadCsv()">CSV出力</button></div>
-        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="window.print()">印刷</button></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="printLedger()">印刷</button></div>
       </div>
       <p class="msg" id="msg"></p>
       <table id="tbl">
@@ -66,6 +66,9 @@
     }
 
     function downloadCsv() { window.location = '/api/ledger/csv?' + queryString(); }
+
+    // 入庫伝票などと同じ専用フォーマットで印刷(画面のメニュー等は含めない)
+    function printLedger() { window.open('/print.html?type=ledger&' + queryString(), '_blank'); }
 
     boot();
   </script>
