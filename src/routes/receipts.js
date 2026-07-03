@@ -29,6 +29,9 @@ router.post('/', async (req, res) => {
   if (!receiptDate || !Array.isArray(details) || details.length === 0) {
     return res.status(400).json({ error: '入庫日と明細は必須です' });
   }
+  if (!supplierId) {
+    return res.status(400).json({ error: '問屋は必須です' });
+  }
 
   const client = await getClient();
   try {

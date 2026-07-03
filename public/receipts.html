@@ -17,6 +17,10 @@
           <input type="date" id="receiptDate" />
         </div>
         <div style="flex:2;">
+          <label>問屋（必須）</label>
+          <select id="supplier"><option value="">(選択してください)</option></select>
+        </div>
+        <div style="flex:2;">
           <label>備考（入庫全体）</label>
           <input id="note" placeholder="任意" />
         </div>
@@ -99,6 +103,13 @@
       if (!user) return;
       document.getElementById('receiptDate').value = new Date().toISOString().slice(0, 10);
       products = await getProducts();
+      // 問屋の選択肢
+      const supSel = document.getElementById('supplier');
+      const sr = await api('/api/lookup/suppliers');
+      (sr.data.suppliers || []).forEach((s) => {
+        const o = document.createElement('option');
+        o.value = s.id; o.textContent = s.name; supSel.appendChild(o);
+      });
       const sel = document.getElementById('product');
       sel.innerHTML = products.map((p) => {
         const d = p.details[0];
@@ -141,6 +152,8 @@
       document.getElementById('lot').value = info.lot || '';
       document.getElementById('expiry').value = info.expiry || '';
       document.getElementById('qty').value = 1;
+      const supEl = document.getElementById('supplier');
+      if (supEl && !supEl.value && p.supplierId) supEl.value = p.supplierId;
       await updateCurrentStock();
       setMsg(msg, `読取: ${p.productName} / ロット:${info.lot || '-'} / 期限:${info.expiry || '-'}（数量を確認して「明細に追加」）`, 'ok');
       document.getElementById('scan').value = '';
@@ -157,6 +170,9 @@
       const cur = currentDetail();
       if (!cur || !cur.detail) return;
       document.getElementById('pack').value = cur.detail.packSize;
+      // 問屋が未選択なら、商品の問屋を自動セット
+      const supEl = document.getElementById('supplier');
+      if (supEl && !supEl.value && cur.detail.supplierId) supEl.value = cur.detail.supplierId;
       updateCurrentStock();
     }
 
@@ -208,8 +224,11 @@
     async function submitReceipt() {
       const msg = document.getElementById('resultMsg');
       if (lines.length === 0) { setMsg(msg, '明細がありません', 'error'); return; }
+      const supplierId = document.getElementById('supplier').value;
+      if (!supplierId) { setMsg(msg, '問屋を選択してください', 'error'); return; }
       const body = {
         receiptDate: document.getElementById('receiptDate').value,
+        supplierId,
         note: document.getElementById('note').value,
         details: lines.map((l) => ({
           productId: l.productId, productDetailId: l.productDetailId,
