@@ -51,7 +51,7 @@
 
     function renderOrder(o) {
       const rows = o.details.map((d) =>
-        `<tr><td>${d.product_name}</td><td style="text-align:right;">${d.planned_order_quantity}</td><td style="text-align:right;">${d.order_quantity}</td></tr>`
+        `<tr><td>${d.product_name}</td><td style="text-align:right;">${d.planned_order_quantity}</td><td style="text-align:right;">${d.order_quantity}</td><td>${escHtml(d.note)}</td></tr>`
       ).join('');
       const noteField = o.order_status === 'unordered'
         ? `<div class="row" style="margin-top:8px;"><div style="flex:3;"><label>備考</label><input id="note_${o.id}" value="${o.note || ''}" placeholder="任意" /></div></div>`
@@ -84,7 +84,7 @@
           <div>発注日: ${o.order_date || '-'}</div>
           <div class="spacer"></div>
         </div>
-        <table><thead><tr><th>商品</th><th>発注予定数(梱包)</th><th>発注数(梱包)</th></tr></thead><tbody>${rows}</tbody></table>
+        <table><thead><tr><th>商品</th><th>発注予定数(梱包)</th><th>発注数(梱包)</th><th>備考</th></tr></thead><tbody>${rows}</tbody></table>
         ${addForm}
         ${noteField}
         <div style="margin-top:10px;">${actions}</div>
@@ -93,6 +93,10 @@
 
     function statusLabel(s) {
       return { unordered: '未発注', ordered: '発注済み', received: '入庫済み', canceled: 'キャンセル' }[s] || s;
+    }
+    function escHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
     async function place(id) {

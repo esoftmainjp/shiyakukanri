@@ -39,7 +39,7 @@ router.get('/', async (req, res) => {
     );
     const details = await pool.query(
       `SELECT od.id, od.order_id, od.product_id, p.name AS product_name,
-              od.product_detail_id, od.planned_order_quantity, od.order_quantity
+              od.product_detail_id, od.planned_order_quantity, od.order_quantity, od.note
          FROM order_details od
          JOIN products p ON p.id = od.product_id
         ORDER BY od.id`
