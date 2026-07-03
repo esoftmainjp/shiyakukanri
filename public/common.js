@@ -70,6 +70,7 @@ function renderHeader(user, activeKey) {
     ];
     if (user.userType === 'admin') {
       nav.push(['masters', '/masters.html', 'マスター編集']);
+      nav.push(['logs', '/logs.html', '操作ログ']);
       nav.push(['settings', '/settings.html', '設定']);
     }
   }
