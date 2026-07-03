@@ -18,7 +18,11 @@
         <div><label>使用期限(まで)</label><input type="date" id="fExpiryTo" /></div>
       </div>
       <div class="row">
-        <div style="flex:0;"><label><input type="checkbox" id="fZero" /> 在庫0も表示</label></div>
+        <div style="flex:0;"><label>&nbsp;</label>
+          <label style="display:inline-flex; align-items:center; gap:6px; margin:0; font-weight:normal; white-space:nowrap; height:37px;">
+            <input type="checkbox" id="fZero" style="width:auto;" />在庫0も表示
+          </label>
+        </div>
         <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">検索</button></div>
         <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="downloadCsv()">CSV出力</button></div>
       </div>
