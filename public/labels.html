@@ -54,16 +54,13 @@
       </div>
       <hr>
       <div class="row">
-        <div style="flex:0;"><label>ラベル幅(mm)</label><input type="number" id="lw" value="52" min="10" max="200" style="width:90px;" oninput="applySize()" /></div>
-        <div style="flex:0;"><label>ラベル高(mm)</label><input type="number" id="lh" value="29" min="10" max="200" style="width:90px;" oninput="applySize()" /></div>
-        <div style="flex:0;"><label>バーコード高(px)</label><input type="number" id="bh" value="60" min="20" max="140" style="width:90px;" oninput="render()" /></div>
-        <div style="flex:0;"><label>バーコード幅(mm)</label><input type="number" id="bwmm" value="45" min="10" max="200" style="width:90px;" oninput="render()" /></div>
         <div style="flex:0;"><label>&nbsp;</label>
           <label style="display:inline-flex; align-items:center; gap:6px; font-weight:normal; white-space:nowrap;">
             <input type="checkbox" id="checkAll" checked style="width:auto;" onchange="toggleAll(this.checked)" />全てチェック
           </label>
         </div>
         <div style="flex:0;"><label>&nbsp;</label><button onclick="printSelected()">選択分を印刷</button></div>
+        <div style="flex:1;"><span style="color:#6b7280; font-size:0.83rem;">ラベルサイズ・バーコードの大きさは「設定」画面で変更できます。</span></div>
       </div>
       <p class="msg" id="msg"></p>
       <p id="count" style="color:#555;"></p>
@@ -77,6 +74,9 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script>
     let items = [];
+    // ラベルサイズは設定画面(サーバー)から取得。未設定は既定値。
+    let cfg = { lw: 52, lh: 29, bh: 60, bwmm: 45 };
+    function num(v, def) { return (v !== undefined && v !== null && v !== '') ? Number(v) : def; }
 
     async function boot() {
       const user = await initPage('labels');
@@ -91,24 +91,17 @@
         o.value = p.productId; o.textContent = p.productName;
         sel.appendChild(o);
       });
-      // ラベル設定を復元: 端末(localStorage)→サーバー(設定画面)の順で上書き(サーバー優先)
-      ['lw', 'lh', 'bh', 'bwmm'].forEach((k) => {
-        const v = localStorage.getItem('bcLabel_' + k);
-        if (v !== null && v !== '') document.getElementById(k).value = v;
-      });
+      // ラベル設定を設定画面(サーバー)から取得
       const cs = await api('/api/settings');
-      if (cs.ok) {
-        const s = cs.data.settings || {};
-        const map = { lw: 'label_width_mm', lh: 'label_height_mm', bh: 'barcode_height_px', bwmm: 'barcode_width_mm' };
-        Object.entries(map).forEach(([k, sk]) => { if (s[sk] !== undefined && s[sk] !== '') document.getElementById(k).value = s[sk]; });
-      }
+      const s = (cs.ok && cs.data.settings) || {};
+      cfg = {
+        lw: num(s.label_width_mm, 52),
+        lh: num(s.label_height_mm, 29),
+        bh: num(s.barcode_height_px, 60),
+        bwmm: num(s.barcode_width_mm, 45),
+      };
       setToday();
       applySize();
-    }
-
-    // ラベル設定を保存(バーコード印刷画面・入庫印刷で共有)
-    function saveSettings() {
-      ['lw', 'lh', 'bh', 'bwmm'].forEach((k) => localStorage.setItem('bcLabel_' + k, document.getElementById(k).value));
     }
 
     function setToday() {
@@ -136,8 +129,8 @@
     }
 
     function applySize() {
-      const w = Number(document.getElementById('lw').value) || 62;
-      const h = Number(document.getElementById('lh').value) || 29;
+      const w = cfg.lw || 52;
+      const h = cfg.lh || 29;
       let st = document.getElementById('pageStyle');
       if (!st) { st = document.createElement('style'); st.id = 'pageStyle'; document.head.appendChild(st); }
       // 画面プレビュー・印刷ページの両方にサイズを反映
@@ -148,11 +141,10 @@
     }
 
     function render() {
-      saveSettings();
       const box = document.getElementById('labels');
       box.innerHTML = '';
-      const bh = Number(document.getElementById('bh').value) || 40;
-      const bwmm = Number(document.getElementById('bwmm').value) || 45;
+      const bh = cfg.bh || 60;
+      const bwmm = cfg.bwmm || 45;
       document.getElementById('count').textContent = `${items.length} 件`;
       if (items.length === 0) { box.innerHTML = '<p style="color:#888;">対象がありません。</p>'; return; }
       items.forEach((b, i) => {
