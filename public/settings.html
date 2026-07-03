@@ -14,21 +14,18 @@
     <div id="area" style="display:none;">
       <div class="card">
         <h2>画面デザイン（カラー）</h2>
-        <div class="row">
-          <div style="flex:0;"><label>テーマ</label>
-            <select id="theme" onchange="applyTheme(this.value)" style="min-width:200px;">
-              <option value="blue">パステルブルー（標準）</option>
-              <option value="green">パステルグリーン</option>
-              <option value="pink">パステルピンク</option>
-              <option value="purple">パステルパープル</option>
-              <option value="warm">パステルオレンジ</option>
-              <option value="gray">パステルグレー</option>
-            </select>
-          </div>
-          <div style="flex:1;"><label>&nbsp;</label>
-            <span style="color:#6b7280; font-size:0.83rem;">選ぶと即プレビュー。「保存」で全端末に反映されます。</span>
-          </div>
+        <div>
+          <label>テーマ</label>
+          <select id="theme" onchange="applyTheme(this.value)" style="min-width:220px; display:block;">
+            <option value="blue">パステルブルー（標準）</option>
+            <option value="green">パステルグリーン</option>
+            <option value="pink">パステルピンク</option>
+            <option value="purple">パステルパープル</option>
+            <option value="warm">パステルオレンジ</option>
+            <option value="gray">パステルグレー</option>
+          </select>
         </div>
+        <p style="color:#6b7280; font-size:0.83rem; margin-top:10px;">選ぶと即プレビューされます。「保存」で全端末に反映されます。</p>
       </div>
 
       <div class="card">
