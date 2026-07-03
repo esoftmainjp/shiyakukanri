@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>試薬在庫管理システム 取扱説明書</title>
+<style>
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "Yu Gothic", "Meiryo", "MS PGothic", sans-serif;
+    color: #26333f; line-height: 1.7; margin: 0; font-size: 10.5pt;
+  }
+  h1, h2, h3, h4 { color: #2b5f9e; line-height: 1.4; }
+  h2 {
+    font-size: 16pt; border-bottom: 3px solid #cfe2f5; padding-bottom: 4px;
+    margin: 0 0 12px; page-break-after: avoid;
+  }
+  h3 {
+    font-size: 12.5pt; margin: 16px 0 6px; padding-left: 8px;
+    border-left: 5px solid #7fb0e0; page-break-after: avoid;
+  }
+  h4 { font-size: 11pt; margin: 12px 0 4px; color: #37506b; page-break-after: avoid; }
+  p { margin: 4px 0 8px; }
+  ul, ol { margin: 4px 0 10px; padding-left: 22px; }
+  li { margin: 2px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; page-break-inside: avoid; }
+  th, td { border: 1px solid #bcd0e2; padding: 5px 8px; font-size: 9.7pt; text-align: left; vertical-align: top; }
+  th { background: #eaf3fb; color: #2b5f9e; white-space: nowrap; }
+  code { background: #eef3f7; padding: 1px 5px; border-radius: 4px; font-size: 9.5pt; font-family: "Consolas", monospace; }
+  .note {
+    background: #fff8e8; border: 1px solid #f0d9a0; border-radius: 8px;
+    padding: 8px 12px; margin: 8px 0; font-size: 9.8pt;
+  }
+  .note::before { content: "⚠ 注意　"; font-weight: bold; color: #9a6416; }
+  .tip {
+    background: #eaf6ee; border: 1px solid #b6dcc2; border-radius: 8px;
+    padding: 8px 12px; margin: 8px 0; font-size: 9.8pt;
+  }
+  .tip::before { content: "💡 ヒント　"; font-weight: bold; color: #2b7a3b; }
+  .step { counter-reset: step; list-style: none; padding-left: 0; }
+  .step > li { counter-increment: step; margin: 6px 0; padding-left: 34px; position: relative; }
+  .step > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0;
+    width: 24px; height: 24px; background: #2b5f9e; color: #fff; border-radius: 50%;
+    text-align: center; line-height: 24px; font-weight: bold; font-size: 10pt;
+  }
+  .cover {
+    height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center;
+    text-align: center; page-break-after: always;
+  }
+  .cover .badge { font-size: 60pt; }
+  .cover h1 { font-size: 30pt; margin: 10px 0; letter-spacing: 0.08em; border: none; }
+  .cover .sub { font-size: 13pt; color: #5b768f; }
+  .cover .meta { margin-top: 40px; font-size: 11pt; color: #5b768f; }
+  .toc { page-break-after: always; }
+  .toc ol { font-size: 11pt; }
+  .toc li { margin: 5px 0; }
+  section { page-break-before: always; }
+  .role-a { color: #2b7a3b; font-weight: bold; }
+  .role-g { color: #2b5f9e; font-weight: bold; }
+  .role-s { color: #9a6416; font-weight: bold; }
+  @page { size: A4 portrait; margin: 18mm 16mm 16mm; }
+  .small { font-size: 9pt; color: #667; }
+</style>
+</head>
+<body>
+
+<!-- 表紙 -->
+<div class="cover">
+  <div class="badge">🧪</div>
+  <h1>試薬在庫管理システム</h1>
+  <div class="sub">取扱説明書</div>
+  <div class="meta">
+    バーコード（独自 / GS1-128）対応　試薬在庫・発注・使用管理<br>
+    第 1 版
+  </div>
+</div>
+
+<!-- 目次 -->
+<div class="toc">
+  <h2>目次</h2>
+  <ol>
+    <li>はじめに（システム概要）</li>
+    <li>動作環境とログイン</li>
+    <li>ユーザー権限と共通操作</li>
+    <li>ホーム画面</li>
+    <li>入庫登録</li>
+    <li>出庫登録</li>
+    <li>発注</li>
+    <li>在庫管理</li>
+    <li>使用期限</li>
+    <li>使用終了日登録</li>
+    <li>バーコード印刷</li>
+    <li>履歴（入庫・出庫・発注）</li>
+    <li>試薬管理台帳</li>
+    <li>マスター編集（管理者）</li>
+    <li>操作ログ（管理者）</li>
+    <li>設定（管理者）</li>
+    <li>パスワード変更</li>
+    <li>用語集</li>
+    <li>困ったときは（FAQ）</li>
+  </ol>
+</div>
+
+<!-- 1 -->
+<section>
+  <h2>1. はじめに（システム概要）</h2>
+  <p>本システムは、臨床検査・研究などで使用する試薬の<strong>在庫・発注・入庫・出庫・使用（開始／終了）</strong>を一元管理するWebアプリケーションです。ブラウザから操作し、バーコードによる正確でスピーディーな入出庫を実現します。</p>
+  <h3>主な特長</h3>
+  <ul>
+    <li><strong>バーコード対応</strong>：商品ごとに発行する「独自バーコード」と、メーカー添付の「GS1-128（JAN・ロット・使用期限入り）」の両方に対応します。</li>
+    <li><strong>問屋ごとの発注・入庫</strong>：問屋を選択してから作業する運用で、取り違えを防ぎます。</li>
+    <li><strong>使用期限・在庫僅少の見える化</strong>：期限切れ・期限間近・在庫僅少をホームや使用期限画面で確認できます。</li>
+    <li><strong>試薬管理台帳</strong>：精度管理対象試薬の入庫〜使用開始／終了を台帳として出力できます。</li>
+    <li><strong>操作ログ</strong>：登録・更新・削除・印刷・CSV出力などの操作を記録します（管理者が閲覧）。</li>
+  </ul>
+  <h3>用語（先に覚えておくと便利）</h3>
+  <table>
+    <tr><th>用語</th><th>意味</th></tr>
+    <tr><td>梱包数</td><td>1梱包（1箱）に含まれる本数。マスターで設定します。</td></tr>
+    <tr><td>バラ数</td><td>本数単位の数量。「梱包数 × 梱包」でバラ数になります。</td></tr>
+    <tr><td>発注予定</td><td>これから発注する（未発注の）明細。</td></tr>
+    <tr><td>入庫予定</td><td>発注済みで、まだ入庫していない残り分。</td></tr>
+    <tr><td>独自バーコード</td><td>本システムが入庫時に発行する、1本ごとの管理用バーコード。</td></tr>
+  </table>
+</section>
+
+<!-- 2 -->
+<section>
+  <h2>2. 動作環境とログイン</h2>
+  <h3>動作環境</h3>
+  <ul>
+    <li>推奨ブラウザ：Microsoft Edge / Google Chrome（最新版）</li>
+    <li>バーコード読取：USB接続のバーコードリーダー（キーボード入力方式）</li>
+    <li>ラベル印刷：感熱ラベルプリンター（例：Brother QL シリーズ、52×29mm ラベル）</li>
+  </ul>
+  <h3>ログイン</h3>
+  <ol class="step">
+    <li>ブラウザでシステムのURLを開きます。</li>
+    <li>ログインID・パスワードを入力し「ログイン」を押します。</li>
+    <li>権限に応じたメニューが表示されます。</li>
+  </ol>
+  <div class="note">初期パスワードは導入時の共通値です。導入後は「パスワード変更」画面（第17章）から各自変更してください。</div>
+  <h3>ログアウト</h3>
+  <p>画面右上の「ログアウト」を押します。一定時間操作がない場合も自動的にログアウトされます。</p>
+</section>
+
+<!-- 3 -->
+<section>
+  <h2>3. ユーザー権限と共通操作</h2>
+  <h3>権限（ユーザータイプ）</h3>
+  <table>
+    <tr><th>タイプ</th><th>使える機能</th></tr>
+    <tr><td class="role-a">管理者</td><td>すべての機能（下記に加え、マスター編集・操作ログ・設定・CSVインポート）</td></tr>
+    <tr><td class="role-g">一般</td><td>入庫・出庫・発注・在庫管理・使用期限・使用終了日・バーコード印刷・履歴・試薬台帳</td></tr>
+    <tr><td class="role-s">問屋</td><td>入庫・発注のみ</td></tr>
+  </table>
+  <p class="small">※「パスワード変更」「ホーム」は全ユーザー共通で使用できます。履歴の編集・削除は管理者・一般のみです。</p>
+  <h3>画面共通の操作</h3>
+  <ul>
+    <li><strong>メニュー</strong>：画面上部のナビゲーションから各機能へ移動します。</li>
+    <li><strong>バーコード入力欄</strong>：枠が青く強調された欄です。リーダーで読み取るか手入力し、Enterで確定します。半角固定（IMEオフ）です。</li>
+    <li><strong>備考欄</strong>：日本語入力（IMEオン）で自由に入力できます。</li>
+    <li><strong>CSV出力／印刷</strong>：一覧画面や台帳などに用意されています。</li>
+  </ul>
+</section>
+
+<!-- 4 -->
+<section>
+  <h2>4. ホーム画面</h2>
+  <p>ログイン直後に表示されます。日々の確認事項をまとめています。</p>
+  <ul>
+    <li><strong>使用期限情報</strong>：期限切れ・期限間近の在庫を一覧表示します。個数（そのロットの数）と在庫数（商品全体）を確認できます。</li>
+    <li><strong>発注予定／入庫予定</strong>：該当がある商品にはバッジが表示されます。</li>
+  </ul>
+  <div class="tip">期限間近の判定日数は「設定」画面で変更できます（既定は使用期限まで◯日以内）。</div>
+</section>
+
+<!-- 5 -->
+<section>
+  <h2>5. 入庫登録</h2>
+  <p>納品された試薬を在庫に登録します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>・<span class="role-s">問屋</span>が使用できます。</p>
+  <h3>基本の流れ</h3>
+  <ol class="step">
+    <li><strong>入庫日</strong>を確認します（初期値は当日）。</li>
+    <li><strong>問屋</strong>を選択します。<span class="note" style="display:inline">問屋を選ぶまで商品は追加できません。</span></li>
+    <li>問屋を選ぶと、その問屋の<strong>入庫予定</strong>が表示されます。該当分にチェックを入れ「選択を明細に追加」で取り込めます。</li>
+    <li>個別に追加する場合は「明細追加」で商品を選び、ロット・使用期限・入庫数（梱包）を入力して「明細に追加」。</li>
+    <li>必要に応じて<strong>備考</strong>を入力します。</li>
+    <li>「登録」を押すと在庫へ反映されます。</li>
+  </ol>
+  <h3>GS1-128 バーコードでの入庫</h3>
+  <p>「GS1-128 バーコード読取」欄でメーカーのバーコードを読み取ると、JAN・ロット・使用期限が自動で読み込まれ、対応商品の問屋が自動選択されます。</p>
+  <h3>独自バーコードの印刷</h3>
+  <p>入庫登録画面の「バーコード印刷」にチェックを入れて登録すると、入庫した本数分の独自バーコードを印刷できます（既定でチェックオン）。ラベルの体裁は「設定」画面の共有設定に従います。</p>
+  <div class="tip">問屋を選択すると、明細に追加できる商品はその問屋の商品だけに絞られます。手入力の入庫は、同じ商品の古い発注（入庫予定）から自動的に消し込まれます。</div>
+  <div class="note">梱包数は商品マスターの値を使用します（入庫画面では変更できません）。</div>
+</section>
+
+<!-- 6 -->
+<section>
+  <h2>6. 出庫登録</h2>
+  <p>試薬の払い出し（使用開始）を登録します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>が使用できます。</p>
+  <h3>基本の流れ</h3>
+  <ol class="step">
+    <li>出庫日を確認します（初期値は当日）。</li>
+    <li>独自バーコード、またはGS1-128バーコードを読み取ります。</li>
+    <li>数量（バラ数）を確認して明細に追加します。</li>
+    <li>「登録」で在庫から減算されます。</li>
+  </ol>
+  <h3>使用開始の記録</h3>
+  <ul>
+    <li><strong>独自バーコード品</strong>：出庫すると、そのバーコードが「使用中（使用開始済み）」になります。</li>
+    <li><strong>バーコードを発行しない精度管理対象品</strong>：GS1（JAN）で識別し、使用記録が作成されます。</li>
+  </ul>
+  <div class="note">使用期限切れの試薬を出庫できるかどうかは、「設定」の「期限切れ出庫の許可」で切り替えられます。</div>
+</section>
+
+<!-- 7 -->
+<section>
+  <h2>7. 発注</h2>
+  <p>問屋ごとに発注を作成します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>・<span class="role-s">問屋</span>が使用できます。</p>
+  <h3>基本の流れ</h3>
+  <ol class="step">
+    <li><strong>発注日</strong>を確認し、<strong>問屋</strong>を選択します（選択するまで操作できません）。</li>
+    <li>選択した問屋の発注（未発注＝発注予定）が表示されます。</li>
+    <li>商品を追加します。バーコード読取、または「商品を選んで追加」から行います。</li>
+    <li>各商品の<strong>発注数（梱包）</strong>や<strong>備考</strong>を必要に応じて調整します。</li>
+    <li>「発注する」を押すと発注済みになります。チェックを入れておくと発注書を印刷できます。</li>
+  </ol>
+  <h3>発注数の見方</h3>
+  <table>
+    <tr><th>列</th><th>意味</th></tr>
+    <tr><td>発注バラ数</td><td>発注予定に積み上がっているバラ数（出庫実績などから算出）。</td></tr>
+    <tr><td>商品内容数</td><td>梱包数（1梱包の本数）。</td></tr>
+    <tr><td>発注推奨数（梱包）</td><td>システムが推奨する発注梱包数。</td></tr>
+    <tr><td>発注数（梱包）</td><td>実際に発注する梱包数（編集可）。</td></tr>
+  </table>
+  <h3>保留と削除</h3>
+  <ul>
+    <li><strong>保留</strong>：今回の発注から外します。「解除」で戻せます。保留した商品は発注しても発注予定として残ります。</li>
+    <li><strong>削除</strong>：発注予定から取り除きます（未発注のみ）。</li>
+    <li>発注済みの商品ごとの<strong>キャンセル</strong>、発注全体のキャンセルも可能です（入庫済みは不可）。</li>
+  </ul>
+</section>
+
+<!-- 8 -->
+<section>
+  <h2>8. 在庫管理</h2>
+  <p>現在の在庫（ロット・使用期限ごと）を確認します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>。</p>
+  <ul>
+    <li><strong>検索条件</strong>：商品名・問屋・メーカー・部門・分類・ロット・使用期限・備考などで絞り込めます。</li>
+    <li><strong>在庫0も表示</strong>：チェックで在庫ゼロの行も表示します。</li>
+    <li><strong>横スクロール</strong>：多数の列を表示できます。商品名と操作列は固定されます。</li>
+    <li><strong>CSV出力</strong>：表示中の条件で一覧をCSV出力できます（操作ログに記録されます）。</li>
+  </ul>
+</section>
+
+<!-- 9 -->
+<section>
+  <h2>9. 使用期限</h2>
+  <p>期限切れ・期限間近の試薬を管理します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>。</p>
+  <ul>
+    <li><strong>色分け</strong>：期限切れ・期限間近を淡い色で区別します。</li>
+    <li><strong>個数／在庫数</strong>：個数はそのロット・期限の数量、在庫数は商品全体の合計です。</li>
+    <li><strong>発注予定／入庫予定</strong>：該当がある場合バッジで表示します。</li>
+    <li><strong>チェックして発注</strong>：チェックした商品を発注予定に追加し、発注画面へ移動できます。</li>
+  </ul>
+</section>
+
+<!-- 10 -->
+<section>
+  <h2>10. 使用終了日登録</h2>
+  <p>使用を終えた試薬の「使用終了日」を登録します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>。</p>
+  <ol class="step">
+    <li>対象の独自バーコードを読み取る、または使用中の一覧から対象を選びます。</li>
+    <li>使用終了日を入力して登録します。</li>
+  </ol>
+  <p>登録すると試薬管理台帳の「使用終了日」に反映されます。</p>
+</section>
+
+<!-- 11 -->
+<section>
+  <h2>11. バーコード印刷</h2>
+  <p>発行済みの独自バーコードを印刷（再発行）します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>。</p>
+  <ul>
+    <li><strong>絞り込み</strong>：発行日・商品・キーワードで対象を検索します。</li>
+    <li><strong>全てチェック</strong>：一覧のすぐ上のチェックで一括選択できます。</li>
+    <li><strong>印刷済みの扱い</strong>：既定では印刷済みを表示しません。「印刷済みも表示」で表示できます。印刷すると印刷済みになります。</li>
+  </ul>
+  <div class="tip">ラベルのサイズや文字サイズ（バーコード情報／名称／ロット・期限・No.）は「設定」画面で調整します。ラベルには印刷日時は印字されません。</div>
+  <div class="note">削除した入庫のバーコードは「無効」となり、同じ番号が再利用されることはありません（重複防止）。</div>
+</section>
+
+<!-- 12 -->
+<section>
+  <h2>12. 履歴（入庫・出庫・発注）</h2>
+  <p>過去の入庫・出庫・発注を確認・訂正します。閲覧は<span class="role-g">一般</span>以上、編集・削除は<span class="role-a">管理者</span>・<span class="role-g">一般</span>。</p>
+  <h3>できること</h3>
+  <ul>
+    <li><strong>閲覧</strong>：タブ（入庫／出庫／発注）で切り替え、期間・商品・キーワードで検索します。</li>
+    <li><strong>編集</strong>：備考・日付の訂正ができます。数量・商品などの変更は「取消（削除）→ 再登録」で行います。</li>
+    <li><strong>削除</strong>：在庫やバーコードの整合性が保てる場合のみ実行できます。保てない場合は理由が表示されます。</li>
+  </ul>
+  <div class="note">出庫済みのバーコードがある入庫や、発注に反映済みの出庫などは、整合性を守るため削除がブロックされます。表示された案内に従って先に関連処理を取り消してください。</div>
+</section>
+
+<!-- 13 -->
+<section>
+  <h2>13. 試薬管理台帳</h2>
+  <p>精度管理対象試薬について、入庫〜使用開始／終了を台帳として出力します。<span class="role-a">管理者</span>・<span class="role-g">一般</span>。</p>
+  <ol class="step">
+    <li>期間（開始・終了）を指定して「表示」。</li>
+    <li>「CSV出力」でファイル保存、「印刷」で帳票印刷ができます。</li>
+  </ol>
+  <p>台帳の項目：入庫日・商品名・ロット・内容物コード・有効期限・使用開始日・使用終了日。</p>
+  <p class="small">※台帳の印刷物には印刷日時と会社名のみを印字します（住所・電話番号・担当者は印字しません）。</p>
+</section>
+
+<!-- 14 -->
+<section>
+  <h2>14. マスター編集（管理者）</h2>
+  <p>各種マスターを管理します。<span class="role-a">管理者</span>専用です。</p>
+  <table>
+    <tr><th>マスター</th><th>主な項目</th></tr>
+    <tr><td>商品</td><td>名称・部門・分類・精度管理対象など。一覧の「詳細」から商品詳細へ。</td></tr>
+    <tr><td>商品詳細</td><td>問屋・メーカー・梱包数・JANコード・バーコード発行有無・単価など。</td></tr>
+    <tr><td>問屋 / メーカー / 部門 / 分類</td><td>名称・カナ・有効フラグ。</td></tr>
+    <tr><td>ユーザー</td><td>タイプ・氏名・ログインID・パスワード・有効フラグ。</td></tr>
+  </table>
+  <div class="tip">ユーザーのパスワードは管理者がここで設定・変更できます。パスワードを変更すると「パスワード保存日時」が更新されます。</div>
+</section>
+
+<!-- 15 -->
+<section>
+  <h2>15. 操作ログ（管理者）</h2>
+  <p>システムの操作履歴を確認します。<span class="role-a">管理者</span>専用です。</p>
+  <ul>
+    <li><strong>記録される操作</strong>：登録・更新・削除・ログイン・印刷・CSV出力・バーコード印刷 など。</li>
+    <li><strong>絞り込み</strong>：期間・ユーザー・操作区分・対象・キーワード。</li>
+    <li><strong>詳細</strong>：各行の「詳細」で変更前／変更後の内容を確認できます。</li>
+    <li><strong>CSV出力／印刷</strong>：現在の絞り込み条件で出力できます。</li>
+    <li><strong>データ容量</strong>：画面上部にログのおおよそのデータ容量と件数を表示します。</li>
+  </ul>
+</section>
+
+<!-- 16 -->
+<section>
+  <h2>16. 設定（管理者）</h2>
+  <p>システム全体の設定を行います。<span class="role-a">管理者</span>専用です。</p>
+  <table>
+    <tr><th>設定項目</th><th>内容</th></tr>
+    <tr><td>画面テーマ</td><td>パステル系のカラーテーマを選択します。</td></tr>
+    <tr><td>使用期限の警告日数</td><td>期限間近と判定する日数。</td></tr>
+    <tr><td>在庫僅少しきい値</td><td>在庫が少ないと判定する基準。</td></tr>
+    <tr><td>期限切れ出庫の許可</td><td>期限切れ試薬の出庫可否。</td></tr>
+    <tr><td>自社情報</td><td>会社名・住所・電話番号・担当者（帳票ヘッダーに使用）。</td></tr>
+    <tr><td>バーコードラベル</td><td>ラベルサイズ、各文字サイズ（バーコード情報／名称／ロット・期限・No.）。</td></tr>
+  </table>
+</section>
+
+<!-- 17 -->
+<section>
+  <h2>17. パスワード変更</h2>
+  <p>ログイン中のご自身のパスワードを変更します。<strong>全ユーザー</strong>が使用できます。</p>
+  <ol class="step">
+    <li>メニューの「パスワード変更」を開きます。</li>
+    <li>現在のパスワードを入力します。</li>
+    <li>新しいパスワード（8文字以上）と確認用を入力します。</li>
+    <li>「変更する」を押します。</li>
+  </ol>
+  <p>変更すると「最終パスワード変更日時」が更新され、操作ログにも記録されます。</p>
+  <div class="note">現在のパスワードと同じものには変更できません。新しいパスワードは8文字以上にしてください。</div>
+</section>
+
+<!-- 18 -->
+<section>
+  <h2>18. 用語集</h2>
+  <table>
+    <tr><th>用語</th><th>説明</th></tr>
+    <tr><td>独自バーコード</td><td>入庫時に本システムが1本ごとに発行する管理用バーコード。削除しても番号は再利用しません。</td></tr>
+    <tr><td>GS1-128</td><td>メーカーが商品に付す標準バーコード。JAN・ロット・使用期限を含みます。</td></tr>
+    <tr><td>梱包数 / バラ数</td><td>梱包数は1箱の本数。バラ数は本単位の数量（梱包数×梱包）。</td></tr>
+    <tr><td>発注予定</td><td>これから発注する未発注の明細。</td></tr>
+    <tr><td>入庫予定</td><td>発注済みで未入庫の残り分。入庫で自動的に消し込まれます。</td></tr>
+    <tr><td>精度管理対象</td><td>試薬管理台帳の出力対象となる商品。マスターで設定します。</td></tr>
+    <tr><td>保留</td><td>発注から一時的に外す状態。解除で戻せます。</td></tr>
+  </table>
+</section>
+
+<!-- 19 -->
+<section>
+  <h2>19. 困ったときは（FAQ）</h2>
+  <h4>Q. 入庫画面で商品が追加できない</h4>
+  <p>A. 先に「問屋」を選択してください。問屋を選ぶまで商品の追加はできません。</p>
+  <h4>Q. 入庫予定（発注済み）の数が減らない</h4>
+  <p>A. 手入力の入庫は、同じ商品・同じ問屋の古い発注から自動で消し込まれます。問屋が一致しているか、発注が「発注済み」かご確認ください。</p>
+  <h4>Q. バーコード読取欄で日本語になってしまう</h4>
+  <p>A. バーコード欄は半角固定です。それでも切り替わる場合は、端末側のIMEを半角英数にしてから読み取ってください。</p>
+  <h4>Q. 印刷にプリンターを指定したい</h4>
+  <p>A. 印刷はブラウザの印刷ダイアログで行います。ダイアログでプリンターを選択してください。ラベルはラベルプリンター、帳票は通常プリンターを指定します。</p>
+  <h4>Q. 履歴から削除できない</h4>
+  <p>A. 在庫やバーコードの整合性が保てない場合はブロックされます。画面の案内に従い、先に関連する出庫・発注などを取り消してください。</p>
+  <h4>Q. パスワードを忘れた</h4>
+  <p>A. 管理者が「マスター編集 → ユーザー」から再設定できます。</p>
+
+  <hr style="margin:24px 0; border:none; border-top:1px solid #cfe2f5;">
+  <p class="small">本書の内容は予告なく変更される場合があります。ご不明な点はシステム管理者または販売元までお問い合わせください。</p>
+</section>
+
+</body>
+</html>
