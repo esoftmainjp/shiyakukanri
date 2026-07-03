@@ -10,17 +10,33 @@
   <header></header>
   <main>
     <div class="card">
+      <h2>問屋を選択</h2>
+      <p style="font-size:0.85rem; color:#555;">発注は問屋ごとに行います。まず問屋を選択してください。選択した問屋の発注のみ表示・操作できます。</p>
+      <div class="row">
+        <div style="flex:1; min-width:220px;">
+          <label>問屋 <span style="color:#c0392b;">*</span></label>
+          <select id="supplier" onchange="onSupplierChange()"><option value="">（選択してください）</option></select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="addCard" style="display:none;">
       <h2>バーコードで発注予定に追加</h2>
-      <p style="font-size:0.85rem; color:#555;">商品のバーコード（独自 / GS1-128）を読み取り、その問屋の発注予定（未発注）に追加します。</p>
+      <p style="font-size:0.85rem; color:#555;">選択中の問屋の商品バーコード（独自 / GS1-128）を読み取り、発注予定（未発注）に追加します。</p>
       <div class="row">
         <div style="flex:2;"><label class="barcode-label">バーコードを読み取り/入力</label><input id="obc" class="barcode-input" placeholder="ここにスキャン（Enterで追加）" /></div>
         <div style="flex:0;"><label>発注数(梱包)</label><input type="number" id="obcQty" value="1" min="1" style="width:100px;" /></div>
         <div style="flex:0;"><label>&nbsp;</label><button onclick="addByBarcode()">追加</button></div>
       </div>
+      <div class="row" style="align-items:flex-end;">
+        <div style="flex:2;"><label>商品を選んで追加</label><select id="addProduct"><option value="">（先に問屋を選択してください）</option></select></div>
+        <div style="flex:0;"><label>発注数(梱包)</label><input type="number" id="addProductQty" value="1" min="1" style="width:100px;" /></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="addBySelect()">追加</button></div>
+      </div>
       <p class="msg" id="obcMsg"></p>
     </div>
 
-    <div class="card">
+    <div class="card" id="listCard" style="display:none;">
       <h2>発注一覧</h2>
       <div class="row">
         <div style="flex:0; min-width:160px;">
@@ -38,6 +54,8 @@
       <p class="msg" id="msg"></p>
       <div id="orderList"></div>
     </div>
+
+    <p class="msg" id="pickMsg" style="padding:0 4px;">問屋を選択すると発注を表示します。</p>
   </main>
 
   <script src="/common.js"></script>
@@ -52,15 +70,50 @@
       if (!user) return;
       canEdit = (user.userType === 'admin' || user.userType === 'general');
       products = await getProducts();
+      // 問屋コンボを構築(初期未選択)
+      const supSel = document.getElementById('supplier');
+      const sr = await api('/api/lookup/suppliers');
+      (sr.data.suppliers || []).forEach((s) => {
+        const o = document.createElement('option');
+        o.value = s.id; o.textContent = s.name; supSel.appendChild(o);
+      });
       document.getElementById('obc').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); addByBarcode(); }
       });
+    }
+
+    // 問屋を選択したら、その問屋の商品リストを構築し発注一覧を表示
+    function onSupplierChange() {
+      const sid = document.getElementById('supplier').value;
+      const addCard = document.getElementById('addCard');
+      const listCard = document.getElementById('listCard');
+      const pickMsg = document.getElementById('pickMsg');
+      if (!sid) {
+        addCard.style.display = 'none';
+        listCard.style.display = 'none';
+        pickMsg.style.display = '';
+        document.getElementById('orderList').innerHTML = '';
+        return;
+      }
+      pickMsg.style.display = 'none';
+      addCard.style.display = '';
+      listCard.style.display = '';
+      // 商品選択肢(この問屋のみ)
+      const sel = document.getElementById('addProduct');
+      const opts = products
+        .map((p) => ({ p, d: (p.details || []).find((d) => String(d.supplierId) === String(sid)) }))
+        .filter((x) => x.d)
+        .map((x) => `<option value='${JSON.stringify({ productId: x.p.productId, productDetailId: x.d.productDetailId })}'>${escHtml(x.p.productName)}</option>`)
+        .join('');
+      sel.innerHTML = opts || '<option value="">（対象商品なし）</option>';
       load();
     }
 
-    // バーコードから商品を特定し、発注予定(未発注)に追加
+    // バーコードから商品を特定し、発注予定(未発注)に追加(選択中の問屋のみ)
     async function addByBarcode() {
       const msg = document.getElementById('obcMsg');
+      const sid = document.getElementById('supplier').value;
+      if (!sid) { setMsg(msg, '先に問屋を選択してください', 'error'); return; }
       const value = document.getElementById('obc').value.trim();
       if (!value) return;
       let productDetailId = null, label = '';
@@ -76,7 +129,7 @@
       }
       if (!productDetailId) { setMsg(msg, '商品詳細を特定できませんでした', 'error'); return; }
       const qty = Number(document.getElementById('obcQty').value) || 1;
-      const { ok, data } = await api('/api/orders/add-product', { method: 'POST', body: JSON.stringify({ productDetailId, orderQuantity: qty }) });
+      const { ok, data } = await api('/api/orders/add-product', { method: 'POST', body: JSON.stringify({ productDetailId, orderQuantity: qty, supplierId: sid }) });
       if (!ok) { setMsg(msg, data.error || '追加に失敗しました', 'error'); return; }
       setMsg(msg, `${label} を発注予定に追加しました（発注数:${data.orderQuantity}）`, 'ok');
       document.getElementById('obc').value = '';
@@ -84,10 +137,28 @@
       load();
     }
 
+    // 商品選択(この問屋のみ)から発注予定に追加
+    async function addBySelect() {
+      const msg = document.getElementById('obcMsg');
+      const sid = document.getElementById('supplier').value;
+      if (!sid) { setMsg(msg, '先に問屋を選択してください', 'error'); return; }
+      const sel = document.getElementById('addProduct');
+      if (!sel || !sel.value) { setMsg(msg, '追加する商品を選択してください', 'error'); return; }
+      const picked = JSON.parse(sel.value);
+      const qty = Number(document.getElementById('addProductQty').value) || 1;
+      const { ok, data } = await api('/api/orders/add-product', { method: 'POST', body: JSON.stringify({ productDetailId: picked.productDetailId, orderQuantity: qty, supplierId: sid }) });
+      if (!ok) { setMsg(msg, data.error || '追加に失敗しました', 'error'); return; }
+      setMsg(msg, '発注予定に追加しました（発注数:' + data.orderQuantity + '）', 'ok');
+      document.getElementById('statusFilter').value = 'unordered';
+      load();
+    }
+
     async function load() {
+      const sid = document.getElementById('supplier').value;
+      if (!sid) return;
       const status = document.getElementById('statusFilter').value;
       canceledView = (status === 'canceled');
-      const { data } = await api('/api/orders' + (status ? '?status=' + status : ''));
+      const { data } = await api('/api/orders?supplierId=' + encodeURIComponent(sid) + (status ? '&status=' + status : ''));
       const wrap = document.getElementById('orderList');
       let orders = data.orders || [];
       if (canceledView) {
@@ -150,20 +221,6 @@
       const partialTag = (canceledView && o.order_status !== 'canceled')
         ? ` <span class="pill canceled">一部キャンセル</span>`
         : '';
-      // 未発注のみ商品手動追加フォーム(その問屋の商品のみ)
-      let addForm = '';
-      if (o.order_status === 'unordered') {
-        const opts = products
-          .map((p) => ({ p, d: p.details.find((d) => String(d.supplierId) === String(o.supplier_id)) }))
-          .filter((x) => x.d)
-          .map((x) => `<option value='${JSON.stringify({ productId: x.p.productId, productDetailId: x.d.productDetailId })}'>${x.p.productName}</option>`)
-          .join('');
-        addForm = `<div class="row" style="margin-top:10px; align-items:flex-end;">
-          <div style="flex:2;"><label>商品追加(この問屋のみ)</label><select id="add_${o.id}">${opts || '<option value="">対象商品なし</option>'}</select></div>
-          <div style="flex:0;"><label>発注数(梱包)</label><input type="number" id="addq_${o.id}" value="1" min="1" style="width:100px;" /></div>
-          <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="addDetail('${o.id}')">追加</button></div>
-        </div>`;
-      }
       return `<div class="card" style="background:#fafcfe;">
         <div class="row" style="align-items:center;">
           <div><strong>発注 #${o.id}</strong> <span class="pill ${o.order_status}">${statusLabel(o.order_status)}</span>${partialTag}</div>
@@ -172,7 +229,6 @@
           <div class="spacer"></div>
         </div>
         <table><thead><tr><th>商品</th><th>発注バラ数</th><th>商品内容数</th><th>発注推奨数(梱包)</th><th>発注数(梱包)</th><th>備考</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-        ${addForm}
         ${noteField}
         <div style="margin-top:10px;">${actions}</div>
       </div>`;
@@ -214,19 +270,6 @@
       });
       setMsg(document.getElementById('msg'), ok ? '備考を変更しました' : (data.error || '備考の変更に失敗'), ok ? 'ok' : 'error');
     }
-    async function addDetail(orderId) {
-      const sel = document.getElementById('add_' + orderId);
-      if (!sel || !sel.value) { setMsg(document.getElementById('msg'), '追加する商品がありません', 'error'); return; }
-      const picked = JSON.parse(sel.value);
-      const orderQuantity = Number(document.getElementById('addq_' + orderId).value) || 1;
-      const { ok, data } = await api(`/api/orders/${orderId}/details`, {
-        method: 'POST',
-        body: JSON.stringify({ productId: picked.productId, productDetailId: picked.productDetailId, orderQuantity }),
-      });
-      setMsg(document.getElementById('msg'), ok ? '商品を追加しました' : (data.error || '失敗'), ok ? 'ok' : 'error');
-      load();
-    }
-
     // 発注済みの発注をキャンセル(発注単位。状態をキャンセルにして一覧に残す)
     async function cancelOrder(id) {
       if (!confirm(`発注 #${id} をキャンセルします。よろしいですか？\n（発注全体をキャンセル状態にします）`)) return;

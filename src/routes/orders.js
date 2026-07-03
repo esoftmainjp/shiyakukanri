@@ -21,18 +21,23 @@ function requireEditor(req, res, next) {
 // 発注一覧 (状態で絞り込み可)。明細も付与する。
 // GET /api/orders?status=unordered
 router.get('/', async (req, res) => {
-  const { status } = req.query;
+  const { status, supplierId } = req.query;
   try {
     const params = [];
-    let where = '';
+    const conds = [];
     if (status === 'canceled') {
       // キャンセル: 発注全体がキャンセル、または商品ごとにキャンセルした明細を持つ発注
-      where = `WHERE (o.order_status = 'canceled'
-                      OR EXISTS (SELECT 1 FROM order_details od WHERE od.order_id = o.id AND od.canceled_flag = TRUE))`;
+      conds.push(`(o.order_status = 'canceled'
+                   OR EXISTS (SELECT 1 FROM order_details od WHERE od.order_id = o.id AND od.canceled_flag = TRUE))`);
     } else if (status) {
       params.push(status);
-      where = 'WHERE o.order_status = $1';
+      conds.push(`o.order_status = $${params.length}`);
     }
+    if (supplierId) {
+      params.push(supplierId);
+      conds.push(`o.supplier_id = $${params.length}`);
+    }
+    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
     const orders = await pool.query(
       `SELECT o.id, o.order_date, o.supplier_id, s.name AS supplier_name,
               o.order_status, o.note
@@ -125,6 +130,12 @@ router.post('/add-product', async (req, res) => {
     const productId = pd.rows[0].product_id;
     const supplierId = pd.rows[0].supplier_id;
     if (!supplierId) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'この商品は問屋が未設定のため発注予定に追加できません' }); }
+    // 画面で選択中の問屋(任意)と一致しなければ拒否(問屋スコープの一貫性を保つ)
+    const scopeSupplierId = req.body && req.body.supplierId;
+    if (scopeSupplierId && String(scopeSupplierId) !== String(supplierId)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: '選択中の問屋と異なる問屋の商品です' });
+    }
 
     // 未発注の発注を問屋単位で確保(なければ作成)
     let orderId;
