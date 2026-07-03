@@ -19,6 +19,8 @@
     .op-登録 { background: #e9f6ec; color: #2b7a3b; }
     .op-更新 { background: #eaf2fd; color: #2b5f9e; }
     .op-ログイン { background: #f3ecfa; color: #6a3ba0; }
+    .op-印刷, .op-バーコード印刷 { background: #fff4e0; color: #9a6416; }
+    .op-CSV出力 { background: #e6f6f6; color: #1f7d7d; }
     .pager { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
   </style>
 </head>
@@ -42,6 +44,8 @@
         </div>
         <div style="flex:0;"><label>&nbsp;</label><button onclick="search()">検索</button></div>
         <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="resetFilter()">クリア</button></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="downloadCsv()">CSV出力</button></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="printLogs()">印刷</button></div>
       </div>
       <p class="msg" id="msg"></p>
 
@@ -105,6 +109,20 @@
       p.set('limit', limit);
       p.set('offset', offset);
       return p.toString();
+    }
+
+    // 絞り込み条件のみ(件数・ページングを含めない)。CSV/印刷の出力用。
+    function filterQueryString() {
+      const p = new URLSearchParams();
+      const set = (k, id) => { const v = document.getElementById(id).value; if (v) p.set(k, v); };
+      set('from', 'from'); set('to', 'to'); set('userId', 'fUser');
+      set('operationType', 'fOp'); set('targetTable', 'fTable'); set('keyword', 'fKeyword');
+      return p.toString();
+    }
+    function downloadCsv() { window.location = '/api/logs/csv?' + filterQueryString(); }
+    function printLogs() {
+      const qs = filterQueryString();
+      window.open('/print.html?type=logs&limit=5000&' + qs, '_blank');
     }
 
     function search() { offset = 0; limit = Number(document.getElementById('fLimit').value) || 50; load(); }

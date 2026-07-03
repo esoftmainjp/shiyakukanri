@@ -109,6 +109,24 @@ app.get('/api/me', requireLogin, (req, res) => {
   res.json({ user: req.session.user });
 });
 
+// 印刷・CSV出力などクライアント側で完結する操作を操作ログに記録する
+// POST /api/activity  body: { action, targetTable?, targetId?, detail? }
+app.post('/api/activity', requireLogin, async (req, res) => {
+  const ALLOWED = { print: '印刷', csv: 'CSV出力', 'barcode-print': 'バーコード印刷' };
+  const { action, targetTable, targetId, detail } = req.body || {};
+  const op = ALLOWED[action];
+  if (!op) return res.status(400).json({ error: '不正な操作種別です' });
+  const tid = (targetId != null && targetId !== '' && !isNaN(Number(targetId))) ? Number(targetId) : null;
+  await writeLog(pool, {
+    userId: req.session.user.id,
+    targetTable: String(targetTable || ''),
+    targetId: tid,
+    operationType: op,
+    after: (detail && typeof detail === 'object') ? detail : (detail != null ? { detail } : null),
+  });
+  res.json({ ok: true });
+});
+
 // ------------------------------------------------------------
 // サンプル: 在庫一覧 (ログイン必須)
 // ------------------------------------------------------------

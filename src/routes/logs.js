@@ -3,8 +3,29 @@
 // 操作ログ閲覧API (管理者のみ。server.js で requireRole('admin') を適用)
 const express = require('express');
 const { pool } = require('../db');
+const { sendCsv } = require('../services/csv');
 
 const router = express.Router();
+
+// 絞り込み条件(WHERE)を構築。GET / と /csv で共用。
+function buildLogFilter(q) {
+  const conds = [];
+  const params = [];
+  const add = (frag, val) => { params.push(val); conds.push(frag.replace('$', '$' + params.length)); };
+  if (q.from) add('l.created_at >= $', q.from);
+  if (q.to) add("l.created_at < ($::date + INTERVAL '1 day')", q.to);
+  if (q.userId) add('l.user_id = $', q.userId);
+  if (q.operationType) add('l.operation_type = $', q.operationType);
+  if (q.targetTable) add('l.target_table = $', q.targetTable);
+  if (q.keyword) {
+    params.push('%' + q.keyword + '%');
+    const p = '$' + params.length;
+    conds.push(`(l.target_table ILIKE ${p} OR l.operation_type ILIKE ${p}
+                 OR l.before_data::text ILIKE ${p} OR l.after_data::text ILIKE ${p}
+                 OR u.name ILIKE ${p} OR CAST(l.target_id AS TEXT) ILIKE ${p})`);
+  }
+  return { where: conds.length ? 'WHERE ' + conds.join(' AND ') : '', params };
+}
 
 // 対象テーブルの和名(表示用)
 const TABLE_LABELS = {
@@ -23,6 +44,9 @@ const TABLE_LABELS = {
   stock_movements: '在庫変動',
   product_stocks: '在庫',
   app_settings: '設定',
+  ledger: '試薬管理台帳',
+  inventory: '在庫一覧',
+  logs: '操作ログ',
 };
 
 // フィルタ用の候補(操作区分・対象テーブル・ユーザー)
@@ -53,26 +77,10 @@ router.get('/meta', async (req, res) => {
 // GET /api/logs?from&to&userId&operationType&targetTable&keyword&limit&offset
 router.get('/', async (req, res) => {
   const q = req.query;
-  const conds = [];
-  const params = [];
-  const add = (frag, val) => { params.push(val); conds.push(frag.replace('$', '$' + params.length)); };
   try {
-    if (q.from) add('l.created_at >= $', q.from);
-    if (q.to) add("l.created_at < ($::date + INTERVAL '1 day')", q.to);
-    if (q.userId) add('l.user_id = $', q.userId);
-    if (q.operationType) add('l.operation_type = $', q.operationType);
-    if (q.targetTable) add('l.target_table = $', q.targetTable);
-    if (q.keyword) {
-      const kw = '%' + q.keyword + '%';
-      params.push(kw);
-      const p = '$' + params.length;
-      conds.push(`(l.target_table ILIKE ${p} OR l.operation_type ILIKE ${p}
-                   OR l.before_data::text ILIKE ${p} OR l.after_data::text ILIKE ${p}
-                   OR u.name ILIKE ${p} OR CAST(l.target_id AS TEXT) ILIKE ${p})`);
-    }
-    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+    const { where, params } = buildLogFilter(q);
 
-    const limit = Math.min(200, Math.max(1, Number(q.limit) || 50));
+    const limit = Math.min(10000, Math.max(1, Number(q.limit) || 50));
     const offset = Math.max(0, Number(q.offset) || 0);
 
     const countRes = await pool.query(
@@ -100,6 +108,51 @@ router.get('/', async (req, res) => {
     res.json({ items, total, limit, offset });
   } catch (err) {
     console.error('操作ログ一覧エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 操作ログCSV(絞り込みは一覧と同じ。ページングは無視し全件出力)
+// GET /api/logs/csv?from&to&userId&operationType&targetTable&keyword
+router.get('/csv', async (req, res) => {
+  try {
+    const { where, params } = buildLogFilter(req.query);
+    const p = params.slice();
+    p.push(50000);
+    const { rows } = await pool.query(
+      `SELECT l.id, l.created_at, u.name AS user_name, u.login_id,
+              l.target_table, l.target_id, l.operation_type, l.before_data, l.after_data
+         FROM operation_logs l
+         LEFT JOIN users u ON u.id = l.user_id
+         ${where}
+        ORDER BY l.id DESC
+        LIMIT $${p.length}`,
+      p
+    );
+    const toStr = (v) => (v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : String(v)));
+    const data = rows.map((r) => ({
+      created_at: r.created_at ? new Date(r.created_at).toISOString().replace('T', ' ').slice(0, 19) : '',
+      user_name: r.user_name || '',
+      login_id: r.login_id || '',
+      operation_type: r.operation_type || '',
+      target_table: TABLE_LABELS[r.target_table] || r.target_table || '',
+      target_id: r.target_id == null ? '' : r.target_id,
+      before_data: toStr(r.before_data),
+      after_data: toStr(r.after_data),
+    }));
+    const columns = [
+      { key: 'created_at', label: '日時' },
+      { key: 'user_name', label: 'ユーザー' },
+      { key: 'login_id', label: 'ログインID' },
+      { key: 'operation_type', label: '操作' },
+      { key: 'target_table', label: '対象' },
+      { key: 'target_id', label: '対象ID' },
+      { key: 'before_data', label: '変更前' },
+      { key: 'after_data', label: '変更後' },
+    ];
+    sendCsv(res, '操作ログ.csv', columns, data);
+  } catch (err) {
+    console.error('操作ログCSVエラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
   }
 });

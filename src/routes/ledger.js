@@ -3,6 +3,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { sendCsv } = require('../services/csv');
+const { writeLog } = require('../services/log');
 
 const router = express.Router();
 
@@ -67,6 +68,11 @@ router.get('/csv', async (req, res) => {
       { key: 'use_start_date', label: '使用開始日' },
       { key: 'use_end_date', label: '使用終了日' },
     ];
+    await writeLog(pool, {
+      userId: req.session.user && req.session.user.id,
+      targetTable: 'ledger', operationType: 'CSV出力',
+      after: { file: '試薬管理台帳.csv', from: req.query.from || null, to: req.query.to || null, count: rows.length },
+    });
     sendCsv(res, '試薬管理台帳.csv', columns, rows);
   } catch (err) {
     console.error('試薬管理台帳CSVエラー:', err.message);

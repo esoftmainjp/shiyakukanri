@@ -34,7 +34,9 @@
 
   <script src="/common.js"></script>
   <script>
-    const TITLES = { receipts: '入 庫 伝 票', issues: '出 庫 伝 票', orders: '発 注 書', ledger: '試 薬 管 理 台 帳' };
+    const TITLES = { receipts: '入 庫 伝 票', issues: '出 庫 伝 票', orders: '発 注 書', ledger: '試 薬 管 理 台 帳', logs: '操 作 ロ グ' };
+    // id を使わず期間/絞り込みで出力する一覧系
+    const LIST_TYPES = ['ledger', 'logs'];
     const q = new URLSearchParams(location.search);
     const type = q.get('type');
     const id = q.get('id');
@@ -49,16 +51,16 @@
     async function boot() {
       // ログインヘッダは描画するが、未ログインでも印刷内容は表示を試みる
       await initPage('');
-      // ledger は id ではなく期間(from/to)で出力
-      if (!type || !TITLES[type] || (type !== 'ledger' && !id)) {
+      // ledger/logs は id ではなく期間・絞り込みで出力
+      if (!type || !TITLES[type] || (!LIST_TYPES.includes(type) && !id)) {
         document.getElementById('sheet').innerHTML = '<p>印刷対象が不正です。</p>';
         return;
       }
       // 自社情報(伝票ヘッダー用)を取得
       const cs = await api('/api/settings');
       if (cs.ok) company = cs.data.settings || {};
-      const url = type === 'ledger'
-        ? '/api/ledger?' + q.toString()
+      const url = LIST_TYPES.includes(type)
+        ? '/api/' + type + '?' + q.toString()
         : '/api/' + type + '/' + id;
       const { ok, data } = await api(url);
       if (!ok) {
@@ -66,6 +68,12 @@
         return;
       }
       render(data);
+      // 印刷操作をログに記録
+      const isList = LIST_TYPES.includes(type);
+      const detail = isList
+        ? { title: TITLES[type], from: q.get('from') || null, to: q.get('to') || null }
+        : { title: TITLES[type] };
+      api('/api/activity', { method: 'POST', body: JSON.stringify({ action: 'print', targetTable: type, targetId: isList ? null : id, detail }) });
       // 描画後に自動で印刷ダイアログ
       setTimeout(() => { window.print(); }, 300);
     }
@@ -91,11 +99,12 @@
     }
 
     function render(data) {
-      // 台帳は会社名のみ(電話番号・住所・担当者は印字しない)
-      let html = printStamp() + companyHeader(type === 'ledger') + `<h1>${TITLES[type]}</h1>`;
+      // 台帳・操作ログは会社名のみ(電話番号・住所・担当者は印字しない)
+      let html = printStamp() + companyHeader(LIST_TYPES.includes(type)) + `<h1>${TITLES[type]}</h1>`;
       if (type === 'receipts') html += receiptBody(data);
       else if (type === 'issues') html += issueBody(data);
       else if (type === 'ledger') html += ledgerBody(data);
+      else if (type === 'logs') html += logsBody(data);
       else html += orderBody(data);
       document.getElementById('sheet').innerHTML = html;
     }
@@ -164,6 +173,47 @@
           h += `<tr><td>${r.receipt_date || ''}</td><td>${esc(r.product_name)}</td><td>${esc(r.lot_number) || '(なし)'}</td>` +
             `<td>${esc(r.content_code)}</td><td>${r.expiry_date || ''}</td><td>${r.use_start_date || ''}</td>` +
             `<td>${r.use_end_date || ''}</td></tr>`;
+        });
+      }
+      h += `</tbody></table>`;
+      return h;
+    }
+
+    function jsonInline(obj) {
+      if (obj == null) return '';
+      try { return esc(JSON.stringify(obj)); } catch (e) { return esc(String(obj)); }
+    }
+    function fmtTs(s) {
+      if (!s) return '';
+      const d = new Date(s);
+      if (isNaN(d)) return esc(s);
+      const p = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+    const LOG_TABLE_JP = {
+      users: 'ユーザー', products: '商品', product_details: '商品詳細', suppliers: '問屋',
+      receipts: '入庫', receipt_details: '入庫明細', issues: '出庫', issue_details: '出庫明細',
+      orders: '発注', order_details: '発注明細', barcodes: 'バーコード', usage_records: '使用記録',
+      stock_movements: '在庫変動', product_stocks: '在庫', app_settings: '設定',
+      ledger: '試薬管理台帳', inventory: '在庫一覧', logs: '操作ログ',
+    };
+    function logsBody(data) {
+      const from = q.get('from') || '';
+      const to = q.get('to') || '';
+      const rows = data.items || [];
+      let h = metaRow([['期間', `${from || '—'} ～ ${to || '—'}`], ['件数', rows.length]]);
+      h += `<table><thead><tr><th>日時</th><th>ユーザー</th><th>操作</th><th>対象</th>` +
+        `<th class="num">対象ID</th><th>変更前</th><th>変更後</th></tr></thead><tbody>`;
+      if (rows.length === 0) {
+        h += `<tr><td colspan="7" style="text-align:center;">該当するログがありません。</td></tr>`;
+      } else {
+        rows.forEach((r) => {
+          h += `<tr><td>${fmtTs(r.created_at)}</td><td>${esc(r.user_name || '(不明)')}</td>` +
+            `<td>${esc(r.operation_type) || '-'}</td>` +
+            `<td>${esc(r.target_table_label || LOG_TABLE_JP[r.target_table] || r.target_table || '')}</td>` +
+            `<td class="num">${r.target_id == null ? '' : esc(r.target_id)}</td>` +
+            `<td style="font-size:0.78rem; word-break:break-all;">${jsonInline(r.before_data)}</td>` +
+            `<td style="font-size:0.78rem; word-break:break-all;">${jsonInline(r.after_data)}</td></tr>`;
         });
       }
       h += `</tbody></table>`;

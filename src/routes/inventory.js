@@ -74,6 +74,11 @@ router.get('/csv', async (req, res) => {
       { key: 'last_receipt_date', label: '最終入庫日' },
       { key: 'last_issue_date', label: '最終出庫日' },
     ];
+    await writeLog(pool, {
+      userId: req.session.user && req.session.user.id,
+      targetTable: 'inventory', operationType: 'CSV出力',
+      after: { file: '在庫一覧.csv', count: rows.length },
+    });
     sendCsv(res, '在庫一覧.csv', columns, rows);
   } catch (err) {
     console.error('在庫CSVエラー:', err.message);

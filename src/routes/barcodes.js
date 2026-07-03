@@ -2,6 +2,7 @@
 
 const express = require('express');
 const { pool } = require('../db');
+const { writeLog } = require('../services/log');
 
 const router = express.Router();
 
@@ -51,6 +52,11 @@ router.post('/mark-printed', async (req, res) => {
         WHERE barcode_value = ANY($1::text[]) AND voided_flag = FALSE`,
       [values]
     );
+    await writeLog(pool, {
+      userId: req.session.user && req.session.user.id,
+      targetTable: 'barcodes', operationType: 'バーコード印刷',
+      after: { count: r.rowCount, values: values.slice(0, 50) },
+    });
     res.json({ ok: true, updated: r.rowCount });
   } catch (err) {
     console.error('印刷済み更新エラー:', err.message);

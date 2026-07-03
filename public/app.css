@@ -142,6 +142,11 @@ input:focus, select:focus {
 .row > div { flex: 1; min-width: 120px; }
 .row input, .row select { width: 100%; }
 
+/* ===== IME制御 ===== */
+/* バーコードは半角固定(IME OFF)。備考等の自由入力欄はIME ON(日本語) */
+.barcode-input { ime-mode: disabled; }
+.ime-on, textarea, input[placeholder="任意"] { ime-mode: active; }
+
 /* ===== バーコード読取欄(目立たせる) ===== */
 .barcode-input {
   font-family: "Consolas", "SFMono-Regular", "Courier New", monospace;
