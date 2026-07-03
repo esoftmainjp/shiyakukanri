@@ -82,7 +82,7 @@
         </div>
         <div style="flex:0;">
           <label>&nbsp;</label>
-          <button onclick="addLine()">明細に追加</button>
+          <button id="addLineBtn" onclick="addLine()">明細に追加</button>
         </div>
       </div>
       <p class="msg" id="addMsg"></p>
@@ -126,14 +126,10 @@
       });
       supSel.addEventListener('change', onSupplierChange);
       const sel = document.getElementById('product');
-      sel.innerHTML = products.map((p) => {
-        const d = p.details[0];
-        return `<option value="${p.productId}">${p.productName}${d && d.spec ? '（' + d.spec + '）' : ''}</option>`;
-      }).join('');
       sel.addEventListener('change', fillDefaults);
       document.getElementById('lot').addEventListener('input', updateCurrentStock);
       document.getElementById('expiry').addEventListener('change', updateCurrentStock);
-      fillDefaults();
+      rebuildProductOptions(); // 初期は問屋未選択→商品追加不可
 
       // GS1-128スキャン: Enterで確定
       const scan = document.getElementById('scan');
@@ -191,7 +187,17 @@
     function rebuildProductOptions() {
       const sid = document.getElementById('supplier').value;
       const sel = document.getElementById('product');
-      const list = sid ? products.filter((p) => (p.details || []).some((d) => String(d.supplierId) === String(sid))) : products;
+      const addBtn = document.getElementById('addLineBtn');
+      // 問屋未選択なら商品追加不可
+      if (!sid) {
+        sel.innerHTML = '<option value="">（先に問屋を選択してください）</option>';
+        sel.disabled = true;
+        if (addBtn) addBtn.disabled = true;
+        return;
+      }
+      sel.disabled = false;
+      if (addBtn) addBtn.disabled = false;
+      const list = products.filter((p) => (p.details || []).some((d) => String(d.supplierId) === String(sid)));
       sel.innerHTML = list.map((p) => {
         const d = (p.details || []).find((x) => String(x.supplierId) === String(sid)) || p.details[0];
         return `<option value="${p.productId}">${p.productName}${d && d.spec ? '（' + d.spec + '）' : ''}</option>`;
@@ -206,6 +212,7 @@
     }
 
     function addLine() {
+      if (!document.getElementById('supplier').value) { setMsg(document.getElementById('addMsg'), '先に問屋を選択してください', 'error'); return; }
       const cur = currentDetail();
       if (!cur || !cur.detail) return;
       const qty = Number(document.getElementById('qty').value);
