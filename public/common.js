@@ -43,6 +43,7 @@ function renderHeader(user, activeKey) {
       ['expiry', '/expiry.html', '使用期限'],
       ['useend', '/use-end.html', '使用終了日'],
       ['labels', '/labels.html', 'バーコード印刷'],
+      ['history', '/history.html', '履歴'],
       ['ledger', '/ledger.html', '試薬台帳'],
     ];
     if (user.userType === 'admin') nav.push(['masters', '/masters.html', 'マスター編集']);

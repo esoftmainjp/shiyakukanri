@@ -130,7 +130,7 @@ router.get('/barcode/:value', async (req, res) => {
          FROM barcodes b
          JOIN products p ON p.id = b.product_id
          JOIN receipt_details rd ON rd.id = b.receipt_detail_id
-        WHERE b.barcode_value = $1`,
+        WHERE b.barcode_value = $1 AND b.voided_flag = FALSE`,
       [req.params.value]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'バーコードが見つかりません' });

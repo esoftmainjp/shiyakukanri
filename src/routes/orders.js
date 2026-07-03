@@ -10,6 +10,13 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// 履歴の編集・削除は管理者/一般のみ
+function requireEditor(req, res, next) {
+  const t = req.session.user && req.session.user.userType;
+  if (t === 'admin' || t === 'general') return next();
+  return res.status(403).json({ error: 'この操作の権限がありません' });
+}
+
 // 発注一覧 (状態で絞り込み可)。明細も付与する。
 // GET /api/orders?status=unordered
 router.get('/', async (req, res) => {
@@ -45,6 +52,39 @@ router.get('/', async (req, res) => {
     res.json({ orders: result });
   } catch (err) {
     console.error('発注一覧エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 発注明細詳細
+// GET /api/orders/:id
+router.get('/:id', async (req, res) => {
+  try {
+    const head = await pool.query(
+      `SELECT o.id, o.order_date, o.supplier_id, s.name AS supplier_name,
+              o.order_status, o.note, o.created_at, u.name AS user_name
+         FROM orders o
+         LEFT JOIN suppliers s ON s.id = o.supplier_id
+         LEFT JOIN users u ON u.id = o.user_id
+        WHERE o.id = $1`,
+      [req.params.id]
+    );
+    if (head.rowCount === 0) return res.status(404).json({ error: '発注が見つかりません' });
+    const details = await pool.query(
+      `SELECT od.id, od.product_id, p.name AS product_name, od.product_detail_id,
+              od.planned_order_quantity, od.order_quantity, od.note,
+              COALESCE(pd.pack_size, 1) AS pack_size,
+              COALESCE((SELECT SUM(rp.receipt_piece_quantity) FROM receipt_plans rp WHERE rp.order_detail_id = od.id), 0) AS received_bara
+         FROM order_details od
+         JOIN products p ON p.id = od.product_id
+         LEFT JOIN product_details pd ON pd.id = od.product_detail_id
+        WHERE od.order_id = $1
+        ORDER BY od.id`,
+      [req.params.id]
+    );
+    res.json({ order: head.rows[0], details: details.rows });
+  } catch (err) {
+    console.error('発注明細エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
   }
 });
@@ -153,6 +193,69 @@ router.post('/:id/details', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('発注明細追加エラー:', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'サーバーエラー' });
+  } finally {
+    client.release();
+  }
+});
+
+// 発注の編集(備考・発注日のみ)
+// PATCH /api/orders/:id  body: { note?, orderDate? }
+router.patch('/:id', requireEditor, async (req, res) => {
+  const { note, orderDate } = req.body || {};
+  try {
+    const cur = await pool.query(`SELECT id, order_date, note FROM orders WHERE id = $1`, [req.params.id]);
+    if (cur.rowCount === 0) return res.status(404).json({ error: '発注が見つかりません' });
+    const newDate = (orderDate !== undefined && orderDate !== '') ? orderDate : cur.rows[0].order_date;
+    const newNote = note != null ? note : cur.rows[0].note;
+    await pool.query(`UPDATE orders SET order_date = $1, note = $2 WHERE id = $3`, [newDate, newNote, req.params.id]);
+    await writeLog(pool, {
+      userId: req.session.user.id, targetTable: 'orders', targetId: req.params.id, operationType: '更新',
+      before: { order_date: cur.rows[0].order_date, note: cur.rows[0].note }, after: { order_date: newDate, note: newNote },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('発注編集エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 発注の削除
+// DELETE /api/orders/:id  ブロック条件: 入庫予定(receipt_plans)が紐付く(入庫済み)
+router.delete('/:id', requireEditor, async (req, res) => {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const cur = await client.query(`SELECT id, order_status, note FROM orders WHERE id = $1 FOR UPDATE`, [req.params.id]);
+    if (cur.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: '発注が見つかりません' }); }
+
+    const rp = await client.query(
+      `SELECT COUNT(*) AS c FROM receipt_plans rp
+         JOIN order_details od ON od.id = rp.order_detail_id
+        WHERE od.order_id = $1`,
+      [req.params.id]
+    );
+    if (Number(rp.rows[0].c) > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: '入庫済みの発注は削除できません' });
+    }
+
+    // 発注予定(order_plans)→発注明細→発注 の順に削除
+    await client.query(
+      `DELETE FROM order_plans WHERE order_detail_id IN (SELECT id FROM order_details WHERE order_id = $1)`,
+      [req.params.id]
+    );
+    await client.query(`DELETE FROM order_details WHERE order_id = $1`, [req.params.id]);
+    await client.query(`DELETE FROM orders WHERE id = $1`, [req.params.id]);
+    await writeLog(client, {
+      userId: req.session.user.id, targetTable: 'orders', targetId: req.params.id, operationType: '削除',
+      before: { order_status: cur.rows[0].order_status, note: cur.rows[0].note },
+    });
+    await client.query('COMMIT');
+    res.json({ ok: true, message: '発注を削除しました' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('発注削除エラー:', err.message);
     res.status(err.status || 500).json({ error: err.message || 'サーバーエラー' });
   } finally {
     client.release();

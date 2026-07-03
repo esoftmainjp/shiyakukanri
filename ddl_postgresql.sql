@@ -241,6 +241,7 @@ CREATE TABLE issue_details (
     pack_size           INTEGER     NOT NULL DEFAULT 1,   -- 出庫時点の梱包数スナップショット
     -- 出庫合計数(バラ個数) = 出庫個数 × 梱包数
     issue_total_quantity INTEGER GENERATED ALWAYS AS (issue_quantity * pack_size) STORED,
+    barcode_id          BIGINT,     -- バーコード出庫時の対象個体(出庫取消時の復元用)。FKはbarcodes定義後に付与
     note                TEXT        NOT NULL DEFAULT ''
 );
 COMMENT ON TABLE  issue_details                      IS '出庫明細';
@@ -249,6 +250,7 @@ COMMENT ON COLUMN issue_details.product_id           IS '商品ID';
 COMMENT ON COLUMN issue_details.product_detail_id    IS '商品詳細ID';
 COMMENT ON COLUMN issue_details.lot_number           IS 'ロット番号';
 COMMENT ON COLUMN issue_details.expiry_date          IS '使用期限';
+COMMENT ON COLUMN issue_details.barcode_id           IS 'バーコード出庫時の対象バーコードID(出庫取消時の復元用)';
 COMMENT ON COLUMN issue_details.issue_quantity       IS '出庫個数(入力単位)';
 COMMENT ON COLUMN issue_details.pack_size            IS '梱包数(出庫時点スナップショット)';
 COMMENT ON COLUMN issue_details.issue_total_quantity IS '出庫合計数(バラ個数=出庫個数×梱包数)';
@@ -411,7 +413,8 @@ CREATE INDEX idx_receipt_plans_receipt_detail ON receipt_plans(receipt_detail_id
 -- 16. バーコード管理 (独自バーコード1本=バラ1個の個体単位)
 CREATE TABLE barcodes (
     id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    receipt_detail_id BIGINT      NOT NULL REFERENCES receipt_details(id),
+    -- 入庫削除時に void 行を残したまま receipt_details を消せるよう NULL許可 + ON DELETE SET NULL
+    receipt_detail_id BIGINT      REFERENCES receipt_details(id) ON DELETE SET NULL,
     product_id        BIGINT      NOT NULL REFERENCES products(id),
     barcode_value     VARCHAR(64) NOT NULL,
     issue_date        DATE        NOT NULL,
@@ -421,6 +424,7 @@ CREATE TABLE barcodes (
     used_flag         BOOLEAN     NOT NULL DEFAULT FALSE,
     use_start_date    DATE,                             -- 使用開始日(=出庫日。出庫時に自動記録)
     use_end_date      DATE,                             -- 使用終了日(使用終了日登録画面で登録)
+    voided_flag       BOOLEAN     NOT NULL DEFAULT FALSE,-- 無効化(論理削除)。入庫削除時に値を予約したまま無効化
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_barcodes_value        UNIQUE (barcode_value),
     CONSTRAINT uq_barcodes_content_code UNIQUE (product_id, content_code)
@@ -436,9 +440,16 @@ COMMENT ON COLUMN barcodes.content_code      IS '内容物コード(商品ごと
 COMMENT ON COLUMN barcodes.used_flag         IS '使用済みフラグ';
 COMMENT ON COLUMN barcodes.use_start_date    IS '使用開始日(=出庫日)';
 COMMENT ON COLUMN barcodes.use_end_date      IS '使用終了日';
+COMMENT ON COLUMN barcodes.voided_flag       IS '無効化(論理削除)フラグ。TRUEは入庫削除等で無効化された値(再発行しない)';
 
 CREATE INDEX idx_barcodes_receipt_detail ON barcodes(receipt_detail_id);
 CREATE INDEX idx_barcodes_product        ON barcodes(product_id);
+CREATE INDEX idx_barcodes_active         ON barcodes(barcode_value) WHERE voided_flag = FALSE;
+
+-- issue_details.barcode_id のFK(barcodes定義後に付与)＋索引
+ALTER TABLE issue_details
+    ADD CONSTRAINT fk_issue_details_barcode FOREIGN KEY (barcode_id) REFERENCES barcodes(id);
+CREATE INDEX idx_issue_details_barcode ON issue_details(barcode_id);
 
 -- 15. 在庫移動履歴
 CREATE TABLE stock_movements (

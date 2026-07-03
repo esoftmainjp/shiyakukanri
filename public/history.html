@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>履歴 | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+  <style>
+    .tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+    .tabs button { background: #dde3e8; color: #333; border-radius: 6px 6px 0 0; }
+    .tabs button.active { background: #2c5f8a; color: #fff; }
+    tr.detail-row td { background: #f8fafc; }
+    .detail-row table { margin: 4px 0; }
+    .actions button { padding: 4px 10px; font-size: 0.82rem; margin-right: 4px; }
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 10; }
+    .modal-bg.show { display: flex; }
+    .modal { background: #fff; border-radius: 8px; padding: 20px; min-width: 320px; max-width: 90vw; }
+    .modal h3 { margin-top: 0; font-size: 1rem; }
+    .nowrap { white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <header></header>
+  <main>
+    <div class="card">
+      <h2>履歴（入庫・出庫・発注）</h2>
+      <div class="tabs">
+        <button id="tab-receipts" class="active" onclick="switchTab('receipts')">入庫</button>
+        <button id="tab-issues" onclick="switchTab('issues')">出庫</button>
+        <button id="tab-orders" onclick="switchTab('orders')">発注</button>
+      </div>
+
+      <div class="row">
+        <div id="fltDate"><label>期間(自)</label><input type="date" id="from" /></div>
+        <div id="fltDate2"><label>期間(至)</label><input type="date" id="to" /></div>
+        <div id="fltProduct" style="flex:2;"><label>商品</label><select id="productId"><option value="">(すべて)</option></select></div>
+        <div id="fltStatus" style="display:none;"><label>状態</label>
+          <select id="status">
+            <option value="">(すべて)</option>
+            <option value="unordered">未発注</option>
+            <option value="ordered">発注済み</option>
+            <option value="received">入庫済み</option>
+            <option value="canceled">キャンセル</option>
+          </select>
+        </div>
+        <div style="flex:1;"><label>キーワード</label><input id="query" placeholder="商品名/備考" /></div>
+        <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">検索</button></div>
+      </div>
+      <p class="msg" id="msg"></p>
+      <div id="listArea"></div>
+    </div>
+  </main>
+
+  <!-- 編集モーダル(備考・日付) -->
+  <div class="modal-bg" id="editModal">
+    <div class="modal">
+      <h3 id="editTitle">編集</h3>
+      <div><label id="editDateLabel">日付</label><input type="date" id="editDate" /></div>
+      <div><label>備考</label><input id="editNote" style="width:100%;" /></div>
+      <p class="msg" id="editMsg"></p>
+      <div style="margin-top:12px; text-align:right;">
+        <button class="secondary" onclick="closeEdit()">キャンセル</button>
+        <button onclick="saveEdit()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/common.js"></script>
+  <script>
+    let tab = 'receipts';
+    let canEdit = false;      // 管理者/一般のみ編集・削除可
+    let editing = null;       // { kind, id }
+
+    const DATE_LABEL = { receipts: '入庫日', issues: '出庫日', orders: '発注日' };
+
+    async function boot() {
+      const user = await initPage('history');
+      if (!user) return;
+      canEdit = (user.userType === 'admin' || user.userType === 'general');
+      const sel = document.getElementById('productId');
+      (await getProducts()).forEach((p) => {
+        const o = document.createElement('option');
+        o.value = p.productId; o.textContent = p.productName; sel.appendChild(o);
+      });
+      // 既定期間: 今月1日〜今日
+      const t = new Date().toISOString().slice(0, 10);
+      document.getElementById('from').value = t.slice(0, 8) + '01';
+      document.getElementById('to').value = t;
+      load();
+    }
+
+    function switchTab(t) {
+      tab = t;
+      ['receipts', 'issues', 'orders'].forEach((k) => {
+        document.getElementById('tab-' + k).classList.toggle('active', k === t);
+      });
+      // 発注タブは状態フィルタ、他は商品フィルタ
+      document.getElementById('fltProduct').style.display = (t === 'orders') ? 'none' : '';
+      document.getElementById('fltStatus').style.display = (t === 'orders') ? '' : 'none';
+      document.getElementById('fltDate').style.display = (t === 'orders') ? 'none' : '';
+      document.getElementById('fltDate2').style.display = (t === 'orders') ? 'none' : '';
+      load();
+    }
+
+    function qs() {
+      const p = new URLSearchParams();
+      const from = document.getElementById('from').value;
+      const to = document.getElementById('to').value;
+      const productId = document.getElementById('productId').value;
+      const query = document.getElementById('query').value.trim();
+      const status = document.getElementById('status').value;
+      if (tab === 'orders') {
+        if (status) p.set('status', status);
+      } else {
+        if (from) p.set('from', from);
+        if (to) p.set('to', to);
+        if (productId) p.set('productId', productId);
+      }
+      if (query) p.set('query', query);
+      return p.toString();
+    }
+
+    async function load() {
+      setMsg(document.getElementById('msg'), '', '');
+      const { ok, data } = await api('/api/' + tab + '?' + qs());
+      const area = document.getElementById('listArea');
+      if (!ok) { setMsg(document.getElementById('msg'), data.error || '取得失敗', 'error'); area.innerHTML = ''; return; }
+      if (tab === 'receipts') renderReceipts(data.receipts || []);
+      else if (tab === 'issues') renderIssues(data.issues || []);
+      else renderOrders(data.orders || []);
+    }
+
+    function actionButtons(kind, id, delLabel) {
+      if (!canEdit) return '';
+      return `<span class="actions">` +
+        `<button class="secondary" onclick="openEdit('${kind}',${id})">編集</button>` +
+        `<button class="danger" onclick="del('${kind}',${id})">${delLabel || '削除'}</button></span>`;
+    }
+
+    function renderReceipts(rows) {
+      let h = `<table><thead><tr><th>ID</th><th>入庫日</th><th>問屋</th><th>明細</th><th>バラ計</th><th>BC(使用)</th><th>備考</th><th>担当</th><th></th></tr></thead><tbody>`;
+      if (rows.length === 0) h += `<tr><td colspan="9">該当がありません。</td></tr>`;
+      rows.forEach((r) => {
+        h += `<tr>` +
+          `<td>${r.id}</td><td class="nowrap">${r.receipt_date}</td><td>${r.supplier_name || ''}</td>` +
+          `<td><a href="#" onclick="toggle('receipts',${r.id},this);return false;">${r.detail_count}件</a></td>` +
+          `<td>${r.total_bara}</td><td>${r.barcode_count}(${r.barcode_used_count})</td>` +
+          `<td>${esc(r.note)}</td><td>${esc(r.user_name || '')}</td>` +
+          `<td class="nowrap">${actionButtons('receipts', r.id)}</td></tr>`;
+      });
+      h += `</tbody></table>`;
+      document.getElementById('listArea').innerHTML = h;
+    }
+
+    function renderIssues(rows) {
+      let h = `<table><thead><tr><th>ID</th><th>出庫日</th><th>明細</th><th>バラ計</th><th>備考</th><th>担当</th><th></th></tr></thead><tbody>`;
+      if (rows.length === 0) h += `<tr><td colspan="7">該当がありません。</td></tr>`;
+      rows.forEach((r) => {
+        h += `<tr>` +
+          `<td>${r.id}</td><td class="nowrap">${r.issue_date}</td>` +
+          `<td><a href="#" onclick="toggle('issues',${r.id},this);return false;">${r.detail_count}件</a></td>` +
+          `<td>${r.total_bara}</td><td>${esc(r.note)}</td><td>${esc(r.user_name || '')}</td>` +
+          `<td class="nowrap">${actionButtons('issues', r.id)}</td></tr>`;
+      });
+      h += `</tbody></table>`;
+      document.getElementById('listArea').innerHTML = h;
+    }
+
+    const STATUS_LABEL = { unordered: '未発注', ordered: '発注済み', received: '入庫済み', canceled: 'キャンセル' };
+    function renderOrders(rows) {
+      let h = `<table><thead><tr><th>ID</th><th>状態</th><th>発注日</th><th>問屋</th><th>明細</th><th>備考</th><th></th></tr></thead><tbody>`;
+      if (rows.length === 0) h += `<tr><td colspan="7">該当がありません。</td></tr>`;
+      rows.forEach((o) => {
+        const dc = (o.details || []).length;
+        h += `<tr>` +
+          `<td>${o.id}</td><td><span class="pill ${o.order_status}">${STATUS_LABEL[o.order_status] || o.order_status}</span></td>` +
+          `<td class="nowrap">${o.order_date || '-'}</td><td>${o.supplier_name || ''}</td>` +
+          `<td><a href="#" onclick="toggle('orders',${o.id},this);return false;">${dc}件</a></td>` +
+          `<td>${esc(o.note)}</td>` +
+          `<td class="nowrap">${actionButtons('orders', o.id, '削除')}</td></tr>`;
+      });
+      h += `</tbody></table>`;
+      document.getElementById('listArea').innerHTML = h;
+    }
+
+    // 明細の開閉
+    async function toggle(kind, id, link) {
+      const tr = link.closest('tr');
+      const next = tr.nextElementSibling;
+      if (next && next.classList.contains('detail-row')) { next.remove(); return; }
+      const { ok, data } = await api('/api/' + kind + '/' + id);
+      if (!ok) { setMsg(document.getElementById('msg'), data.error || '明細取得失敗', 'error'); return; }
+      const detailTr = document.createElement('tr');
+      detailTr.className = 'detail-row';
+      const td = document.createElement('td');
+      td.colSpan = tr.children.length;
+      td.innerHTML = detailHtml(kind, data);
+      detailTr.appendChild(td);
+      tr.after(detailTr);
+    }
+
+    function detailHtml(kind, data) {
+      const ds = data.details || [];
+      if (kind === 'orders') {
+        let h = `<table><thead><tr><th>商品</th><th>予定数</th><th>発注数</th><th>入庫済(バラ)</th><th>備考</th></tr></thead><tbody>`;
+        ds.forEach((d) => { h += `<tr><td>${esc(d.product_name)}</td><td>${d.planned_order_quantity}</td><td>${d.order_quantity}</td><td>${d.received_bara}</td><td>${esc(d.note)}</td></tr>`; });
+        return h + `</tbody></table>`;
+      }
+      const isRcpt = kind === 'receipts';
+      let h = `<table><thead><tr><th>商品</th><th>ロット</th><th>使用期限</th><th>${isRcpt ? '入庫' : '出庫'}数</th><th>梱包</th><th>バラ</th>${isRcpt ? '<th>BC(使用)</th>' : '<th>バーコード</th>'}<th>備考</th></tr></thead><tbody>`;
+      ds.forEach((d) => {
+        const qty = isRcpt ? d.receipt_quantity : d.issue_quantity;
+        const bara = isRcpt ? d.stock_added_quantity : d.issue_total_quantity;
+        const bc = isRcpt ? `${d.barcode_count}(${d.barcode_used_count})` : (d.barcode_value || '-');
+        h += `<tr><td>${esc(d.product_name)}</td><td>${esc(d.lot_number) || '(なし)'}</td><td>${d.expiry_date || '(なし)'}</td><td>${qty}</td><td>${d.pack_size}</td><td>${bara}</td><td>${bc}</td><td>${esc(d.note)}</td></tr>`;
+      });
+      return h + `</tbody></table>`;
+    }
+
+    // 編集(備考・日付)
+    async function openEdit(kind, id) {
+      const { ok, data } = await api('/api/' + kind + '/' + id);
+      if (!ok) { setMsg(document.getElementById('msg'), data.error || '取得失敗', 'error'); return; }
+      const rec = data[kind === 'receipts' ? 'receipt' : kind === 'issues' ? 'issue' : 'order'];
+      editing = { kind, id };
+      document.getElementById('editTitle').textContent = ({ receipts: '入庫', issues: '出庫', orders: '発注' }[kind]) + ' 編集';
+      document.getElementById('editDateLabel').textContent = DATE_LABEL[kind];
+      const dateVal = kind === 'receipts' ? rec.receipt_date : kind === 'issues' ? rec.issue_date : rec.order_date;
+      document.getElementById('editDate').value = dateVal || '';
+      document.getElementById('editNote').value = rec.note || '';
+      setMsg(document.getElementById('editMsg'), '', '');
+      document.getElementById('editModal').classList.add('show');
+    }
+    function closeEdit() { document.getElementById('editModal').classList.remove('show'); editing = null; }
+
+    async function saveEdit() {
+      if (!editing) return;
+      const body = {};
+      const dateVal = document.getElementById('editDate').value;
+      const note = document.getElementById('editNote').value;
+      if (editing.kind === 'receipts') body.receiptDate = dateVal;
+      else if (editing.kind === 'issues') body.issueDate = dateVal;
+      else body.orderDate = dateVal;
+      body.note = note;
+      const { ok, data } = await api('/api/' + editing.kind + '/' + editing.id, { method: 'PATCH', body: JSON.stringify(body) });
+      if (!ok) { setMsg(document.getElementById('editMsg'), data.error || '保存失敗', 'error'); return; }
+      closeEdit();
+      setMsg(document.getElementById('msg'), '更新しました', 'ok');
+      load();
+    }
+
+    // 削除
+    async function del(kind, id) {
+      const name = { receipts: '入庫', issues: '出庫', orders: '発注' }[kind];
+      if (!confirm(`${name} ID:${id} を削除します。よろしいですか？\n（在庫・バーコード・発注予定・試薬台帳に反映されます）`)) return;
+      const { ok, data } = await api('/api/' + kind + '/' + id, { method: 'DELETE' });
+      if (!ok) { setMsg(document.getElementById('msg'), data.error || '削除できませんでした', 'error'); return; }
+      setMsg(document.getElementById('msg'), data.message || '削除しました', 'ok');
+      load();
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    boot();
+  </script>
+</body>
+</html>

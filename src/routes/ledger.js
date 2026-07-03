@@ -28,6 +28,7 @@ function buildLedgerQuery(q) {
                AND ps.lot_number = rd.lot_number
                AND ps.expiry_date IS NOT DISTINCT FROM rd.expiry_date
         WHERE p.qc_target_flag = TRUE
+          AND b.voided_flag = FALSE
           AND r.receipt_date <= $2
           AND COALESCE(b.use_start_date, DATE '9999-12-31') >= $1
        UNION ALL

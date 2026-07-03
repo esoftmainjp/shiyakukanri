@@ -12,7 +12,7 @@ router.get('/list', async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 1000, 5000);
   try {
     const params = [];
-    let cond = '1 = 1';
+    let cond = 'b.voided_flag = FALSE';
     if (from) { params.push(from); cond += ` AND b.issue_date >= $${params.length}`; }
     if (to) { params.push(to); cond += ` AND b.issue_date <= $${params.length}`; }
     if (productId) { params.push(productId); cond += ` AND b.product_id = $${params.length}`; }
@@ -45,7 +45,7 @@ router.get('/in-use', async (req, res) => {
   try {
     // 独自バーコード
     const bcParams = [];
-    let bcCond = 'b.used_flag = TRUE AND b.use_start_date IS NOT NULL AND b.use_end_date IS NULL';
+    let bcCond = 'b.voided_flag = FALSE AND b.used_flag = TRUE AND b.use_start_date IS NOT NULL AND b.use_end_date IS NULL';
     if (query) { bcParams.push('%' + query + '%'); bcCond += ` AND (b.barcode_value ILIKE $${bcParams.length} OR p.name ILIKE $${bcParams.length} OR CAST(b.content_code AS text) ILIKE $${bcParams.length})`; }
     if (productId) { bcParams.push(productId); bcCond += ` AND b.product_id = $${bcParams.length}`; }
     if (lot) { bcParams.push(lot); bcCond += ` AND rd.lot_number = $${bcParams.length}`; }

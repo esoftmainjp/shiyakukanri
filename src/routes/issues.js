@@ -1,11 +1,18 @@
 'use strict';
 
 const express = require('express');
-const { getClient } = require('../db');
-const { applyStockChange, addOrderPlan, createUsageRecords } = require('../services/inventory');
+const { pool, getClient } = require('../db');
+const { applyStockChange, addOrderPlan, createUsageRecords, reverseIssue } = require('../services/inventory');
 const { writeLog } = require('../services/log');
 
 const router = express.Router();
+
+// 履歴の編集・削除は管理者/一般のみ
+function requireEditor(req, res, next) {
+  const t = req.session.user && req.session.user.userType;
+  if (t === 'admin' || t === 'general') return next();
+  return res.status(403).json({ error: 'この操作の権限がありません' });
+}
 
 // 出庫登録
 // body: {
@@ -47,7 +54,7 @@ router.post('/', async (req, res) => {
       if (d.barcodeValue) {
         // 独自バーコード出庫: 個体を特定し、必ずバラ1個
         const bc = await client.query(
-          `SELECT b.id, b.used_flag, b.product_id, rd.product_detail_id, rd.lot_number, rd.expiry_date
+          `SELECT b.id, b.used_flag, b.voided_flag, b.product_id, rd.product_detail_id, rd.lot_number, rd.expiry_date
              FROM barcodes b
              JOIN receipt_details rd ON rd.id = b.receipt_detail_id
             WHERE b.barcode_value = $1
@@ -56,6 +63,9 @@ router.post('/', async (req, res) => {
         );
         if (bc.rowCount === 0) {
           throw Object.assign(new Error(`バーコードが見つかりません: ${d.barcodeValue}`), { status: 400 });
+        }
+        if (bc.rows[0].voided_flag) {
+          throw Object.assign(new Error(`無効化されたバーコードです: ${d.barcodeValue}`), { status: 400 });
         }
         if (bc.rows[0].used_flag) {
           throw Object.assign(new Error(`使用済みのバーコードです: ${d.barcodeValue}`), { status: 400 });
@@ -91,11 +101,11 @@ router.post('/', async (req, res) => {
       const det = await client.query(
         `INSERT INTO issue_details
            (issue_id, product_id, product_detail_id, lot_number, expiry_date,
-            issue_quantity, pack_size, note)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            issue_quantity, pack_size, barcode_id, note)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING id, issue_total_quantity`,
         [issueId, productId, productDetailId, lotNumber, expiryDate,
-         issueQty, packSize, d.note || '']
+         issueQty, packSize, barcodeId, d.note || '']
       );
       const issueDetailId = det.rows[0].id;
       const totalBara = Number(det.rows[0].issue_total_quantity);
@@ -178,6 +188,131 @@ router.post('/', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('出庫登録エラー:', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'サーバーエラー' });
+  } finally {
+    client.release();
+  }
+});
+
+// 出庫履歴一覧 (from/to/商品/キーワード)
+// GET /api/issues?from=&to=&productId=&query=
+router.get('/', async (req, res) => {
+  const { from, to, productId, query } = req.query;
+  const limit = Math.min(Number(req.query.limit) || 500, 2000);
+  try {
+    const params = [];
+    let cond = '1 = 1';
+    if (from) { params.push(from); cond += ` AND i.issue_date >= $${params.length}`; }
+    if (to) { params.push(to); cond += ` AND i.issue_date <= $${params.length}`; }
+    if (productId) { params.push(productId); cond += ` AND EXISTS (SELECT 1 FROM issue_details d WHERE d.issue_id = i.id AND d.product_id = $${params.length})`; }
+    if (query) { params.push('%' + query + '%'); cond += ` AND (i.note ILIKE $${params.length} OR EXISTS (SELECT 1 FROM issue_details d JOIN products p ON p.id = d.product_id WHERE d.issue_id = i.id AND p.name ILIKE $${params.length}))`; }
+    params.push(limit);
+    const { rows } = await pool.query(
+      `SELECT i.id, i.issue_date, i.note, i.created_at, u.name AS user_name,
+              (SELECT COUNT(*) FROM issue_details d WHERE d.issue_id = i.id) AS detail_count,
+              (SELECT COALESCE(SUM(d.issue_total_quantity), 0) FROM issue_details d WHERE d.issue_id = i.id) AS total_bara
+         FROM issues i
+         LEFT JOIN users u ON u.id = i.user_id
+        WHERE ${cond}
+        ORDER BY i.id DESC
+        LIMIT $${params.length}`,
+      params
+    );
+    res.json({ issues: rows });
+  } catch (err) {
+    console.error('出庫履歴エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 出庫明細
+// GET /api/issues/:id
+router.get('/:id', async (req, res) => {
+  try {
+    const head = await pool.query(
+      `SELECT i.id, i.issue_date, i.note, i.created_at, u.name AS user_name
+         FROM issues i LEFT JOIN users u ON u.id = i.user_id
+        WHERE i.id = $1`,
+      [req.params.id]
+    );
+    if (head.rowCount === 0) return res.status(404).json({ error: '出庫が見つかりません' });
+    const details = await pool.query(
+      `SELECT d.id, d.product_id, p.name AS product_name, d.product_detail_id,
+              d.lot_number, d.expiry_date, d.issue_quantity, d.pack_size,
+              d.issue_total_quantity, d.barcode_id, b.barcode_value, d.note
+         FROM issue_details d
+         JOIN products p ON p.id = d.product_id
+         LEFT JOIN barcodes b ON b.id = d.barcode_id
+        WHERE d.issue_id = $1
+        ORDER BY d.id`,
+      [req.params.id]
+    );
+    res.json({ issue: head.rows[0], details: details.rows });
+  } catch (err) {
+    console.error('出庫明細エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 出庫の編集(備考・出庫日のみ)。出庫日変更は使用開始日(バーコード/使用記録)にも連動。
+// PATCH /api/issues/:id  body: { note?, issueDate? }
+router.patch('/:id', requireEditor, async (req, res) => {
+  const { note, issueDate } = req.body || {};
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const cur = await client.query(`SELECT id, issue_date, note FROM issues WHERE id = $1 FOR UPDATE`, [req.params.id]);
+    if (cur.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: '出庫が見つかりません' }); }
+    const oldDate = cur.rows[0].issue_date;
+    const newDate = issueDate || oldDate;
+    const newNote = note != null ? note : cur.rows[0].note;
+
+    await client.query(`UPDATE issues SET issue_date = $1, note = $2 WHERE id = $3`, [newDate, newNote, req.params.id]);
+
+    // 出庫日変更時: この出庫のバーコード・使用記録の使用開始日を連動更新(未終了のもの)
+    if (issueDate && newDate !== oldDate) {
+      await client.query(
+        `UPDATE barcodes SET use_start_date = $1
+          WHERE id IN (SELECT barcode_id FROM issue_details WHERE issue_id = $2 AND barcode_id IS NOT NULL)`,
+        [newDate, req.params.id]
+      );
+      await client.query(
+        `UPDATE usage_records SET use_start_date = $1 WHERE issue_id = $2`,
+        [newDate, req.params.id]
+      );
+    }
+    await writeLog(client, {
+      userId: req.session.user.id, targetTable: 'issues', targetId: req.params.id, operationType: '更新',
+      before: { issue_date: oldDate, note: cur.rows[0].note }, after: { issue_date: newDate, note: newNote },
+    });
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('出庫編集エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  } finally {
+    client.release();
+  }
+});
+
+// 出庫の削除(巻き戻し)
+// DELETE /api/issues/:id
+router.delete('/:id', requireEditor, async (req, res) => {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const before = await client.query(`SELECT issue_date, note FROM issues WHERE id = $1`, [req.params.id]);
+    await reverseIssue(client, req.params.id, req.session.user.id);
+    await writeLog(client, {
+      userId: req.session.user.id, targetTable: 'issues', targetId: req.params.id, operationType: '削除',
+      before: before.rows[0] || null,
+    });
+    await client.query('COMMIT');
+    res.json({ ok: true, message: '出庫を削除しました（在庫・バーコード・発注予定を巻き戻しました）' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('出庫削除エラー:', err.message);
     res.status(err.status || 500).json({ error: err.message || 'サーバーエラー' });
   } finally {
     client.release();
