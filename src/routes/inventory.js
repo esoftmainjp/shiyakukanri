@@ -27,7 +27,11 @@ function buildStockQuery(q) {
 
   const sql =
     `SELECT s.id, p.id AS product_id, p.name AS product_name,
-            d.name AS department, c.name AS category,
+            d.name AS department, c.name AS category, p.note AS note,
+            (SELECT string_agg(DISTINCT s2.name, ', ') FROM product_details pd2
+               JOIN suppliers s2 ON s2.id = pd2.supplier_id WHERE pd2.product_id = p.id) AS supplier,
+            (SELECT string_agg(DISTINCT m2.name, ', ') FROM product_details pd2
+               JOIN makers m2 ON m2.id = pd2.maker_id WHERE pd2.product_id = p.id) AS maker,
             s.lot_number, s.expiry_date, s.stock_quantity,
             s.first_receipt_date, s.last_receipt_date, s.last_issue_date
        FROM product_stocks s
@@ -58,11 +62,14 @@ router.get('/csv', async (req, res) => {
     const { rows } = await pool.query(sql, params);
     const columns = [
       { key: 'product_name', label: '商品名' },
+      { key: 'supplier', label: '問屋' },
+      { key: 'maker', label: 'メーカー' },
       { key: 'department', label: '部門' },
       { key: 'category', label: '分類' },
       { key: 'lot_number', label: 'ロット番号' },
       { key: 'expiry_date', label: '使用期限' },
       { key: 'stock_quantity', label: '在庫数(バラ)' },
+      { key: 'note', label: '備考' },
       { key: 'first_receipt_date', label: '初回入庫日' },
       { key: 'last_receipt_date', label: '最終入庫日' },
       { key: 'last_issue_date', label: '最終出庫日' },

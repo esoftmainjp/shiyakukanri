@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>在庫管理 | 試薬在庫管理システム</title>
   <link rel="stylesheet" href="/app.css" />
+  <style>
+    .scroll-x { overflow-x: auto; margin-top: 12px; }
+    /* 横スクロールしても商品名(左)と操作(右)を固定 */
+    #tbl { overflow: visible; min-width: 1100px; margin-top: 0; }
+    #tbl th.sticky-l, #tbl td.sticky-l { position: sticky; left: 0; z-index: 1; background: #fff; box-shadow: 2px 0 5px rgba(80,100,140,0.10); }
+    #tbl thead th.sticky-l { z-index: 3; background: var(--th-bg); }
+    #tbl th.sticky-r, #tbl td.sticky-r { position: sticky; right: 0; z-index: 1; background: #fff; box-shadow: -2px 0 5px rgba(80,100,140,0.10); text-align: center; white-space: nowrap; }
+    #tbl thead th.sticky-r { z-index: 3; background: var(--th-bg); }
+  </style>
 </head>
 <body>
   <header></header>
@@ -33,10 +42,15 @@
         <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="downloadCsv()">CSV出力</button></div>
       </div>
       <p class="msg" id="msg"></p>
-      <table id="tbl">
-        <thead><tr><th>商品名</th><th>部門</th><th>ロット</th><th>使用期限</th><th>在庫数</th><th>操作</th></tr></thead>
-        <tbody></tbody>
-      </table>
+      <div class="scroll-x">
+        <table id="tbl">
+          <thead><tr>
+            <th class="sticky-l">商品名</th><th>問屋</th><th>メーカー</th><th>部門</th><th>分類</th>
+            <th>ロット</th><th>使用期限</th><th>在庫数</th><th>備考</th><th class="sticky-r">操作</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- 調整ダイアログ代わりのカード -->
@@ -96,18 +110,28 @@
       return p.toString();
     }
 
+    let stockRows = [];
     async function load() {
       const { data } = await api('/api/inventory?' + queryString());
+      stockRows = data.stocks || [];
       const tbody = document.querySelector('#tbl tbody');
       tbody.innerHTML = '';
-      (data.stocks || []).forEach((s) => {
+      if (stockRows.length === 0) { tbody.innerHTML = '<tr><td class="sticky-l">該当する在庫がありません</td></tr>'; return; }
+      stockRows.forEach((s, i) => {
         const tr = document.createElement('tr');
         tr.innerHTML =
-          `<td>${s.product_name}</td><td>${s.department || ''}</td><td>${s.lot_number || '(なし)'}</td>` +
-          `<td>${s.expiry_date || '(なし)'}</td><td style="text-align:right;">${s.stock_quantity}</td>` +
-          `<td><button class="secondary" onclick='openEdit(${JSON.stringify(s)})'>修正/廃棄/返品</button></td>`;
+          `<td class="sticky-l">${esc(s.product_name)}</td>` +
+          `<td>${esc(s.supplier)}</td><td>${esc(s.maker)}</td><td>${esc(s.department)}</td><td>${esc(s.category)}</td>` +
+          `<td>${esc(s.lot_number) || '(なし)'}</td><td>${s.expiry_date || '(なし)'}</td>` +
+          `<td style="text-align:right;">${s.stock_quantity}</td><td>${esc(s.note)}</td>` +
+          `<td class="sticky-r"><button class="secondary" onclick="openEditByIndex(${i})">修正/廃棄/返品</button></td>`;
         tbody.appendChild(tr);
       });
+    }
+    function openEditByIndex(i) { openEdit(stockRows[i]); }
+    function esc(v) {
+      return String(v == null ? '' : v).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
     function downloadCsv() { window.location = '/api/inventory/csv?' + queryString(); }
