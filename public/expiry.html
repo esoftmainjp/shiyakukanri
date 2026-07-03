@@ -6,8 +6,9 @@
   <title>使用期限管理 | 試薬在庫管理システム</title>
   <link rel="stylesheet" href="/app.css" />
   <style>
-    tr.expired { background: #fde8e8; }
-    tr.warning { background: #fff5e0; }
+    /* app.cssのゼブラ縞(偶数行)より優先させるためID付きで指定 */
+    #tbl tbody tr.expired, #tbl tbody tr.expired:hover { background: #fde8e8; }
+    #tbl tbody tr.warning, #tbl tbody tr.warning:hover { background: #fff5e0; }
     /* 凡例: 実際の行の色と揃える(薄いパステル) */
     .legend { display: inline-block; padding: 2px 12px; border-radius: 12px; font-size: 0.82rem; font-weight: 700; margin-right: 8px; }
     .legend.expired { background: #fde8e8; color: #c0575d; border: 1px solid #f3c9c9; }
