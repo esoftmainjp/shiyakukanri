@@ -18,6 +18,12 @@
         <div><label>使用期限(まで)</label><input type="date" id="fExpiryTo" /></div>
       </div>
       <div class="row">
+        <div><label>メーカー</label><select id="fMaker"><option value="">すべて</option></select></div>
+        <div><label>部門</label><select id="fDepartment"><option value="">すべて</option></select></div>
+        <div><label>分類</label><select id="fCategory"><option value="">すべて</option></select></div>
+        <div><label>備考</label><input id="fNote" placeholder="部分一致" /></div>
+      </div>
+      <div class="row">
         <div style="flex:0;"><label>&nbsp;</label>
           <label style="display:inline-flex; align-items:center; gap:6px; margin:0; font-weight:normal; white-space:nowrap; height:37px;">
             <input type="checkbox" id="fZero" style="width:auto;" />在庫0も表示
@@ -64,9 +70,15 @@
     async function boot() {
       const user = await initPage('inventory');
       if (!user) return;
-      const { data } = await api('/api/lookup/suppliers');
-      document.getElementById('fSupplier').innerHTML =
-        '<option value="">すべて</option>' + (data.suppliers || []).map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+      const opt = (arr) => '<option value="">すべて</option>' + (arr || []).map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+      const [sup, mk, dep, cat] = await Promise.all([
+        api('/api/lookup/suppliers'), api('/api/lookup/makers'),
+        api('/api/lookup/departments'), api('/api/lookup/categories'),
+      ]);
+      document.getElementById('fSupplier').innerHTML = opt(sup.data.suppliers);
+      document.getElementById('fMaker').innerHTML = opt(mk.data.makers);
+      document.getElementById('fDepartment').innerHTML = opt(dep.data.departments);
+      document.getElementById('fCategory').innerHTML = opt(cat.data.categories);
       load();
     }
 
@@ -76,6 +88,10 @@
       const lot = document.getElementById('fLot').value; if (lot) p.set('lotNumber', lot);
       const sup = document.getElementById('fSupplier').value; if (sup) p.set('supplierId', sup);
       const exp = document.getElementById('fExpiryTo').value; if (exp) p.set('expiryTo', exp);
+      const mk = document.getElementById('fMaker').value; if (mk) p.set('makerId', mk);
+      const dep = document.getElementById('fDepartment').value; if (dep) p.set('departmentId', dep);
+      const cat = document.getElementById('fCategory').value; if (cat) p.set('categoryId', cat);
+      const note = document.getElementById('fNote').value; if (note) p.set('note', note);
       if (document.getElementById('fZero').checked) p.set('includeZero', 'true');
       return p.toString();
     }

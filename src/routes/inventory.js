@@ -17,6 +17,7 @@ function buildStockQuery(q) {
   if (q.departmentId) add('p.department_id = $$', q.departmentId);
   if (q.categoryId) add('p.category_id = $$', q.categoryId);
   if (q.productName) add('p.name ILIKE $$', '%' + q.productName + '%');
+  if (q.note) add('p.note ILIKE $$', '%' + q.note + '%');
   if (q.lotNumber) add('s.lot_number ILIKE $$', '%' + q.lotNumber + '%');
   if (q.expiryFrom) add('s.expiry_date >= $$', q.expiryFrom);
   if (q.expiryTo) add('s.expiry_date <= $$', q.expiryTo);

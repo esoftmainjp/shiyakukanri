@@ -61,6 +61,39 @@ router.get('/suppliers', async (req, res) => {
   }
 });
 
+// 部門一覧
+router.get('/departments', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT id, name FROM departments ORDER BY name`);
+    res.json({ departments: rows });
+  } catch (err) {
+    console.error('部門一覧エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 分類一覧
+router.get('/categories', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT id, name FROM categories ORDER BY name`);
+    res.json({ categories: rows });
+  } catch (err) {
+    console.error('分類一覧エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// メーカー一覧
+router.get('/makers', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT id, name FROM makers ORDER BY name`);
+    res.json({ makers: rows });
+  } catch (err) {
+    console.error('メーカー一覧エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 // 商品のロット別在庫 (出庫画面のロット選択)
 router.get('/stocks', async (req, res) => {
   const { productId } = req.query;
