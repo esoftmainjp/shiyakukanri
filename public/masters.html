@@ -292,9 +292,20 @@
         const hasActive = 'is_active' in r;
         const toggleBtn = hasActive ? `<button class="${r.is_active ? 'danger' : ''}" onclick="toggle('${r.id}')">${r.is_active ? '無効化' : '有効化'}</button>` : '';
         const editData = JSON.stringify(r).replace(/'/g, '&#39;');
-        return `<tr>${tds}<td><button class="secondary" onclick='edit(${editData})'>編集</button> ${toggleBtn}</td></tr>`;
+        // 商品一覧には「詳細」ボタン(その商品の商品詳細へ)
+        const detailBtn = (t === 'products') ? `<button onclick="showDetails('${r.id}')">詳細</button> ` : '';
+        return `<tr>${tds}<td>${detailBtn}<button class="secondary" onclick='edit(${editData})'>編集</button> ${toggleBtn}</td></tr>`;
       }).join('');
     }
+    // 商品一覧の「詳細」: 商品詳細に切り替えてその商品で絞り込む
+    async function showDetails(productId) {
+      document.getElementById('type').value = 'product-details';
+      await switchType();
+      const sel = document.getElementById('listFilterProduct');
+      if (sel) { sel.value = String(productId); applyListFilter(); }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
     function cellValue(key, v, refMaps) {
       if (REF_COLS[key]) return v == null ? '' : (refMaps[key][String(v)] || v);
       if (key === 'user_type') return USER_TYPE_LABEL[v] || v;
