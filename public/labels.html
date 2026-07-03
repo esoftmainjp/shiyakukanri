@@ -81,7 +81,7 @@
   <script>
     let items = [];
     // ラベルサイズは設定画面(サーバー)から取得。未設定は既定値。
-    let cfg = { lw: 52, lh: 29, bh: 60, bwmm: 45 };
+    let cfg = { lw: 52, lh: 29, bh: 60, bwmm: 45, bcFont: 6, nameFont: 13, subFont: 13 };
     function num(v, def) { return (v !== undefined && v !== null && v !== '') ? Number(v) : def; }
 
     async function boot() {
@@ -105,6 +105,9 @@
         lh: num(s.label_height_mm, 29),
         bh: num(s.barcode_height_px, 60),
         bwmm: num(s.barcode_width_mm, 45),
+        bcFont: num(s.label_barcode_font, 6),
+        nameFont: num(s.label_name_font, 13),
+        subFont: num(s.label_sub_font, 13),
       };
       setToday();
       applySize();
@@ -175,16 +178,16 @@
         const exp = b.expiry_date ? `期限:${b.expiry_date}` : '';
         const lot = b.lot_number ? `Lot:${b.lot_number}` : '';
         txt.innerHTML =
-          `<div class="pname">${escapeHtml(b.product_name)}</div>` +
-          `<div class="sub">${[lot, exp].filter(Boolean).map(escapeHtml).join('　')}</div>` +
-          `<div class="sub">No.${b.content_code}</div>`;
+          `<div class="pname" style="font-size:${cfg.nameFont}px;">${escapeHtml(b.product_name)}</div>` +
+          `<div class="sub" style="font-size:${cfg.subFont}px;">${[lot, exp].filter(Boolean).map(escapeHtml).join('　')}</div>` +
+          `<div class="sub" style="font-size:${cfg.subFont}px;">No.${b.content_code}</div>`;
         label.appendChild(txt);
         wrap.appendChild(cb);
         wrap.appendChild(label);
         box.appendChild(wrap);
         try {
           JsBarcode(svg, b.barcode_value, {
-            format: 'CODE128', displayValue: true, fontSize: 6, textMargin: 0,
+            format: 'CODE128', displayValue: true, fontSize: cfg.bcFont || 6, textMargin: 0,
             height: bh, margin: 0, width: 2,
           });
           // バー個々の幅ではなく「バーコード全体の幅(mm)」を指定するため、

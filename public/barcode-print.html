@@ -48,7 +48,10 @@
   <script>
     // ラベル設定: サーバー(設定画面)優先→端末(localStorage)→既定値。
     let srv = {};
-    const SKEY = { lw: 'label_width_mm', lh: 'label_height_mm', bh: 'barcode_height_px', bwmm: 'barcode_width_mm' };
+    const SKEY = {
+      lw: 'label_width_mm', lh: 'label_height_mm', bh: 'barcode_height_px', bwmm: 'barcode_width_mm',
+      bcFont: 'label_barcode_font', nameFont: 'label_name_font', subFont: 'label_sub_font',
+    };
     function setting(k, def) {
       const sv = srv[SKEY[k]];
       if (sv !== undefined && sv !== null && sv !== '') return Number(sv);
@@ -93,6 +96,7 @@
 
     function render(items) {
       const bh = setting('bh', 60), bwmm = setting('bwmm', 45);
+      const bcFont = setting('bcFont', 6), nameFont = setting('nameFont', 13), subFont = setting('subFont', 13);
       const box = document.getElementById('labels');
       box.innerHTML = '';
       items.forEach((b) => {
@@ -105,14 +109,14 @@
         const exp = b.expiry_date ? `期限:${b.expiry_date}` : '';
         const lot = b.lot_number ? `Lot:${b.lot_number}` : '';
         txt.innerHTML =
-          `<div class="pname">${escapeHtml(b.product_name)}</div>` +
-          `<div class="sub">${[lot, exp].filter(Boolean).map(escapeHtml).join('　')}</div>` +
-          `<div class="sub">No.${b.content_code}</div>`;
+          `<div class="pname" style="font-size:${nameFont}px;">${escapeHtml(b.product_name)}</div>` +
+          `<div class="sub" style="font-size:${subFont}px;">${[lot, exp].filter(Boolean).map(escapeHtml).join('　')}</div>` +
+          `<div class="sub" style="font-size:${subFont}px;">No.${b.content_code}</div>`;
         label.appendChild(txt);
         box.appendChild(label);
         try {
           JsBarcode(svg, b.barcode_value, {
-            format: 'CODE128', displayValue: true, fontSize: 6, textMargin: 0,
+            format: 'CODE128', displayValue: true, fontSize: bcFont || 6, textMargin: 0,
             height: bh, margin: 0, width: 2,
           });
           const natW = Number(svg.getAttribute('width'));

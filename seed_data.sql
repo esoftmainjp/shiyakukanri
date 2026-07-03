@@ -137,7 +137,10 @@ INSERT INTO app_settings (key, value) VALUES
     ('label_width_mm', '52'),
     ('label_height_mm', '29'),
     ('barcode_height_px', '60'),
-    ('barcode_width_mm', '45');
+    ('barcode_width_mm', '45'),
+    ('label_barcode_font', '6'),
+    ('label_name_font', '13'),
+    ('label_sub_font', '13');
 
 -- ============================================================
 -- 以上
