@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>伝票印刷 | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+  <style>
+    .sheet { max-width: 760px; margin: 16px auto; background: #fff; padding: 24px 28px; border: 1px solid #dde3e8; }
+    .sheet h1 { font-size: 1.4rem; margin: 0 0 6px; text-align: center; letter-spacing: 0.3em; }
+    .meta { display: flex; flex-wrap: wrap; gap: 4px 24px; margin: 12px 0; font-size: 0.92rem; }
+    .meta div { min-width: 180px; }
+    .sheet table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .sheet th, .sheet td { border: 1px solid #333; padding: 5px 8px; font-size: 0.88rem; }
+    .sheet th { background: #eef2f5; }
+    .num { text-align: right; }
+    .toolbar { max-width: 760px; margin: 12px auto; text-align: right; }
+    .note-line { margin-top: 12px; font-size: 0.9rem; }
+    @media print {
+      .toolbar, header { display: none !important; }
+      body { background: #fff; }
+      .sheet { border: none; margin: 0; max-width: none; padding: 0; }
+      @page { size: A4 portrait; margin: 14mm; }
+    }
+  </style>
+</head>
+<body>
+  <header></header>
+  <div class="toolbar no-print">
+    <button onclick="window.print()">印刷</button>
+    <button class="secondary" onclick="window.close()">閉じる</button>
+  </div>
+  <div class="sheet" id="sheet"><p style="text-align:center;">読み込み中…</p></div>
+
+  <script src="/common.js"></script>
+  <script>
+    const TITLES = { receipts: '入 庫 伝 票', issues: '出 庫 伝 票', orders: '発 注 書' };
+    const q = new URLSearchParams(location.search);
+    const type = q.get('type');
+    const id = q.get('id');
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function boot() {
+      // ログインヘッダは描画するが、未ログインでも印刷内容は表示を試みる
+      await initPage('');
+      if (!type || !id || !TITLES[type]) {
+        document.getElementById('sheet').innerHTML = '<p>印刷対象が不正です。</p>';
+        return;
+      }
+      const { ok, data } = await api('/api/' + type + '/' + id);
+      if (!ok) {
+        document.getElementById('sheet').innerHTML = '<p>' + esc(data.error || '取得に失敗しました') + '</p>';
+        return;
+      }
+      render(data);
+      // 描画後に自動で印刷ダイアログ
+      setTimeout(() => { window.print(); }, 300);
+    }
+
+    function render(data) {
+      let html = `<h1>${TITLES[type]}</h1>`;
+      if (type === 'receipts') html += receiptBody(data);
+      else if (type === 'issues') html += issueBody(data);
+      else html += orderBody(data);
+      document.getElementById('sheet').innerHTML = html;
+    }
+
+    function metaRow(pairs) {
+      return `<div class="meta">${pairs.filter(Boolean).map(([k, v]) => `<div><strong>${k}：</strong>${esc(v)}</div>`).join('')}</div>`;
+    }
+    function noteLine(note) {
+      return `<div class="note-line"><strong>備考：</strong>${esc(note || '')}</div>`;
+    }
+
+    function receiptBody(data) {
+      const r = data.receipt;
+      let h = metaRow([['伝票番号', r.id], ['入庫日', r.receipt_date], ['問屋', r.supplier_name || '-'], ['担当', r.user_name || '-']]);
+      h += `<table><thead><tr><th>商品</th><th>ロット</th><th>使用期限</th><th class="num">入庫数</th><th class="num">梱包</th><th class="num">バラ数</th><th class="num">BC</th><th>備考</th></tr></thead><tbody>`;
+      (data.details || []).forEach((d) => {
+        h += `<tr><td>${esc(d.product_name)}</td><td>${esc(d.lot_number) || '-'}</td><td>${d.expiry_date || '-'}</td>` +
+          `<td class="num">${d.receipt_quantity}</td><td class="num">${d.pack_size}</td><td class="num">${d.stock_added_quantity}</td>` +
+          `<td class="num">${d.barcode_count}</td><td>${esc(d.note)}</td></tr>`;
+      });
+      const totBara = (data.details || []).reduce((a, d) => a + Number(d.stock_added_quantity), 0);
+      h += `<tr><th colspan="5" class="num">合計(バラ)</th><th class="num">${totBara}</th><th colspan="2"></th></tr>`;
+      h += `</tbody></table>` + noteLine(r.note);
+      return h;
+    }
+
+    function issueBody(data) {
+      const r = data.issue;
+      let h = metaRow([['伝票番号', r.id], ['出庫日', r.issue_date], ['担当', r.user_name || '-']]);
+      h += `<table><thead><tr><th>商品</th><th>ロット</th><th>使用期限</th><th class="num">出庫数</th><th class="num">梱包</th><th class="num">バラ数</th><th>バーコード</th><th>備考</th></tr></thead><tbody>`;
+      (data.details || []).forEach((d) => {
+        h += `<tr><td>${esc(d.product_name)}</td><td>${esc(d.lot_number) || '-'}</td><td>${d.expiry_date || '-'}</td>` +
+          `<td class="num">${d.issue_quantity}</td><td class="num">${d.pack_size}</td><td class="num">${d.issue_total_quantity}</td>` +
+          `<td>${esc(d.barcode_value) || '-'}</td><td>${esc(d.note)}</td></tr>`;
+      });
+      const totBara = (data.details || []).reduce((a, d) => a + Number(d.issue_total_quantity), 0);
+      h += `<tr><th colspan="5" class="num">合計(バラ)</th><th class="num">${totBara}</th><th colspan="2"></th></tr>`;
+      h += `</tbody></table>` + noteLine(r.note);
+      return h;
+    }
+
+    const STATUS = { unordered: '未発注', ordered: '発注済み', received: '入庫済み', canceled: 'キャンセル' };
+    function orderBody(data) {
+      const o = data.order;
+      let h = metaRow([['発注番号', o.id], ['発注日', o.order_date || '-'], ['問屋', o.supplier_name || '-'], ['状態', STATUS[o.order_status] || o.order_status], ['担当', o.user_name || '-']]);
+      h += `<table><thead><tr><th>商品</th><th class="num">発注予定数(梱包)</th><th class="num">発注数(梱包)</th><th class="num">梱包</th><th>備考</th></tr></thead><tbody>`;
+      (data.details || []).forEach((d) => {
+        h += `<tr><td>${esc(d.product_name)}</td><td class="num">${d.planned_order_quantity}</td>` +
+          `<td class="num">${d.order_quantity}</td><td class="num">${d.pack_size}</td><td>${esc(d.note)}</td></tr>`;
+      });
+      h += `</tbody></table>` + noteLine(o.note);
+      return h;
+    }
+
+    boot();
+  </script>
+</body>
+</html>

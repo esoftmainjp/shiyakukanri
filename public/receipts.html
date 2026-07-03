@@ -71,8 +71,11 @@
         <tbody></tbody>
       </table>
 
-      <div style="margin-top:16px;">
+      <div style="margin-top:16px; display:flex; align-items:center; gap:14px;">
         <button onclick="submitReceipt()">入庫を保存</button>
+        <label style="display:flex; align-items:center; gap:6px; margin:0; font-weight:normal;">
+          <input type="checkbox" id="printChk" style="width:auto;" />保存後にリストを印刷
+        </label>
       </div>
       <p class="msg" id="resultMsg"></p>
     </div>
@@ -203,6 +206,9 @@
       if (!ok) { setMsg(msg, data.error || '保存失敗', 'error'); return; }
       const bc = data.details.reduce((a, d) => a + d.barcodesIssued, 0);
       setMsg(msg, `入庫を保存しました（入庫ID:${data.receiptId}／発行バーコード:${bc}本）`, 'ok');
+      if (document.getElementById('printChk').checked) {
+        window.open('/print.html?type=receipts&id=' + data.receiptId, '_blank');
+      }
       lines = []; renderLines(); await updateCurrentStock();
     }
 

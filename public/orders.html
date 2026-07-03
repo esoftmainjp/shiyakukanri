@@ -57,9 +57,11 @@
         ? `<div class="row" style="margin-top:8px;"><div style="flex:3;"><label>備考</label><input id="note_${o.id}" value="${o.note || ''}" placeholder="任意" /></div></div>`
         : '';
       const actions = o.order_status === 'unordered'
-        ? `<button onclick="place('${o.id}')">発注する</button> <button class="danger" onclick="cancel('${o.id}')">キャンセル</button>`
+        ? `<button onclick="place('${o.id}')">発注する</button> <button class="danger" onclick="cancel('${o.id}')">キャンセル</button>` +
+          ` <label style="display:inline-flex; align-items:center; gap:6px; margin-left:10px; font-weight:normal;"><input type="checkbox" id="print_${o.id}" style="width:auto;" />発注後に発注書を印刷</label>`
         : o.order_status === 'ordered'
-          ? `<button class="danger" onclick="cancel('${o.id}')">キャンセル</button>`
+          ? `<button class="danger" onclick="cancel('${o.id}')">キャンセル</button>` +
+            ` <button class="secondary" onclick="printOrder('${o.id}')">発注書を印刷</button>`
           : '';
       // 未発注のみ商品手動追加フォーム(その問屋の商品のみ)
       let addForm = '';
@@ -96,10 +98,13 @@
     async function place(id) {
       const noteEl = document.getElementById('note_' + id);
       const note = noteEl ? noteEl.value : '';
+      const wantPrint = (document.getElementById('print_' + id) || {}).checked;
       const { ok, data } = await api(`/api/orders/${id}/place`, { method: 'POST', body: JSON.stringify({ note }) });
       setMsg(document.getElementById('msg'), ok ? `発注 #${id} を発注済みにしました` : (data.error || '失敗'), ok ? 'ok' : 'error');
+      if (ok && wantPrint) printOrder(id);
       load();
     }
+    function printOrder(id) { window.open('/print.html?type=orders&id=' + id, '_blank'); }
     async function addDetail(orderId) {
       const sel = document.getElementById('add_' + orderId);
       if (!sel || !sel.value) { setMsg(document.getElementById('msg'), '追加する商品がありません', 'error'); return; }

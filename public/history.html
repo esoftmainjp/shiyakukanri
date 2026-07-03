@@ -131,11 +131,14 @@
     }
 
     function actionButtons(kind, id, delLabel) {
-      if (!canEdit) return '';
-      return `<span class="actions">` +
-        `<button class="secondary" onclick="openEdit('${kind}',${id})">編集</button>` +
-        `<button class="danger" onclick="del('${kind}',${id})">${delLabel || '削除'}</button></span>`;
+      let h = `<button class="secondary" onclick="printRow('${kind}',${id})">印刷</button>`;
+      if (canEdit) {
+        h += `<button class="secondary" onclick="openEdit('${kind}',${id})">編集</button>` +
+          `<button class="danger" onclick="del('${kind}',${id})">${delLabel || '削除'}</button>`;
+      }
+      return `<span class="actions">${h}</span>`;
     }
+    function printRow(kind, id) { window.open('/print.html?type=' + kind + '&id=' + id, '_blank'); }
 
     function renderReceipts(rows) {
       let h = `<table><thead><tr><th>ID</th><th>入庫日</th><th>問屋</th><th>明細</th><th>バラ計</th><th>BC(使用)</th><th>備考</th><th>担当</th><th></th></tr></thead><tbody>`;
