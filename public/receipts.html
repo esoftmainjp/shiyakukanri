@@ -185,9 +185,6 @@
       const cur = currentDetail();
       if (!cur || !cur.detail) return;
       document.getElementById('pack').value = cur.detail.packSize;
-      // 問屋が未選択なら、商品の問屋を自動セット
-      const supEl = document.getElementById('supplier');
-      if (supEl && !supEl.value && cur.detail.supplierId) supEl.value = cur.detail.supplierId;
       updateCurrentStock();
     }
 
