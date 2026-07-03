@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>試薬在庫管理システム</title>
   <link rel="stylesheet" href="/app.css" />
+  <style>
+    #expiryTable tbody tr.expired, #expiryTable tbody tr.expired:hover { background: #fde8e8; }
+    #expiryTable tbody tr.warning, #expiryTable tbody tr.warning:hover { background: #fff5e0; }
+    .legend { display: inline-block; padding: 2px 12px; border-radius: 12px; font-size: 0.82rem; font-weight: 700; margin-right: 8px; }
+    .legend.expired { background: #fde8e8; color: #c0575d; border: 1px solid #f3c9c9; }
+    .legend.warning { background: #fff5e0; color: #b0842a; border: 1px solid #f0e0b0; }
+  </style>
 </head>
 <body>
   <header><h1>試薬在庫管理システム</h1></header>
@@ -44,11 +51,16 @@
       </div>
 
       <div class="card">
-        <h2>在庫一覧</h2>
-        <button class="secondary" onclick="loadStocks()">再読み込み</button>
-        <span id="lowStockNote" style="margin-left:12px; color:#c0575d; font-weight:600; font-size:0.88rem;"></span>
-        <table id="stockTable">
-          <thead><tr><th>商品名</th><th>ロット</th><th>使用期限</th><th>在庫数(バラ)</th></tr></thead>
+        <h2>使用期限（期限切れ・期限接近）</h2>
+        <p style="font-size:0.85rem; margin:4px 0;">
+          <span class="legend expired">期限切れ</span>
+          <span class="legend warning">期限接近</span>
+          <span id="expiryNote" style="color:#666; margin-left:8px;"></span>
+          <button class="secondary" style="margin-left:12px;" onclick="loadExpiry()">再読み込み</button>
+          <a href="/expiry.html" style="margin-left:12px;">使用期限管理へ →</a>
+        </p>
+        <table id="expiryTable">
+          <thead><tr><th>状態</th><th>商品名</th><th>ロット</th><th>使用期限</th><th>残日数</th><th>在庫数</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -69,21 +81,21 @@
       if (!ok) { setMsg(document.getElementById('loginMsg'), data.error || 'ログイン失敗', 'error'); return; }
       showApp(data.user);
     }
-    let lowStockThreshold = 0;
+    let warnDays = 30;
     function showApp(user) {
       document.getElementById('loginCard').style.display = 'none';
       document.getElementById('appArea').style.display = 'block';
       renderHeader(user, 'dashboard');
-      loadSettingsThenStocks();
+      loadSettingsThenExpiry();
       loadPlans();
     }
-    async function loadSettingsThenStocks() {
+    async function loadSettingsThenExpiry() {
       const { ok, data } = await api('/api/settings');
-      if (ok) {
-        lowStockThreshold = Number((data.settings || {}).low_stock_threshold) || 0;
-        if (data.settings && data.settings.theme) applyTheme(data.settings.theme);
+      if (ok && data.settings) {
+        warnDays = Number(data.settings.expiry_warn_days) || 30;
+        if (data.settings.theme) applyTheme(data.settings.theme);
       }
-      loadStocks();
+      loadExpiry();
     }
     async function loadPlans() {
       const { ok, data } = await api('/api/orders/summary');
@@ -113,24 +125,23 @@
       return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
-    async function loadStocks() {
-      const { data } = await api('/api/lookup/stocks');
-      const tbody = document.querySelector('#stockTable tbody');
+    async function loadExpiry() {
+      const { data } = await api('/api/inventory/expiry?warnDays=' + encodeURIComponent(warnDays));
+      const tbody = document.querySelector('#expiryTable tbody');
       tbody.innerHTML = '';
-      let lowCount = 0;
-      (data.stocks || []).forEach((s) => {
+      const rows = data.rows || [];
+      document.getElementById('expiryNote').textContent = `警告日数: ${data.warnDays != null ? data.warnDays : warnDays}日以内 / ${rows.length}件`;
+      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="6">期限切れ・期限接近の在庫はありません。</td></tr>'; return; }
+      rows.forEach((r) => {
         const tr = document.createElement('tr');
-        const low = lowStockThreshold > 0 && Number(s.stock_quantity) <= lowStockThreshold;
-        if (low) { tr.style.background = '#fdeaea'; lowCount++; }
-        const qtyStyle = low ? 'text-align:right; color:#c0575d; font-weight:700;' : 'text-align:right;';
-        tr.innerHTML = `<td>${esc(s.product_name)}</td><td>${esc(s.lot_number) || '(なし)'}</td><td>${s.expiry_date || '(なし)'}</td>` +
-          `<td style="${qtyStyle}">${s.stock_quantity}${low ? ' ⚠' : ''}</td>`;
+        tr.className = r.status;
+        const label = r.status === 'expired' ? '期限切れ' : '期限接近';
+        const days = r.days_left < 0 ? `${-r.days_left}日超過` : `残${r.days_left}日`;
+        tr.innerHTML =
+          `<td>${label}</td><td>${esc(r.product_name)}</td><td>${esc(r.lot_number) || '(なし)'}</td>` +
+          `<td>${r.expiry_date}</td><td>${days}</td><td style="text-align:right;">${r.stock_quantity}</td>`;
         tbody.appendChild(tr);
       });
-      const note = document.getElementById('lowStockNote');
-      if (note) note.textContent = (lowStockThreshold > 0)
-        ? `在庫僅少（${lowStockThreshold}以下）: ${lowCount} 件`
-        : '';
     }
     boot();
   </script>
