@@ -38,7 +38,7 @@
       <table id="tbl">
         <thead><tr>
           <th style="width:36px; text-align:center;"><input type="checkbox" id="checkAll" onchange="toggleAll(this.checked)" style="width:auto;" /></th>
-          <th>状態</th><th>商品名</th><th>ロット</th><th>使用期限</th><th>残日数</th><th>在庫数</th>
+          <th>状態</th><th>商品名</th><th>ロット</th><th>使用期限</th><th>残日数</th><th>個数</th><th>在庫数</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -74,7 +74,7 @@
       tbody.innerHTML = '';
       document.getElementById('checkAll').checked = false;
       const rows = data.rows || [];
-      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="7">該当する在庫はありません。</td></tr>'; return; }
+      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="8">該当する在庫はありません。</td></tr>'; return; }
       rows.forEach((r) => {
         const tr = document.createElement('tr');
         tr.className = r.status;
@@ -83,7 +83,8 @@
         tr.innerHTML =
           `<td style="text-align:center;"><input type="checkbox" class="pick" data-pid="${r.product_id}" style="width:auto;" /></td>` +
           `<td>${label}</td><td>${esc(r.product_name)}</td><td>${esc(r.lot_number) || '(なし)'}</td>` +
-          `<td>${r.expiry_date}</td><td>${days}</td><td style="text-align:right;">${r.stock_quantity}</td>`;
+          `<td>${r.expiry_date}</td><td>${days}</td>` +
+          `<td style="text-align:right;">${r.stock_quantity}</td><td style="text-align:right;">${r.product_total}</td>`;
         tbody.appendChild(tr);
       });
     }

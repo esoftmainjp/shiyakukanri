@@ -60,7 +60,7 @@
           <a href="/expiry.html" style="margin-left:12px;">使用期限管理へ →</a>
         </p>
         <table id="expiryTable">
-          <thead><tr><th>状態</th><th>商品名</th><th>ロット</th><th>使用期限</th><th>残日数</th><th>在庫数</th></tr></thead>
+          <thead><tr><th>状態</th><th>商品名</th><th>ロット</th><th>使用期限</th><th>残日数</th><th>個数</th><th>在庫数</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -131,7 +131,7 @@
       tbody.innerHTML = '';
       const rows = data.rows || [];
       document.getElementById('expiryNote').textContent = `警告日数: ${data.warnDays != null ? data.warnDays : warnDays}日以内 / ${rows.length}件`;
-      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="6">期限切れ・期限接近の在庫はありません。</td></tr>'; return; }
+      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="7">期限切れ・期限接近の在庫はありません。</td></tr>'; return; }
       rows.forEach((r) => {
         const tr = document.createElement('tr');
         tr.className = r.status;
@@ -139,7 +139,8 @@
         const days = r.days_left < 0 ? `${-r.days_left}日超過` : `残${r.days_left}日`;
         tr.innerHTML =
           `<td>${label}</td><td>${esc(r.product_name)}</td><td>${esc(r.lot_number) || '(なし)'}</td>` +
-          `<td>${r.expiry_date}</td><td>${days}</td><td style="text-align:right;">${r.stock_quantity}</td>`;
+          `<td>${r.expiry_date}</td><td>${days}</td>` +
+          `<td style="text-align:right;">${r.stock_quantity}</td><td style="text-align:right;">${r.product_total}</td>`;
         tbody.appendChild(tr);
       });
     }

@@ -86,6 +86,7 @@ router.get('/expiry', async (req, res) => {
     const { rows } = await pool.query(
       `SELECT s.id, p.id AS product_id, p.name AS product_name,
               s.lot_number, s.expiry_date, s.stock_quantity,
+              (SELECT COALESCE(SUM(ps.stock_quantity), 0) FROM product_stocks ps WHERE ps.product_id = p.id) AS product_total,
               (s.expiry_date - CURRENT_DATE) AS days_left,
               CASE WHEN s.expiry_date < CURRENT_DATE THEN 'expired'
                    ELSE 'warning' END AS status
