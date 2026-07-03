@@ -208,6 +208,9 @@
     async function submitReceipt() {
       const msg = document.getElementById('resultMsg');
       if (lines.length === 0) { setMsg(msg, '明細がありません', 'error'); return; }
+      // ポップアップブロック回避: 保存(await)前=クリック操作中にウィンドウを開いておき、後でURLを設定する
+      const bcWin = document.getElementById('bcPrintChk').checked ? window.open('', '_blank') : null;
+      const listWin = document.getElementById('printChk').checked ? window.open('', '_blank') : null;
       const body = {
         receiptDate: document.getElementById('receiptDate').value,
         note: document.getElementById('note').value,
@@ -219,16 +222,20 @@
         })),
       };
       const { ok, data } = await api('/api/receipts', { method: 'POST', body: JSON.stringify(body) });
-      if (!ok) { setMsg(msg, data.error || '保存失敗', 'error'); return; }
+      if (!ok) {
+        setMsg(msg, data.error || '保存失敗', 'error');
+        if (bcWin) bcWin.close();
+        if (listWin) listWin.close();
+        return;
+      }
       const bc = data.details.reduce((a, d) => a + d.barcodesIssued, 0);
       setMsg(msg, `入庫を保存しました（入庫ID:${data.receiptId}／発行バーコード:${bc}本）`, 'ok');
-      // バーコード印刷(チェック時＆発行があった場合のみ)。設定はバーコード印刷画面と共有。
-      if (document.getElementById('bcPrintChk').checked && bc > 0) {
-        window.open('/barcode-print.html?receiptId=' + data.receiptId, '_blank');
+      // バーコード印刷(発行があった場合のみ)。設定はバーコード印刷画面と共有。
+      if (bcWin) {
+        if (bc > 0) bcWin.location = '/barcode-print.html?receiptId=' + data.receiptId;
+        else bcWin.close(); // バーコード発行なしなら開いたウィンドウを閉じる
       }
-      if (document.getElementById('printChk').checked) {
-        window.open('/print.html?type=receipts&id=' + data.receiptId, '_blank');
-      }
+      if (listWin) listWin.location = '/print.html?type=receipts&id=' + data.receiptId;
       lines = []; renderLines(); await updateCurrentStock();
     }
 
