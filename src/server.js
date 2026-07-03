@@ -109,6 +109,60 @@ app.get('/api/me', requireLogin, (req, res) => {
   res.json({ user: req.session.user });
 });
 
+// 本人のパスワード情報(最終変更日時)を取得
+app.get('/api/me/password-info', requireLogin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT password_updated_at FROM users WHERE id = $1`,
+      [req.session.user.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'ユーザーが見つかりません' });
+    res.json({ passwordUpdatedAt: rows[0].password_updated_at });
+  } catch (err) {
+    console.error('パスワード情報取得エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 本人によるパスワード変更 (全ロール)
+// POST /api/me/password  body: { currentPassword, newPassword }
+app.post('/api/me/password', requireLogin, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: '現在のパスワードと新しいパスワードは必須です' });
+  }
+  if (String(newPassword).length < 8) {
+    return res.status(400).json({ error: '新しいパスワードは8文字以上にしてください' });
+  }
+  if (String(newPassword) === String(currentPassword)) {
+    return res.status(400).json({ error: '現在のパスワードと異なるパスワードを設定してください' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT password_hash FROM users WHERE id = $1 AND is_active = TRUE`,
+      [req.session.user.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'ユーザーが見つかりません' });
+    if (!bcrypt.compareSync(String(currentPassword), rows[0].password_hash)) {
+      return res.status(400).json({ error: '現在のパスワードが違います' });
+    }
+    const hash = bcrypt.hashSync(String(newPassword), 10);
+    const upd = await pool.query(
+      `UPDATE users SET password_hash = $1, password_updated_at = now() WHERE id = $2
+        RETURNING password_updated_at`,
+      [hash, req.session.user.id]
+    );
+    await writeLog(pool, {
+      userId: req.session.user.id, targetTable: 'users', targetId: req.session.user.id,
+      operationType: '更新', after: { password_changed: true },
+    });
+    res.json({ ok: true, passwordUpdatedAt: upd.rows[0].password_updated_at });
+  } catch (err) {
+    console.error('パスワード変更エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 // 印刷・CSV出力などクライアント側で完結する操作を操作ログに記録する
 // POST /api/activity  body: { action, targetTable?, targetId?, detail? }
 app.post('/api/activity', requireLogin, async (req, res) => {

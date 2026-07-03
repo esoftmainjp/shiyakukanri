@@ -54,6 +54,7 @@ function renderHeader(user, activeKey) {
       ['dashboard', '/', 'ホーム'],
       ['receipts', '/receipts.html', '入庫'],
       ['orders', '/orders.html', '発注'],
+      ['password', '/password.html', 'パスワード変更'],
     ];
   } else {
     nav = [
@@ -73,6 +74,7 @@ function renderHeader(user, activeKey) {
       nav.push(['logs', '/logs.html', '操作ログ']);
       nav.push(['settings', '/settings.html', '設定']);
     }
+    nav.push(['password', '/password.html', 'パスワード変更']);
   }
   header.innerHTML =
     '<h1>試薬在庫管理システム</h1>' +

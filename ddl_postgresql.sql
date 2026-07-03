@@ -90,6 +90,7 @@ CREATE TABLE users (
     kana            VARCHAR(255) NOT NULL DEFAULT '',
     login_id        VARCHAR(64)  NOT NULL,
     password_hash   VARCHAR(255) NOT NULL,
+    password_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     note            TEXT         NOT NULL DEFAULT '',
     is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
@@ -102,6 +103,7 @@ COMMENT ON COLUMN users.name           IS '氏名';
 COMMENT ON COLUMN users.kana           IS 'カナ';
 COMMENT ON COLUMN users.login_id       IS 'ログインID';
 COMMENT ON COLUMN users.password_hash  IS 'パスワードハッシュ(bcrypt等。平文保存禁止)';
+COMMENT ON COLUMN users.password_updated_at IS 'パスワード保存日時';
 COMMENT ON COLUMN users.note           IS '備考';
 COMMENT ON COLUMN users.is_active      IS '有効フラグ';
 

@@ -36,7 +36,7 @@ router.get('/:type', async (req, res) => {
   try {
     // usersはパスワードハッシュを返さない
     const select = t.table === 'users'
-      ? 'id, user_type, name, kana, login_id, note, is_active, created_at, updated_at'
+      ? 'id, user_type, name, kana, login_id, note, is_active, password_updated_at, created_at, updated_at'
       : '*';
     const { rows } = await pool.query(`SELECT ${select} FROM ${t.table} ORDER BY id`);
     res.json({ rows });
@@ -61,6 +61,8 @@ router.post('/:type', async (req, res) => {
       if (!body.password) return res.status(400).json({ error: 'パスワードは必須です' });
       cols.push('password_hash');
       vals.push(bcrypt.hashSync(String(body.password), 10));
+      cols.push('password_updated_at');
+      vals.push(new Date());
     }
     if (cols.length === 0) return res.status(400).json({ error: '登録項目がありません' });
 
@@ -92,6 +94,8 @@ router.put('/:type/:id', async (req, res) => {
     if (t.table === 'users' && body.password) {
       vals.push(bcrypt.hashSync(String(body.password), 10));
       sets.push(`password_hash = $${vals.length}`);
+      vals.push(new Date());
+      sets.push(`password_updated_at = $${vals.length}`);
     }
     if (sets.length === 0) return res.status(400).json({ error: '更新項目がありません' });
 
