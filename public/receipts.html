@@ -75,8 +75,11 @@
         <tbody></tbody>
       </table>
 
-      <div style="margin-top:16px; display:flex; align-items:center; gap:14px;">
+      <div style="margin-top:16px; display:flex; align-items:center; gap:18px; flex-wrap:wrap;">
         <button onclick="submitReceipt()">入庫を保存</button>
+        <label style="display:flex; align-items:center; gap:6px; margin:0; font-weight:normal;">
+          <input type="checkbox" id="bcPrintChk" style="width:auto;" checked />バーコード印刷
+        </label>
         <label style="display:flex; align-items:center; gap:6px; margin:0; font-weight:normal;">
           <input type="checkbox" id="printChk" style="width:auto;" />保存後にリストを印刷
         </label>
@@ -219,6 +222,10 @@
       if (!ok) { setMsg(msg, data.error || '保存失敗', 'error'); return; }
       const bc = data.details.reduce((a, d) => a + d.barcodesIssued, 0);
       setMsg(msg, `入庫を保存しました（入庫ID:${data.receiptId}／発行バーコード:${bc}本）`, 'ok');
+      // バーコード印刷(チェック時＆発行があった場合のみ)。設定はバーコード印刷画面と共有。
+      if (document.getElementById('bcPrintChk').checked && bc > 0) {
+        window.open('/barcode-print.html?receiptId=' + data.receiptId, '_blank');
+      }
       if (document.getElementById('printChk').checked) {
         window.open('/print.html?type=receipts&id=' + data.receiptId, '_blank');
       }

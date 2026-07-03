@@ -88,8 +88,18 @@
         o.value = p.productId; o.textContent = p.productName;
         sel.appendChild(o);
       });
+      // 保存済みラベル設定を復元(入庫時の印刷と共有)
+      ['lw', 'lh', 'bh', 'bwmm'].forEach((k) => {
+        const v = localStorage.getItem('bcLabel_' + k);
+        if (v !== null && v !== '') document.getElementById(k).value = v;
+      });
       setToday();
       applySize();
+    }
+
+    // ラベル設定を保存(バーコード印刷画面・入庫印刷で共有)
+    function saveSettings() {
+      ['lw', 'lh', 'bh', 'bwmm'].forEach((k) => localStorage.setItem('bcLabel_' + k, document.getElementById(k).value));
     }
 
     function setToday() {
@@ -129,6 +139,7 @@
     }
 
     function render() {
+      saveSettings();
       const box = document.getElementById('labels');
       box.innerHTML = '';
       const bh = Number(document.getElementById('bh').value) || 40;

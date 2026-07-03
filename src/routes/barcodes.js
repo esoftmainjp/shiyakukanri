@@ -8,7 +8,7 @@ const router = express.Router();
 // 発行済み独自バーコードの一覧(印刷用)
 // フィルタ: from/to(発行日) / productId / query(バーコード値・商品名の部分一致)
 router.get('/list', async (req, res) => {
-  const { from, to, productId, query } = req.query;
+  const { from, to, productId, query, receiptId } = req.query;
   const limit = Math.min(Number(req.query.limit) || 1000, 5000);
   try {
     const params = [];
@@ -16,6 +16,7 @@ router.get('/list', async (req, res) => {
     if (from) { params.push(from); cond += ` AND b.issue_date >= $${params.length}`; }
     if (to) { params.push(to); cond += ` AND b.issue_date <= $${params.length}`; }
     if (productId) { params.push(productId); cond += ` AND b.product_id = $${params.length}`; }
+    if (receiptId) { params.push(receiptId); cond += ` AND rd.receipt_id = $${params.length}`; }
     if (query) { params.push('%' + query + '%'); cond += ` AND (b.barcode_value ILIKE $${params.length} OR p.name ILIKE $${params.length})`; }
     params.push(limit);
     const { rows } = await pool.query(
