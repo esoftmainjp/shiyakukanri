@@ -31,9 +31,15 @@
         <span class="legend expired">期限切れ</span>
         <span class="legend warning">期限接近</span>
       </p>
+      <div style="margin:8px 0;">
+        <button onclick="orderChecked()">チェックした商品を発注予定に追加して発注画面へ →</button>
+      </div>
       <p class="msg" id="msg"></p>
       <table id="tbl">
-        <thead><tr><th>状態</th><th>商品名</th><th>ロット</th><th>使用期限</th><th>残日数</th><th>在庫数</th></tr></thead>
+        <thead><tr>
+          <th style="width:36px; text-align:center;"><input type="checkbox" id="checkAll" onchange="toggleAll(this.checked)" style="width:auto;" /></th>
+          <th>状態</th><th>商品名</th><th>ロット</th><th>使用期限</th><th>残日数</th><th>在庫数</th>
+        </tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -42,6 +48,8 @@
   <script src="/common.js"></script>
   <script>
     let settings = {};
+    const detailByProduct = {}; // productId -> productDetailId(問屋設定あり)
+    const nameByProduct = {};   // productId -> 商品名
 
     async function boot() {
       const user = await initPage('expiry');
@@ -49,6 +57,13 @@
       const s = await api('/api/settings');
       settings = s.data.settings || {};
       document.getElementById('warnDays').value = settings.expiry_warn_days || 30;
+      // 商品→商品詳細(問屋あり)の対応表を用意(発注追加用)
+      const products = await getProducts();
+      products.forEach((p) => {
+        nameByProduct[p.productId] = p.productName;
+        const d = (p.details || []).find((x) => x.supplierId);
+        detailByProduct[p.productId] = d ? d.productDetailId : null;
+      });
       load();
     }
 
@@ -57,18 +72,50 @@
       const { data } = await api('/api/inventory/expiry?warnDays=' + encodeURIComponent(wd));
       const tbody = document.querySelector('#tbl tbody');
       tbody.innerHTML = '';
+      document.getElementById('checkAll').checked = false;
       const rows = data.rows || [];
-      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="6">該当する在庫はありません。</td></tr>'; return; }
+      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="7">該当する在庫はありません。</td></tr>'; return; }
       rows.forEach((r) => {
         const tr = document.createElement('tr');
         tr.className = r.status;
         const label = r.status === 'expired' ? '期限切れ' : '期限接近';
         const days = r.days_left < 0 ? `${-r.days_left}日超過` : `残${r.days_left}日`;
         tr.innerHTML =
-          `<td>${label}</td><td>${r.product_name}</td><td>${r.lot_number || '(なし)'}</td>` +
+          `<td style="text-align:center;"><input type="checkbox" class="pick" data-pid="${r.product_id}" style="width:auto;" /></td>` +
+          `<td>${label}</td><td>${esc(r.product_name)}</td><td>${esc(r.lot_number) || '(なし)'}</td>` +
           `<td>${r.expiry_date}</td><td>${days}</td><td style="text-align:right;">${r.stock_quantity}</td>`;
         tbody.appendChild(tr);
       });
+    }
+
+    function toggleAll(v) { document.querySelectorAll('.pick').forEach((c) => { c.checked = v; }); }
+
+    // チェックした商品を発注予定に追加して発注画面へ
+    async function orderChecked() {
+      const msg = document.getElementById('msg');
+      const pids = [...new Set([...document.querySelectorAll('.pick:checked')].map((c) => c.dataset.pid))];
+      if (pids.length === 0) { setMsg(msg, '発注する商品を選択してください', 'error'); return; }
+      const failed = [];
+      let added = 0;
+      for (const pid of pids) {
+        const pdId = detailByProduct[pid];
+        if (!pdId) { failed.push(nameByProduct[pid] || pid); continue; }
+        const { ok } = await api('/api/orders/add-product', { method: 'POST', body: JSON.stringify({ productDetailId: pdId, orderQuantity: 1 }) });
+        if (ok) added++; else failed.push(nameByProduct[pid] || pid);
+      }
+      if (failed.length) {
+        alert('次の商品は問屋が未設定などのため追加できませんでした：\n' + failed.join('\n'));
+      }
+      if (added > 0) {
+        window.location = '/orders.html';
+      } else {
+        setMsg(msg, '発注予定に追加できる商品がありませんでした', 'error');
+      }
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
     boot();
