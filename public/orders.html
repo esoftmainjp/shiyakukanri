@@ -72,11 +72,9 @@
           .map((x) => `<option value='${JSON.stringify({ productId: x.p.productId, productDetailId: x.d.productDetailId })}'>${x.p.productName}</option>`)
           .join('');
         addForm = `<div class="row" style="margin-top:10px; align-items:flex-end;">
+          <div style="flex:2;"><label>商品追加(この問屋のみ)</label><select id="add_${o.id}">${opts || '<option value="">対象商品なし</option>'}</select></div>
           <div style="flex:0;"><label>発注数(梱包)</label><input type="number" id="addq_${o.id}" value="1" min="1" style="width:100px;" /></div>
-          <div style="flex:2;"><label>商品を選択して発注に追加(この問屋のみ)</label>
-            <select id="add_${o.id}" onchange="addDetail('${o.id}')">
-              <option value="">＋ 商品を選択…</option>${opts || ''}
-            </select></div>
+          <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="addDetail('${o.id}')">追加</button></div>
         </div>`;
       }
       return `<div class="card" style="background:#fafcfe;">
@@ -107,17 +105,16 @@
       load();
     }
     function printOrder(id) { window.open('/print.html?type=orders&id=' + id, '_blank'); }
-    // 商品を選択した時点で発注に追加(発注数は左の入力値、既定1)
     async function addDetail(orderId) {
       const sel = document.getElementById('add_' + orderId);
-      if (!sel || !sel.value) return; // プレースホルダ選択時は何もしない
+      if (!sel || !sel.value) { setMsg(document.getElementById('msg'), '追加する商品がありません', 'error'); return; }
       const picked = JSON.parse(sel.value);
       const orderQuantity = Number(document.getElementById('addq_' + orderId).value) || 1;
       const { ok, data } = await api(`/api/orders/${orderId}/details`, {
         method: 'POST',
         body: JSON.stringify({ productId: picked.productId, productDetailId: picked.productDetailId, orderQuantity }),
       });
-      setMsg(document.getElementById('msg'), ok ? '商品を発注に追加しました' : (data.error || '失敗'), ok ? 'ok' : 'error');
+      setMsg(document.getElementById('msg'), ok ? '商品を追加しました' : (data.error || '失敗'), ok ? 'ok' : 'error');
       load();
     }
 
