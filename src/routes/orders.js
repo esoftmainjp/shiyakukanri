@@ -3,6 +3,7 @@
 const express = require('express');
 const { pool, getClient } = require('../db');
 const { writeLog } = require('../services/log');
+const { refreshOrderReceiptStatus } = require('../services/inventory');
 
 const router = express.Router();
 
@@ -271,6 +272,59 @@ router.patch('/:id/details/:detailId', async (req, res) => {
   } catch (err) {
     console.error('発注数変更エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 発注明細(商品行)の削除/キャンセル。未発注・発注済みのみ。入庫済みの明細は不可。
+// DELETE /api/orders/:id/details/:detailId
+router.delete('/:id/details/:detailId', requireEditor, async (req, res) => {
+  const { id: orderId, detailId } = req.params;
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const ord = await client.query(`SELECT order_status FROM orders WHERE id = $1 FOR UPDATE`, [orderId]);
+    if (ord.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: '発注が見つかりません' }); }
+    const status = ord.rows[0].order_status;
+    if (status !== 'unordered' && status !== 'ordered') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'この発注の商品は削除できません' });
+    }
+    const od = await client.query(`SELECT id FROM order_details WHERE id = $1 AND order_id = $2`, [detailId, orderId]);
+    if (od.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: '発注明細が見つかりません' }); }
+
+    // 入庫済み(部分入庫含む)の商品は削除不可
+    const rp = await client.query(`SELECT COUNT(*) AS c FROM receipt_plans WHERE order_detail_id = $1`, [detailId]);
+    if (Number(rp.rows[0].c) > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'この商品は入庫済みのため削除できません' });
+    }
+
+    // 発注予定(order_plans)→発注明細 の順に削除
+    await client.query(`DELETE FROM order_plans WHERE order_detail_id = $1`, [detailId]);
+    await client.query(`DELETE FROM order_details WHERE id = $1`, [detailId]);
+
+    // 残明細が無ければ発注ごと削除。発注済みで残りが全て入庫済みなら状態を更新。
+    const remain = await client.query(`SELECT COUNT(*) AS c FROM order_details WHERE order_id = $1`, [orderId]);
+    let orderDeleted = false;
+    if (Number(remain.rows[0].c) === 0) {
+      await client.query(`DELETE FROM orders WHERE id = $1`, [orderId]);
+      orderDeleted = true;
+    } else if (status === 'ordered') {
+      await refreshOrderReceiptStatus(client, orderId);
+    }
+
+    await writeLog(client, {
+      userId: req.session.user.id, targetTable: 'order_details', targetId: detailId, operationType: '削除',
+      before: { order_id: orderId, order_status: status },
+    });
+    await client.query('COMMIT');
+    res.json({ ok: true, orderDeleted, message: '商品を発注から削除しました' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('発注明細削除エラー:', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'サーバーエラー' });
+  } finally {
+    client.release();
   }
 });
 
