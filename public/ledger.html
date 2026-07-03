@@ -23,7 +23,7 @@
       <table id="tbl">
         <thead><tr>
           <th>入庫日</th><th>商品名</th><th>ロット</th><th>内容物コード</th>
-          <th>有効期限</th><th>使用開始日</th><th>使用終了日</th><th>在庫数</th>
+          <th>有効期限</th><th>使用開始日</th><th>使用終了日</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -54,13 +54,13 @@
       const tbody = document.querySelector('#tbl tbody');
       tbody.innerHTML = '';
       const rows = data.rows || [];
-      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="8">該当データがありません。</td></tr>'; return; }
+      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="7">該当データがありません。</td></tr>'; return; }
       rows.forEach((r) => {
         const tr = document.createElement('tr');
         tr.innerHTML =
           `<td>${r.receipt_date || ''}</td><td>${r.product_name}</td><td>${r.lot_number || '(なし)'}</td>` +
           `<td>${r.content_code}</td><td>${r.expiry_date || ''}</td><td>${r.use_start_date || ''}</td>` +
-          `<td>${r.use_end_date || ''}</td><td style="text-align:right;">${r.stock_quantity}</td>`;
+          `<td>${r.use_end_date || ''}</td>`;
         tbody.appendChild(tr);
       });
     }

@@ -152,15 +152,15 @@
       const to = q.get('to') || '';
       let h = metaRow([['期間', `${from || '—'} ～ ${to || '—'}`]]);
       h += `<table><thead><tr><th>入庫日</th><th>商品名</th><th>ロット</th><th>内容物コード</th>` +
-        `<th>有効期限</th><th>使用開始日</th><th>使用終了日</th><th class="num">在庫数</th></tr></thead><tbody>`;
+        `<th>有効期限</th><th>使用開始日</th><th>使用終了日</th></tr></thead><tbody>`;
       const rows = data.rows || [];
       if (rows.length === 0) {
-        h += `<tr><td colspan="8" style="text-align:center;">該当データがありません。</td></tr>`;
+        h += `<tr><td colspan="7" style="text-align:center;">該当データがありません。</td></tr>`;
       } else {
         rows.forEach((r) => {
           h += `<tr><td>${r.receipt_date || ''}</td><td>${esc(r.product_name)}</td><td>${esc(r.lot_number) || '(なし)'}</td>` +
             `<td>${esc(r.content_code)}</td><td>${r.expiry_date || ''}</td><td>${r.use_start_date || ''}</td>` +
-            `<td>${r.use_end_date || ''}</td><td class="num">${r.stock_quantity}</td></tr>`;
+            `<td>${r.use_end_date || ''}</td></tr>`;
         });
       }
       h += `</tbody></table>`;

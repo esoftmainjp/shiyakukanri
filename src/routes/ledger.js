@@ -17,16 +17,11 @@ function buildLedgerQuery(q) {
        -- 独自バーコード品
        SELECT r.receipt_date, p.name AS product_name,
               rd.lot_number, b.content_code, rd.expiry_date,
-              b.use_start_date, b.use_end_date,
-              COALESCE(ps.stock_quantity, 0) AS stock_quantity
+              b.use_start_date, b.use_end_date
          FROM barcodes b
          JOIN products p ON p.id = b.product_id
          JOIN receipt_details rd ON rd.id = b.receipt_detail_id
          JOIN receipts r ON r.id = rd.receipt_id
-         LEFT JOIN product_stocks ps
-                ON ps.product_id = b.product_id
-               AND ps.lot_number = rd.lot_number
-               AND ps.expiry_date IS NOT DISTINCT FROM rd.expiry_date
         WHERE p.qc_target_flag = TRUE
           AND b.voided_flag = FALSE
           AND r.receipt_date <= $2
@@ -35,14 +30,9 @@ function buildLedgerQuery(q) {
        -- 非バーコード品(使用記録)。入庫日は保持しないため使用開始日を代替表示。
        SELECT u.use_start_date AS receipt_date, p.name AS product_name,
               u.lot_number, u.content_code, u.expiry_date,
-              u.use_start_date, u.use_end_date,
-              COALESCE(ps.stock_quantity, 0) AS stock_quantity
+              u.use_start_date, u.use_end_date
          FROM usage_records u
          JOIN products p ON p.id = u.product_id
-         LEFT JOIN product_stocks ps
-                ON ps.product_id = u.product_id
-               AND ps.lot_number = u.lot_number
-               AND ps.expiry_date IS NOT DISTINCT FROM u.expiry_date
         WHERE p.qc_target_flag = TRUE
           AND u.use_start_date <= $2
           AND u.use_start_date >= $1
@@ -76,7 +66,6 @@ router.get('/csv', async (req, res) => {
       { key: 'expiry_date', label: '有効期限' },
       { key: 'use_start_date', label: '使用開始日' },
       { key: 'use_end_date', label: '使用終了日' },
-      { key: 'stock_quantity', label: '在庫数' },
     ];
     sendCsv(res, '試薬管理台帳.csv', columns, rows);
   } catch (err) {
