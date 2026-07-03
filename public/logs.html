@@ -28,7 +28,7 @@
   <header></header>
   <main>
     <div class="card">
-      <h2>操作ログ</h2>
+      <h2>操作ログ <span id="storageInfo" style="font-size:0.8rem; font-weight:normal; color:#666;"></span></h2>
       <p style="font-size:0.85rem; color:#555;">登録・更新・削除・ログインなどの操作履歴を確認できます（管理者専用）。</p>
       <div class="row" style="align-items:flex-end;">
         <div><label>期間(開始)</label><input type="date" id="from" /></div>
@@ -81,7 +81,23 @@
       document.getElementById('to').value = today.toISOString().slice(0, 10);
       document.getElementById('from').value = from.toISOString().slice(0, 10);
       await loadMeta();
+      loadStorage();
       search();
+    }
+
+    function fmtBytes(b) {
+      if (!b || b < 1024) return (b || 0) + ' B';
+      const u = ['KB', 'MB', 'GB', 'TB'];
+      let n = b / 1024, i = 0;
+      while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+      return n.toFixed(n >= 10 ? 0 : 1) + ' ' + u[i];
+    }
+
+    async function loadStorage() {
+      const el = document.getElementById('storageInfo');
+      const { ok, data } = await api('/api/logs/storage');
+      if (!ok) { el.textContent = ''; return; }
+      el.textContent = `（データ容量: 約 ${fmtBytes(data.bytes)} ／ ${Number(data.count).toLocaleString()} 件）`;
     }
 
     async function loadMeta() {

@@ -73,6 +73,28 @@ router.get('/meta', async (req, res) => {
   }
 });
 
+// 操作ログのおおよそのデータ容量と件数
+// GET /api/logs/storage
+router.get('/storage', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT COUNT(*) AS c,
+              pg_total_relation_size('operation_logs') AS total_bytes,
+              pg_table_size('operation_logs') AS table_bytes
+         FROM operation_logs`
+    );
+    const row = r.rows[0] || {};
+    res.json({
+      count: Number(row.c || 0),
+      bytes: Number(row.total_bytes || 0),
+      tableBytes: Number(row.table_bytes || 0),
+    });
+  } catch (err) {
+    console.error('操作ログ容量エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 // 操作ログ一覧(絞り込み・ページング)
 // GET /api/logs?from&to&userId&operationType&targetTable&keyword&limit&offset
 router.get('/', async (req, res) => {
