@@ -37,26 +37,6 @@
         <tbody></tbody>
       </table>
     </div>
-
-    <!-- 運用設定 (管理者のみ) -->
-    <div class="card" id="settingsCard" style="display:none;">
-      <h3>運用設定</h3>
-      <div class="row">
-        <div style="flex:0; min-width:180px;">
-          <label>警告日数(既定)</label>
-          <input type="number" id="setWarnDays" min="0" />
-        </div>
-        <div style="flex:0; min-width:220px;">
-          <label>期限切れ商品の出庫</label>
-          <select id="setAllowExpired">
-            <option value="false">許可しない</option>
-            <option value="true">許可する</option>
-          </select>
-        </div>
-        <div style="flex:0;"><label>&nbsp;</label><button onclick="saveSettings()">設定を保存</button></div>
-      </div>
-      <p class="msg" id="setMsg"></p>
-    </div>
   </main>
 
   <script src="/common.js"></script>
@@ -69,11 +49,6 @@
       const s = await api('/api/settings');
       settings = s.data.settings || {};
       document.getElementById('warnDays').value = settings.expiry_warn_days || 30;
-      if (user.userType === 'admin') {
-        document.getElementById('settingsCard').style.display = 'block';
-        document.getElementById('setWarnDays').value = settings.expiry_warn_days || 30;
-        document.getElementById('setAllowExpired').value = settings.allow_expired_issue || 'false';
-      }
       load();
     }
 
@@ -94,16 +69,6 @@
           `<td>${r.expiry_date}</td><td>${days}</td><td style="text-align:right;">${r.stock_quantity}</td>`;
         tbody.appendChild(tr);
       });
-    }
-
-    async function saveSettings() {
-      const body = {
-        expiry_warn_days: document.getElementById('setWarnDays').value,
-        allow_expired_issue: document.getElementById('setAllowExpired').value,
-      };
-      const { ok, data } = await api('/api/settings', { method: 'PUT', body: JSON.stringify(body) });
-      setMsg(document.getElementById('setMsg'), ok ? '設定を保存しました' : (data.error || '失敗'), ok ? 'ok' : 'error');
-      if (ok) { settings = Object.assign(settings, body); document.getElementById('warnDays').value = body.expiry_warn_days; load(); }
     }
 
     boot();
