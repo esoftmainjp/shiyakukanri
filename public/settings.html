@@ -17,11 +17,11 @@
         <div class="row">
           <div style="flex:0;"><label>使用期限の警告日数（日）</label><input type="number" id="expiry_warn_days" min="0" style="width:120px;" /></div>
           <div style="flex:0;"><label>在庫僅少アラートのしきい値（バラ数）</label><input type="number" id="low_stock_threshold" min="0" style="width:160px;" /></div>
-          <div style="flex:0;"><label>期限切れ商品の出庫</label>
-            <label style="display:flex; align-items:center; gap:6px; font-weight:normal; margin-top:2px;">
-              <input type="checkbox" id="allow_expired_issue" style="width:auto;" />許可する
-            </label>
-          </div>
+        </div>
+        <div style="margin-top:12px;">
+          <label style="display:inline-flex; align-items:center; gap:8px; margin:0; font-weight:700; color:var(--ink);">
+            <input type="checkbox" id="allow_expired_issue" style="width:auto;" />期限切れ商品の出庫を許可する
+          </label>
         </div>
         <p style="color:#6b7280; font-size:0.83rem;">警告日数：この日数以内に期限が来る在庫を「使用期限」画面・ホームで警告します。<br>
           在庫僅少しきい値：ホームの在庫一覧で、在庫がこの数以下の行を赤く表示します（0で無効）。</p>
