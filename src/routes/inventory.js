@@ -103,6 +103,43 @@ router.get('/expiry', async (req, res) => {
   }
 });
 
+// 在庫調整・廃棄・返品などの在庫移動履歴
+// GET /api/inventory/movements?from=&to=&productId=&type=
+//   type未指定は手動調整系(adjust/disposal/return)を表示。receipt/issue等も個別指定可。
+router.get('/movements', async (req, res) => {
+  const { from, to, productId, type } = req.query;
+  const limit = Math.min(Number(req.query.limit) || 500, 2000);
+  try {
+    const params = [];
+    let cond;
+    if (type && ['receipt', 'issue', 'adjust', 'disposal', 'return'].includes(type)) {
+      params.push(type); cond = `m.movement_type = $${params.length}`;
+    } else {
+      cond = `m.movement_type IN ('adjust', 'disposal', 'return')`;
+    }
+    if (from) { params.push(from); cond += ` AND m.created_at::date >= $${params.length}`; }
+    if (to) { params.push(to); cond += ` AND m.created_at::date <= $${params.length}`; }
+    if (productId) { params.push(productId); cond += ` AND m.product_id = $${params.length}`; }
+    params.push(limit);
+    const { rows } = await pool.query(
+      `SELECT m.id, m.created_at, m.movement_type, m.product_id, p.name AS product_name,
+              m.lot_number, m.expiry_date, m.quantity_change, m.quantity_before, m.quantity_after,
+              m.reason, u.name AS user_name, m.related_id
+         FROM stock_movements m
+         JOIN products p ON p.id = m.product_id
+         LEFT JOIN users u ON u.id = m.user_id
+        WHERE ${cond}
+        ORDER BY m.id DESC
+        LIMIT $${params.length}`,
+      params
+    );
+    res.json({ movements: rows });
+  } catch (err) {
+    console.error('在庫移動履歴エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 // 在庫の修正・廃棄・返品
 // body: { productId, lotNumber?, expiryDate?, movementType(adjust|disposal|return),
 //         quantity, reason, barcodeValue? }
