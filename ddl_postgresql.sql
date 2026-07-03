@@ -427,6 +427,8 @@ CREATE TABLE barcodes (
     use_start_date    DATE,                             -- 使用開始日(=出庫日。出庫時に自動記録)
     use_end_date      DATE,                             -- 使用終了日(使用終了日登録画面で登録)
     voided_flag       BOOLEAN     NOT NULL DEFAULT FALSE,-- 無効化(論理削除)。入庫削除時に値を予約したまま無効化
+    printed_flag      BOOLEAN     NOT NULL DEFAULT FALSE,-- ラベル印刷済みフラグ
+    printed_at        TIMESTAMPTZ,                       -- ラベル印刷日時
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_barcodes_value        UNIQUE (barcode_value),
     CONSTRAINT uq_barcodes_content_code UNIQUE (product_id, content_code)
@@ -443,6 +445,8 @@ COMMENT ON COLUMN barcodes.used_flag         IS '使用済みフラグ';
 COMMENT ON COLUMN barcodes.use_start_date    IS '使用開始日(=出庫日)';
 COMMENT ON COLUMN barcodes.use_end_date      IS '使用終了日';
 COMMENT ON COLUMN barcodes.voided_flag       IS '無効化(論理削除)フラグ。TRUEは入庫削除等で無効化された値(再発行しない)';
+COMMENT ON COLUMN barcodes.printed_flag      IS 'ラベル印刷済みフラグ';
+COMMENT ON COLUMN barcodes.printed_at        IS 'ラベル印刷日時';
 
 CREATE INDEX idx_barcodes_receipt_detail ON barcodes(receipt_detail_id);
 CREATE INDEX idx_barcodes_product        ON barcodes(product_id);

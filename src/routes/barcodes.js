@@ -9,10 +9,13 @@ const router = express.Router();
 // フィルタ: from/to(発行日) / productId / query(バーコード値・商品名の部分一致)
 router.get('/list', async (req, res) => {
   const { from, to, productId, query, receiptId } = req.query;
+  const includePrinted = String(req.query.includePrinted) === 'true';
   const limit = Math.min(Number(req.query.limit) || 1000, 5000);
   try {
     const params = [];
     let cond = 'b.voided_flag = FALSE';
+    // 既定は未印刷のみ。receiptId指定(入庫時の初回印刷)またはincludePrinted時は印刷済みも含める
+    if (!receiptId && !includePrinted) cond += ' AND b.printed_flag = FALSE';
     if (from) { params.push(from); cond += ` AND b.issue_date >= $${params.length}`; }
     if (to) { params.push(to); cond += ` AND b.issue_date <= $${params.length}`; }
     if (productId) { params.push(productId); cond += ` AND b.product_id = $${params.length}`; }
@@ -21,7 +24,7 @@ router.get('/list', async (req, res) => {
     params.push(limit);
     const { rows } = await pool.query(
       `SELECT b.barcode_value, b.content_code, b.product_id, p.name AS product_name,
-              rd.lot_number, rd.expiry_date, b.issue_date, b.used_flag
+              rd.lot_number, rd.expiry_date, b.issue_date, b.used_flag, b.printed_flag
          FROM barcodes b
          JOIN products p ON p.id = b.product_id
          JOIN receipt_details rd ON rd.id = b.receipt_detail_id
@@ -33,6 +36,24 @@ router.get('/list', async (req, res) => {
     res.json({ items: rows });
   } catch (err) {
     console.error('バーコード一覧エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// バーコードを印刷済みにする
+// POST /api/barcodes/mark-printed  body: { values: ["2607...", ...] }
+router.post('/mark-printed', async (req, res) => {
+  const values = (req.body && req.body.values) || [];
+  if (!Array.isArray(values) || values.length === 0) return res.json({ ok: true, updated: 0 });
+  try {
+    const r = await pool.query(
+      `UPDATE barcodes SET printed_flag = TRUE, printed_at = now()
+        WHERE barcode_value = ANY($1::text[]) AND voided_flag = FALSE`,
+      [values]
+    );
+    res.json({ ok: true, updated: r.rowCount });
+  } catch (err) {
+    console.error('印刷済み更新エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
   }
 });

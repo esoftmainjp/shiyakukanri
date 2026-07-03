@@ -21,6 +21,8 @@
     .label input.pick { position: absolute; }
     .label-wrap { position: relative; }
     .label-wrap .pick { position: absolute; top: 2px; left: 2px; z-index: 2; }
+    .printed-badge { position: absolute; top: 2px; right: 2px; z-index: 2; background: #c0575d; color: #fff; font-size: 10px; padding: 1px 5px; border-radius: 8px; }
+    @media print { .printed-badge { display: none !important; } }
 
     /* 印刷時: ラベルのみ・1ラベル=1ページ */
     @media print {
@@ -51,6 +53,11 @@
         <div style="flex:1;"><label>検索(値/商品名)</label><input id="query" placeholder="部分一致" /></div>
         <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">検索</button></div>
         <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="setToday()">本日発行分</button></div>
+        <div style="flex:0;"><label>&nbsp;</label>
+          <label style="display:inline-flex; align-items:center; gap:6px; font-weight:normal; white-space:nowrap;">
+            <input type="checkbox" id="includePrinted" style="width:auto;" onchange="load()" />印刷済みも表示
+          </label>
+        </div>
       </div>
       <p class="msg" id="msg"></p>
       <p style="color:#6b7280; font-size:0.83rem; margin:6px 0 0;">ラベルサイズ・バーコードの大きさは「設定」画面で変更できます。</p>
@@ -120,6 +127,7 @@
       if (to) qs.set('to', to);
       if (productId) qs.set('productId', productId);
       if (query) qs.set('query', query);
+      if (document.getElementById('includePrinted').checked) qs.set('includePrinted', 'true');
       const { ok, data } = await api('/api/barcodes/list?' + qs.toString());
       if (!ok) { setMsg(document.getElementById('msg'), data.error || '取得失敗', 'error'); return; }
       items = data.items || [];
@@ -152,6 +160,12 @@
         const cb = document.createElement('input');
         cb.type = 'checkbox'; cb.className = 'pick'; cb.checked = true; cb.dataset.idx = i;
         cb.addEventListener('change', syncCheckAll);
+        if (b.printed_flag) {
+          const badge = document.createElement('span');
+          badge.className = 'printed-badge';
+          badge.textContent = '印刷済';
+          wrap.appendChild(badge);
+        }
         const label = document.createElement('div');
         label.className = 'label';
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -200,14 +214,20 @@
       if (ca) ca.checked = picks.length > 0 && picks.every((c) => c.checked);
     }
 
-    function printSelected() {
+    async function printSelected() {
       const picks = [...document.querySelectorAll('.pick')];
-      const chosen = new Set(picks.filter((c) => c.checked).map((c) => Number(c.dataset.idx)));
-      if (chosen.size === 0) { setMsg(document.getElementById('msg'), '印刷対象を選択してください', 'error'); return; }
+      const chosenIdx = picks.filter((c) => c.checked).map((c) => Number(c.dataset.idx));
+      if (chosenIdx.length === 0) { setMsg(document.getElementById('msg'), '印刷対象を選択してください', 'error'); return; }
       // 選択外のラベルを印刷時のみ非表示にする
+      const chosen = new Set(chosenIdx);
       const wraps = document.querySelectorAll('#labels .label-wrap');
       wraps.forEach((w, i) => { w.classList.toggle('skip-print', !chosen.has(i)); });
       window.print();
+      // 印刷したバーコードを印刷済みに記録し、一覧を更新(既定では印刷済みが消える)
+      const values = chosenIdx.map((i) => items[i] && items[i].barcode_value).filter(Boolean);
+      await api('/api/barcodes/mark-printed', { method: 'POST', body: JSON.stringify({ values }) });
+      setMsg(document.getElementById('msg'), `${values.length} 件を印刷済みにしました`, 'ok');
+      load();
     }
 
     function escapeHtml(s) {

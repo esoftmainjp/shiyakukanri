@@ -76,7 +76,12 @@
       }
       applyPageStyle();
       render(items);
-      setTimeout(() => window.print(), 400);
+      setTimeout(async () => {
+        window.print();
+        // 印刷済みに記録
+        const values = items.map((b) => b.barcode_value);
+        await api('/api/barcodes/mark-printed', { method: 'POST', body: JSON.stringify({ values }) });
+      }, 400);
     }
 
     function applyPageStyle() {
