@@ -8,6 +8,10 @@
   <style>
     tr.expired { background: #fde8e8; }
     tr.warning { background: #fff5e0; }
+    /* 凡例: 実際の行の色と揃える(薄いパステル) */
+    .legend { display: inline-block; padding: 2px 12px; border-radius: 12px; font-size: 0.82rem; font-weight: 700; margin-right: 8px; }
+    .legend.expired { background: #fde8e8; color: #c0575d; border: 1px solid #f3c9c9; }
+    .legend.warning { background: #fff5e0; color: #b0842a; border: 1px solid #f0e0b0; }
   </style>
 </head>
 <body>
@@ -23,8 +27,8 @@
         <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">表示</button></div>
       </div>
       <p style="font-size:0.85rem;">
-        <span class="pill canceled" style="background:#b23b3b;">期限切れ</span>
-        <span class="pill canceled" style="background:#d9a300;">期限接近</span>
+        <span class="legend expired">期限切れ</span>
+        <span class="legend warning">期限接近</span>
       </p>
       <p class="msg" id="msg"></p>
       <table id="tbl">
