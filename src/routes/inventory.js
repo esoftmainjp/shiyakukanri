@@ -87,6 +87,15 @@ router.get('/expiry', async (req, res) => {
       `SELECT s.id, p.id AS product_id, p.name AS product_name,
               s.lot_number, s.expiry_date, s.stock_quantity,
               (SELECT COALESCE(SUM(ps.stock_quantity), 0) FROM product_stocks ps WHERE ps.product_id = p.id) AS product_total,
+              EXISTS (SELECT 1 FROM order_details od JOIN orders o ON o.id = od.order_id
+                       WHERE od.product_id = p.id AND o.order_status = 'unordered'
+                         AND od.canceled_flag = FALSE AND od.order_quantity > 0) AS has_order_plan,
+              EXISTS (SELECT 1 FROM order_details od JOIN orders o ON o.id = od.order_id
+                       LEFT JOIN product_details pd ON pd.id = od.product_detail_id
+                       WHERE od.product_id = p.id AND o.order_status = 'ordered' AND od.canceled_flag = FALSE
+                         AND (od.order_quantity * COALESCE(pd.pack_size, 1)
+                              - COALESCE((SELECT SUM(rp.receipt_piece_quantity) FROM receipt_plans rp WHERE rp.order_detail_id = od.id), 0)) > 0
+                     ) AS has_incoming,
               (s.expiry_date - CURRENT_DATE) AS days_left,
               CASE WHEN s.expiry_date < CURRENT_DATE THEN 'expired'
                    ELSE 'warning' END AS status

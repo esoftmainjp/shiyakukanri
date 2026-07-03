@@ -38,7 +38,7 @@
       <table id="tbl">
         <thead><tr>
           <th style="width:36px; text-align:center;"><input type="checkbox" id="checkAll" onchange="toggleAll(this.checked)" style="width:auto;" /></th>
-          <th>状態</th><th>商品名</th><th>ロット</th><th>使用期限</th><th>残日数</th><th>個数</th><th>在庫数</th>
+          <th>状態</th><th>商品名</th><th>ロット</th><th>使用期限</th><th>残日数</th><th>個数</th><th>在庫数</th><th>予定</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -74,7 +74,7 @@
       tbody.innerHTML = '';
       document.getElementById('checkAll').checked = false;
       const rows = data.rows || [];
-      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="8">該当する在庫はありません。</td></tr>'; return; }
+      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="9">該当する在庫はありません。</td></tr>'; return; }
       rows.forEach((r) => {
         const tr = document.createElement('tr');
         tr.className = r.status;
@@ -84,12 +84,21 @@
           `<td style="text-align:center;"><input type="checkbox" class="pick" data-pid="${r.product_id}" style="width:auto;" /></td>` +
           `<td>${label}</td><td>${esc(r.product_name)}</td><td>${esc(r.lot_number) || '(なし)'}</td>` +
           `<td>${r.expiry_date}</td><td>${days}</td>` +
-          `<td style="text-align:right;">${r.stock_quantity}</td><td style="text-align:right;">${r.product_total}</td>`;
+          `<td style="text-align:right;">${r.stock_quantity}</td><td style="text-align:right;">${r.product_total}</td>` +
+          `<td class="nowrap">${planBadges(r)}</td>`;
         tbody.appendChild(tr);
       });
     }
 
     function toggleAll(v) { document.querySelectorAll('.pick').forEach((c) => { c.checked = v; }); }
+
+    // 発注予定・入庫予定のバッジ
+    function planBadges(r) {
+      let h = '';
+      if (r.has_order_plan) h += '<span class="pill unordered">発注予定</span> ';
+      if (r.has_incoming) h += '<span class="pill ordered">入庫予定</span>';
+      return h;
+    }
 
     // チェックした商品を発注予定に追加して発注画面へ
     async function orderChecked() {
