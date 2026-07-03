@@ -58,8 +58,11 @@
         <div style="flex:0;"><label>ラベル高(mm)</label><input type="number" id="lh" value="29" min="10" max="200" style="width:90px;" oninput="applySize()" /></div>
         <div style="flex:0;"><label>バーコード高(px)</label><input type="number" id="bh" value="60" min="20" max="140" style="width:90px;" oninput="render()" /></div>
         <div style="flex:0;"><label>バーコード幅(mm)</label><input type="number" id="bwmm" value="45" min="10" max="200" style="width:90px;" oninput="render()" /></div>
-        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="toggleAll(true)">全選択</button></div>
-        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="toggleAll(false)">全解除</button></div>
+        <div style="flex:0;"><label>&nbsp;</label>
+          <label style="display:inline-flex; align-items:center; gap:6px; font-weight:normal; white-space:nowrap;">
+            <input type="checkbox" id="checkAll" checked style="width:auto;" onchange="toggleAll(this.checked)" />全てチェック
+          </label>
+        </div>
         <div style="flex:0;"><label>&nbsp;</label><button onclick="printSelected()">選択分を印刷</button></div>
       </div>
       <p class="msg" id="msg"></p>
@@ -151,6 +154,7 @@
         wrap.className = 'label-wrap';
         const cb = document.createElement('input');
         cb.type = 'checkbox'; cb.className = 'pick'; cb.checked = true; cb.dataset.idx = i;
+        cb.addEventListener('change', syncCheckAll);
         const label = document.createElement('div');
         label.className = 'label';
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -186,10 +190,17 @@
           }
         } catch (e) { svg.outerHTML = `<div style="color:red;">描画失敗:${b.barcode_value}</div>`; }
       });
+      syncCheckAll();
     }
 
     function toggleAll(v) {
       document.querySelectorAll('.pick').forEach((cb) => { cb.checked = v; });
+    }
+    // 個別チェックの状態を「全てチェック」に反映(全部ONならON)
+    function syncCheckAll() {
+      const picks = [...document.querySelectorAll('.pick')];
+      const ca = document.getElementById('checkAll');
+      if (ca) ca.checked = picks.length > 0 && picks.every((c) => c.checked);
     }
 
     function printSelected() {
