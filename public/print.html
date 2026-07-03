@@ -77,8 +77,15 @@
       return `<div style="text-align:right; font-size:0.85rem; margin-bottom:6px; color:#333;">${lines.join('')}</div>`;
     }
 
+    function printStamp() {
+      const d = new Date();
+      const p = (n) => String(n).padStart(2, '0');
+      const s = `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+      return `<div style="text-align:right; font-size:0.8rem; color:#555; margin-bottom:2px;">印刷日時: ${s}</div>`;
+    }
+
     function render(data) {
-      let html = companyHeader() + `<h1>${TITLES[type]}</h1>`;
+      let html = printStamp() + companyHeader() + `<h1>${TITLES[type]}</h1>`;
       if (type === 'receipts') html += receiptBody(data);
       else if (type === 'issues') html += issueBody(data);
       else html += orderBody(data);
