@@ -39,9 +39,12 @@ router.get('/', async (req, res) => {
     );
     const details = await pool.query(
       `SELECT od.id, od.order_id, od.product_id, p.name AS product_name,
-              od.product_detail_id, od.planned_order_quantity, od.order_quantity, od.note
+              od.product_detail_id, od.planned_order_quantity, od.order_quantity, od.note,
+              COALESCE(pd.pack_size, 1) AS pack_size,
+              COALESCE((SELECT SUM(op.issue_piece_quantity) FROM order_plans op WHERE op.order_detail_id = od.id), 0) AS order_bara
          FROM order_details od
          JOIN products p ON p.id = od.product_id
+         LEFT JOIN product_details pd ON pd.id = od.product_detail_id
         ORDER BY od.id`
     );
     const byOrder = {};
@@ -241,6 +244,33 @@ router.post('/:id/details', async (req, res) => {
     res.status(err.status || 500).json({ error: err.message || 'サーバーエラー' });
   } finally {
     client.release();
+  }
+});
+
+// 発注明細の発注数を変更(未発注のみ)
+// PATCH /api/orders/:id/details/:detailId  body: { orderQuantity }
+router.patch('/:id/details/:detailId', async (req, res) => {
+  const { id: orderId, detailId } = req.params;
+  const qty = Math.max(1, Number(req.body && req.body.orderQuantity) || 1);
+  try {
+    const ord = await pool.query(`SELECT order_status FROM orders WHERE id = $1`, [orderId]);
+    if (ord.rowCount === 0) return res.status(404).json({ error: '発注が見つかりません' });
+    if (ord.rows[0].order_status !== 'unordered') {
+      return res.status(400).json({ error: '未発注の発注のみ発注数を変更できます' });
+    }
+    const r = await pool.query(
+      `UPDATE order_details SET order_quantity = $1 WHERE id = $2 AND order_id = $3 RETURNING id`,
+      [qty, detailId, orderId]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: '発注明細が見つかりません' });
+    await writeLog(pool, {
+      userId: req.session.user.id, targetTable: 'order_details', targetId: detailId,
+      operationType: '更新', after: { order_quantity: qty },
+    });
+    res.json({ ok: true, orderQuantity: qty });
+  } catch (err) {
+    console.error('発注数変更エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
   }
 });
 

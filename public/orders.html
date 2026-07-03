@@ -50,9 +50,18 @@
     }
 
     function renderOrder(o) {
-      const rows = o.details.map((d) =>
-        `<tr><td>${d.product_name}</td><td style="text-align:right;">${d.planned_order_quantity}</td><td style="text-align:right;">${d.order_quantity}</td><td>${escHtml(d.note)}</td></tr>`
-      ).join('');
+      const editable = o.order_status === 'unordered';
+      const rows = o.details.map((d) => {
+        const qtyCell = editable
+          ? `<input type="number" id="oq_${d.id}" value="${d.order_quantity}" min="1" style="width:80px; text-align:right;" onchange="updateQty('${o.id}','${d.id}')" />`
+          : d.order_quantity;
+        return `<tr><td>${d.product_name}</td>` +
+          `<td style="text-align:right;">${d.order_bara}</td>` +
+          `<td style="text-align:right;">${d.pack_size}</td>` +
+          `<td style="text-align:right;">${d.planned_order_quantity}</td>` +
+          `<td style="text-align:right;">${qtyCell}</td>` +
+          `<td>${escHtml(d.note)}</td></tr>`;
+      }).join('');
       const noteField = o.order_status === 'unordered'
         ? `<div class="row" style="margin-top:8px;"><div style="flex:3;"><label>備考</label><input id="note_${o.id}" value="${o.note || ''}" placeholder="任意" /></div></div>`
         : '';
@@ -84,7 +93,7 @@
           <div>発注日: ${o.order_date || '-'}</div>
           <div class="spacer"></div>
         </div>
-        <table><thead><tr><th>商品</th><th>発注予定数(梱包)</th><th>発注数(梱包)</th><th>備考</th></tr></thead><tbody>${rows}</tbody></table>
+        <table><thead><tr><th>商品</th><th>発注バラ数</th><th>商品内容数</th><th>発注推奨数(梱包)</th><th>発注数(梱包)</th><th>備考</th></tr></thead><tbody>${rows}</tbody></table>
         ${addForm}
         ${noteField}
         <div style="margin-top:10px;">${actions}</div>
@@ -109,6 +118,17 @@
       load();
     }
     function printOrder(id) { window.open('/print.html?type=orders&id=' + id, '_blank'); }
+    // 発注数の変更(未発注のみ)
+    async function updateQty(orderId, detailId) {
+      const el = document.getElementById('oq_' + detailId);
+      const orderQuantity = Number(el.value) || 1;
+      const { ok, data } = await api(`/api/orders/${orderId}/details/${detailId}`, {
+        method: 'PATCH', body: JSON.stringify({ orderQuantity }),
+      });
+      if (!ok) { setMsg(document.getElementById('msg'), data.error || '発注数の変更に失敗', 'error'); return; }
+      el.value = data.orderQuantity;
+      setMsg(document.getElementById('msg'), '発注数を変更しました', 'ok');
+    }
     async function addDetail(orderId) {
       const sel = document.getElementById('add_' + orderId);
       if (!sel || !sel.value) { setMsg(document.getElementById('msg'), '追加する商品がありません', 'error'); return; }
