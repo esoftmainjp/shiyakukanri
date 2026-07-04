@@ -328,9 +328,49 @@
       h += `<tr><th>合計</th><th class="num">${num(t.quantity)}</th><th class="num">${yen(t.amount)}</th><th class="num">${num(t.line_count)}</th></tr>`;
       return h + `</tbody></table>`;
     }
+    function niceMax(v) {
+      if (v <= 0) return 1;
+      const p = Math.pow(10, Math.floor(Math.log10(v)));
+      const n = v / p;
+      const m = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+      return m * p;
+    }
+    function yenShort(v) {
+      if (v >= 100000000) return '¥' + (Math.round(v / 10000000) / 10) + '億';
+      if (v >= 10000) return '¥' + (Math.round(v / 1000) / 10) + '万';
+      return '¥' + Math.round(v);
+    }
+    function buildMonthlyChart(rows) {
+      if (!rows.length) return '';
+      const W = 760, H = 300, ml = 66, mr = 18, mt = 22, mb = 40;
+      const pw = W - ml - mr, ph = H - mt - mb;
+      const maxY = niceMax(Math.max(1, ...rows.flatMap((r) => [r.receipt_amount, r.issue_amount])));
+      const n = rows.length;
+      const xAt = (i) => (n === 1 ? ml + pw / 2 : ml + (i / (n - 1)) * pw);
+      const yAt = (v) => mt + ph - (v / maxY) * ph;
+      let g = '';
+      for (let t = 0; t <= 4; t++) {
+        const val = maxY * t / 4, y = yAt(val);
+        g += `<line x1="${ml}" y1="${y}" x2="${ml + pw}" y2="${y}" stroke="#e3e9ef" stroke-width="1"/>`;
+        g += `<text x="${ml - 6}" y="${y + 3}" text-anchor="end" font-size="9" fill="#667">${yenShort(val)}</text>`;
+      }
+      let xl = '';
+      const step = Math.ceil(n / 12);
+      rows.forEach((r, i) => { if (i % step === 0 || i === n - 1) xl += `<text x="${xAt(i)}" y="${mt + ph + 15}" text-anchor="middle" font-size="8" fill="#667">${esc(r.ym)}</text>`; });
+      const line = (key, color) => {
+        const pts = rows.map((r, i) => `${xAt(i).toFixed(1)},${yAt(r[key]).toFixed(1)}`).join(' ');
+        const dots = rows.map((r, i) => `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(r[key]).toFixed(1)}" r="2.6" fill="${color}"/>`).join('');
+        return `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2"/>${dots}`;
+      };
+      const legend = `<g font-size="10"><rect x="${ml}" y="4" width="14" height="4" fill="#5e97c1"/><text x="${ml + 18}" y="9" fill="#444">入庫金額</text>` +
+        `<rect x="${ml + 92}" y="4" width="14" height="4" fill="#e0955a"/><text x="${ml + 110}" y="9" fill="#444">出庫金額</text></g>`;
+      return `<div style="text-align:center; margin:6px 0 12px;"><svg viewBox="0 0 ${W} ${H}" style="width:100%; max-width:720px; height:auto;">` +
+        `${g}<line x1="${ml}" y1="${mt + ph}" x2="${ml + pw}" y2="${mt + ph}" stroke="#b9c6d3"/><line x1="${ml}" y1="${mt}" x2="${ml}" y2="${mt + ph}" stroke="#b9c6d3"/>` +
+        `${line('receipt_amount', '#5e97c1')}${line('issue_amount', '#e0955a')}${xl}${legend}</svg></div>`;
+    }
     function monthlyReportBody(data) {
       const rows = data.rows || [];
-      let h = listMeta(rows.length);
+      let h = listMeta(rows.length) + buildMonthlyChart(rows);
       h += `<table><thead><tr><th>年月</th><th class="num">入庫量(バラ)</th><th class="num">入庫金額</th>` +
         `<th class="num">出庫量(バラ)</th><th class="num">出庫金額</th></tr></thead><tbody>`;
       if (rows.length === 0) h += emptyRow(5);
