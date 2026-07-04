@@ -63,6 +63,9 @@ router.post('/:type', async (req, res) => {
       vals.push(bcrypt.hashSync(String(body.password), 10));
       cols.push('password_updated_at');
       vals.push(new Date());
+      // 管理者が設定した初期パスワードは、本人の初回ログイン時に変更を必須とする
+      cols.push('must_change_password');
+      vals.push(true);
     }
     if (cols.length === 0) return res.status(400).json({ error: '登録項目がありません' });
 
@@ -96,6 +99,9 @@ router.put('/:type/:id', async (req, res) => {
       sets.push(`password_hash = $${vals.length}`);
       vals.push(new Date());
       sets.push(`password_updated_at = $${vals.length}`);
+      // 管理者がパスワードを再設定した場合も、本人の次回ログイン時に変更を必須とする
+      vals.push(true);
+      sets.push(`must_change_password = $${vals.length}`);
     }
     if (sets.length === 0) return res.status(400).json({ error: '更新項目がありません' });
 

@@ -77,7 +77,7 @@ app.post('/api/login', async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT id, user_type, name, login_id, password_hash
+      `SELECT id, user_type, name, login_id, password_hash, must_change_password
          FROM users
         WHERE login_id = $1 AND is_active = TRUE`,
       [loginId]
@@ -92,6 +92,7 @@ app.post('/api/login', async (req, res) => {
       userType: user.user_type,
       name: user.name,
       loginId: user.login_id,
+      mustChangePassword: user.must_change_password === true,
     };
     await writeLog(pool, { userId: user.id, targetTable: 'users', targetId: user.id, operationType: 'ログイン' });
     res.json({ user: req.session.user });
@@ -148,10 +149,12 @@ app.post('/api/me/password', requireLogin, async (req, res) => {
     }
     const hash = bcrypt.hashSync(String(newPassword), 10);
     const upd = await pool.query(
-      `UPDATE users SET password_hash = $1, password_updated_at = now() WHERE id = $2
-        RETURNING password_updated_at`,
+      `UPDATE users SET password_hash = $1, password_updated_at = now(), must_change_password = FALSE
+        WHERE id = $2 RETURNING password_updated_at`,
       [hash, req.session.user.id]
     );
+    // セッションの要変更フラグも解除
+    req.session.user.mustChangePassword = false;
     await writeLog(pool, {
       userId: req.session.user.id, targetTable: 'users', targetId: req.session.user.id,
       operationType: '更新', after: { password_changed: true },

@@ -49,10 +49,10 @@ INSERT INTO makers (name, kana, jan_maker_code) VALUES
 --   general  / General@123
 --   supplier / Supplier@123
 -- ------------------------------------------------------------
-INSERT INTO users (user_type, name, kana, login_id, password_hash) VALUES
-    ('admin',    '管理者',     'カンリシャ',   'admin',    crypt('Admin@12345',  gen_salt('bf', 10))),
-    ('general',  '一般ユーザー', 'イッパンユーザー', 'general',  crypt('General@123',  gen_salt('bf', 10))),
-    ('supplier', '問屋ユーザー', 'トンヤユーザー',  'supplier', crypt('Supplier@123', gen_salt('bf', 10)));
+-- 初期ユーザーは管理者のみ。以降のユーザーは管理者が「マスター編集」から追加する。
+-- 初期パスワードは既知の共通値のため、初回ログイン時に変更を必須とする(must_change_password=TRUE)。
+INSERT INTO users (user_type, name, kana, login_id, password_hash, must_change_password) VALUES
+    ('admin', '管理者', 'カンリシャ', 'admin', crypt('Admin@12345', gen_salt('bf', 10)), TRUE);
 
 -- ------------------------------------------------------------
 -- 商品マスター

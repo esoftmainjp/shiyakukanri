@@ -91,6 +91,7 @@ CREATE TABLE users (
     login_id        VARCHAR(64)  NOT NULL,
     password_hash   VARCHAR(255) NOT NULL,
     password_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    must_change_password BOOLEAN    NOT NULL DEFAULT FALSE,
     note            TEXT         NOT NULL DEFAULT '',
     is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
@@ -104,6 +105,7 @@ COMMENT ON COLUMN users.kana           IS 'カナ';
 COMMENT ON COLUMN users.login_id       IS 'ログインID';
 COMMENT ON COLUMN users.password_hash  IS 'パスワードハッシュ(bcrypt等。平文保存禁止)';
 COMMENT ON COLUMN users.password_updated_at IS 'パスワード保存日時';
+COMMENT ON COLUMN users.must_change_password IS '初回ログイン時パスワード変更要求フラグ';
 COMMENT ON COLUMN users.note           IS '備考';
 COMMENT ON COLUMN users.is_active      IS '有効フラグ';
 

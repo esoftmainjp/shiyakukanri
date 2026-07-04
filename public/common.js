@@ -39,6 +39,11 @@ async function initPage(activeKey) {
     }
     return null;
   }
+  // 初回ログイン(パスワード変更要求)時は、変更画面へ誘導する
+  if (data.user.mustChangePassword && activeKey !== 'password') {
+    location.href = '/password.html';
+    return null;
+  }
   renderHeader(data.user, activeKey);
   syncTheme();
   return data.user;
