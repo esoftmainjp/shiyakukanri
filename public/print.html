@@ -317,7 +317,14 @@
     function usageReportBody(data) {
       const rows = data.rows || [];
       const label = GLABEL[data.groupBy] || '商品';
-      let h = listMeta(rows.length);
+      // 絞り込み条件を明示(期間・グループ化・問屋・メーカー・件数)
+      const from = q.get('from') || '';
+      const to = q.get('to') || '';
+      const pairs = [['期間', `${from || '—'} ～ ${to || '—'}`], ['グループ化', q.get('groupLabel') || (label + '別')]];
+      if (q.get('supplierName')) pairs.push(['問屋', q.get('supplierName')]);
+      if (q.get('makerName')) pairs.push(['メーカー', q.get('makerName')]);
+      pairs.push(['件数', rows.length]);
+      let h = metaRow(pairs);
       h += `<table><thead><tr><th>${label}</th><th>問屋</th><th>メーカー</th><th class="num">使用量(バラ)</th><th class="num">金額</th><th class="num">明細件数</th></tr></thead><tbody>`;
       if (rows.length === 0) h += emptyRow(6);
       rows.forEach((r) => {

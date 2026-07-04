@@ -206,9 +206,15 @@
       const path = (tab === 'usage') ? '/api/reports/usage/csv' : '/api/reports/monthly/csv';
       window.location = path + '?' + qs();
     }
+    function selText(id) { const s = document.getElementById(id); return s.value ? s.options[s.selectedIndex].text : ''; }
     function printOut() {
-      const type = (tab === 'usage') ? 'usage_report' : 'monthly_report';
-      window.open('/print.html?type=' + type + '&' + qs(), '_blank');
+      if (tab === 'monthly') { window.open('/print.html?type=monthly_report&' + qs(), '_blank'); return; }
+      // 使用量: 絞り込み条件を可読名で渡す(印刷に表示するため)
+      const p = new URLSearchParams(qs());
+      p.set('groupLabel', selText('groupBy'));
+      const sn = selText('supplierId'); if (sn) p.set('supplierName', sn);
+      const mn = selText('makerId'); if (mn) p.set('makerName', mn);
+      window.open('/print.html?type=usage_report&' + p.toString(), '_blank');
     }
 
     boot();
