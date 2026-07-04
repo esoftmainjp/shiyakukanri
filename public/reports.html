@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>集計 | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+  <style>
+    .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+    .tabs button { background: #e3eaf3; color: #46586f; border-radius: 10px 10px 0 0; box-shadow: none; font-weight: 700; }
+    .tabs button:hover { background: #d5e0ee; }
+    .tabs button.active { background: #5e97c1; color: #fff; box-shadow: 0 2px 7px rgba(94,151,193,0.4); }
+    #rtable td.num, #rtable th.num { text-align: right; }
+    #rtable tfoot td { font-weight: 700; background: #eef4fa; }
+    .bar { height: 12px; border-radius: 6px; display: inline-block; vertical-align: middle; }
+    .bar.in { background: #7fb0e0; }
+    .bar.out { background: #e6a86a; }
+  </style>
+</head>
+<body>
+  <header></header>
+  <main>
+    <div class="card">
+      <h2>集計</h2>
+      <div class="tabs">
+        <button id="tab-usage" class="active" onclick="switchTab('usage')">使用量集計</button>
+        <button id="tab-monthly" onclick="switchTab('monthly')">月次推移</button>
+      </div>
+
+      <div class="row" style="align-items:flex-end;">
+        <div><label>期間(自)</label><input type="date" id="from" /></div>
+        <div><label>期間(至)</label><input type="date" id="to" /></div>
+        <div id="grpBox" style="flex:0; min-width:150px;"><label>グループ化</label>
+          <select id="groupBy" onchange="load()">
+            <option value="product">商品別</option>
+            <option value="department">部門別</option>
+            <option value="category">分類別</option>
+          </select>
+        </div>
+        <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">表示</button></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="csvOut()">CSV出力</button></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="printOut()">印刷</button></div>
+      </div>
+      <p style="font-size:0.82rem; color:#777; margin:6px 0;">金額は「入力単位(取引単位)の個数 × 単価」で算出しています。数量はバラ(最小単位)です。</p>
+      <p class="msg" id="msg"></p>
+      <div id="area"></div>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    let tab = 'usage';
+
+    async function boot() {
+      const user = await initPage('reports');
+      if (!user) return;
+      // 既定期間: 使用量=今年初〜今日 / 月次=直近12ヶ月
+      setDefaultRange();
+      load();
+    }
+
+    function setDefaultRange() {
+      const today = new Date().toISOString().slice(0, 10);
+      const d = new Date();
+      if (tab === 'monthly') d.setMonth(d.getMonth() - 11);
+      else d.setMonth(0), d.setDate(1); // 今年1月1日
+      document.getElementById('from').value = d.toISOString().slice(0, 10);
+      document.getElementById('to').value = today;
+    }
+
+    function switchTab(t) {
+      tab = t;
+      document.getElementById('tab-usage').classList.toggle('active', t === 'usage');
+      document.getElementById('tab-monthly').classList.toggle('active', t === 'monthly');
+      document.getElementById('grpBox').style.display = (t === 'usage') ? '' : 'none';
+      setDefaultRange();
+      load();
+    }
+
+    function qs() {
+      const p = new URLSearchParams();
+      const f = document.getElementById('from').value; if (f) p.set('from', f);
+      const t = document.getElementById('to').value; if (t) p.set('to', t);
+      if (tab === 'usage') p.set('groupBy', document.getElementById('groupBy').value);
+      return p.toString();
+    }
+
+    async function load() {
+      setMsg(document.getElementById('msg'), '', '');
+      const path = (tab === 'usage') ? '/api/reports/usage' : '/api/reports/monthly';
+      const { ok, data } = await api(path + '?' + qs());
+      if (!ok) { setMsg(document.getElementById('msg'), data.error || '取得失敗', 'error'); document.getElementById('area').innerHTML = ''; return; }
+      if (tab === 'usage') renderUsage(data); else renderMonthly(data);
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function yen(n) { return '¥' + Number(n || 0).toLocaleString(); }
+    function num(n) { return Number(n || 0).toLocaleString(); }
+
+    const GLABEL = { product: '商品', department: '部門', category: '分類' };
+    function renderUsage(data) {
+      const rows = data.rows || [];
+      const label = GLABEL[data.groupBy] || '商品';
+      let h = `<table id="rtable"><thead><tr><th>${label}</th><th class="num">使用量(バラ)</th><th class="num">金額</th><th class="num">明細件数</th></tr></thead><tbody>`;
+      if (rows.length === 0) h += `<tr><td colspan="4">該当がありません。</td></tr>`;
+      rows.forEach((r) => {
+        h += `<tr><td>${esc(r.group_name)}</td><td class="num">${num(r.quantity)}</td>` +
+          `<td class="num">${yen(r.amount)}</td><td class="num">${num(r.line_count)}</td></tr>`;
+      });
+      h += `</tbody><tfoot><tr><td>合計</td><td class="num">${num(data.total.quantity)}</td>` +
+        `<td class="num">${yen(data.total.amount)}</td><td class="num">${num(data.total.line_count)}</td></tr></tfoot></table>`;
+      document.getElementById('area').innerHTML = h;
+    }
+
+    function renderMonthly(data) {
+      const rows = data.rows || [];
+      // グラフ用の最大値(入庫/出庫金額)
+      const maxAmt = Math.max(1, ...rows.map((r) => Math.max(r.receipt_amount, r.issue_amount)));
+      let h = `<table id="rtable"><thead><tr><th>年月</th><th class="num">入庫量(バラ)</th><th class="num">入庫金額</th>` +
+        `<th class="num">出庫量(バラ)</th><th class="num">出庫金額</th><th style="width:230px;">金額(入庫/出庫)</th></tr></thead><tbody>`;
+      if (rows.length === 0) h += `<tr><td colspan="6">該当がありません。</td></tr>`;
+      const tot = { rq: 0, ra: 0, iq: 0, ia: 0 };
+      rows.forEach((r) => {
+        tot.rq += r.receipt_qty; tot.ra += r.receipt_amount; tot.iq += r.issue_qty; tot.ia += r.issue_amount;
+        const wIn = Math.round((r.receipt_amount / maxAmt) * 100);
+        const wOut = Math.round((r.issue_amount / maxAmt) * 100);
+        h += `<tr><td>${esc(r.ym)}</td><td class="num">${num(r.receipt_qty)}</td><td class="num">${yen(r.receipt_amount)}</td>` +
+          `<td class="num">${num(r.issue_qty)}</td><td class="num">${yen(r.issue_amount)}</td>` +
+          `<td><div class="bar in" style="width:${wIn}%" title="入庫 ${yen(r.receipt_amount)}"></div><br>` +
+          `<div class="bar out" style="width:${wOut}%" title="出庫 ${yen(r.issue_amount)}"></div></td></tr>`;
+      });
+      h += `</tbody><tfoot><tr><td>合計</td><td class="num">${num(tot.rq)}</td><td class="num">${yen(tot.ra)}</td>` +
+        `<td class="num">${num(tot.iq)}</td><td class="num">${yen(tot.ia)}</td><td></td></tr></tfoot></table>` +
+        `<p style="font-size:0.82rem; color:#777;"><span class="bar in" style="width:20px;"></span> 入庫金額　<span class="bar out" style="width:20px;"></span> 出庫金額</p>`;
+      document.getElementById('area').innerHTML = h;
+    }
+
+    function csvOut() {
+      const path = (tab === 'usage') ? '/api/reports/usage/csv' : '/api/reports/monthly/csv';
+      window.location = path + '?' + qs();
+    }
+    function printOut() {
+      const type = (tab === 'usage') ? 'usage_report' : 'monthly_report';
+      window.open('/print.html?type=' + type + '&' + qs(), '_blank');
+    }
+
+    boot();
+  </script>
+</body>
+</html>

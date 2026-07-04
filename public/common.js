@@ -73,6 +73,7 @@ function renderHeader(user, activeKey) {
       ['useend', '/use-end.html', '使用終了日'],
       ['labels', '/labels.html', 'バーコード印刷'],
       ['history', '/history.html', '履歴'],
+      ['reports', '/reports.html', '集計'],
       ['ledger', '/ledger.html', '試薬台帳'],
     ];
     if (user.userType === 'admin') {

@@ -39,14 +39,16 @@
       ledger: '試 薬 管 理 台 帳', logs: '操 作 ロ グ',
       receipts_list: '入 庫 履 歴', issues_list: '出 庫 履 歴',
       orders_list: '発 注 履 歴', movements_list: '在 庫 調 整 履 歴',
+      usage_report: '使 用 量 集 計', monthly_report: '月 次 推 移',
     };
     // id を使わず期間/絞り込みで出力する一覧系
-    const LIST_TYPES = ['ledger', 'logs', 'receipts_list', 'issues_list', 'orders_list', 'movements_list'];
+    const LIST_TYPES = ['ledger', 'logs', 'receipts_list', 'issues_list', 'orders_list', 'movements_list', 'usage_report', 'monthly_report'];
     // 一覧系の取得先(type名とAPIパスが異なるものをマッピング)
     const LIST_ENDPOINT = {
       ledger: '/api/ledger', logs: '/api/logs',
       receipts_list: '/api/receipts', issues_list: '/api/issues',
       orders_list: '/api/orders', movements_list: '/api/inventory/movements',
+      usage_report: '/api/reports/usage', monthly_report: '/api/reports/monthly',
     };
     const q = new URLSearchParams(location.search);
     const type = q.get('type');
@@ -120,6 +122,8 @@
       else if (type === 'issues_list') html += issuesListBody(data);
       else if (type === 'orders_list') html += ordersListBody(data);
       else if (type === 'movements_list') html += movementsListBody(data);
+      else if (type === 'usage_report') html += usageReportBody(data);
+      else if (type === 'monthly_report') html += monthlyReportBody(data);
       else html += orderBody(data);
       document.getElementById('sheet').innerHTML = html;
     }
@@ -303,6 +307,40 @@
           `<td class="num">${(chg > 0 ? '+' : '') + chg}</td><td class="num">${m.quantity_before}</td>` +
           `<td class="num">${m.quantity_after}</td><td>${esc(m.reason)}</td><td>${esc(m.user_name)}</td></tr>`;
       });
+      return h + `</tbody></table>`;
+    }
+
+    // ===== 集計の印刷 =====
+    const yen = (n) => '¥' + Number(n || 0).toLocaleString();
+    const num = (n) => Number(n || 0).toLocaleString();
+    const GLABEL = { product: '商品', department: '部門', category: '分類' };
+    function usageReportBody(data) {
+      const rows = data.rows || [];
+      const label = GLABEL[data.groupBy] || '商品';
+      let h = listMeta(rows.length);
+      h += `<table><thead><tr><th>${label}</th><th class="num">使用量(バラ)</th><th class="num">金額</th><th class="num">明細件数</th></tr></thead><tbody>`;
+      if (rows.length === 0) h += emptyRow(4);
+      rows.forEach((r) => {
+        h += `<tr><td>${esc(r.group_name)}</td><td class="num">${num(r.quantity)}</td>` +
+          `<td class="num">${yen(r.amount)}</td><td class="num">${num(r.line_count)}</td></tr>`;
+      });
+      const t = data.total || { quantity: 0, amount: 0, line_count: 0 };
+      h += `<tr><th>合計</th><th class="num">${num(t.quantity)}</th><th class="num">${yen(t.amount)}</th><th class="num">${num(t.line_count)}</th></tr>`;
+      return h + `</tbody></table>`;
+    }
+    function monthlyReportBody(data) {
+      const rows = data.rows || [];
+      let h = listMeta(rows.length);
+      h += `<table><thead><tr><th>年月</th><th class="num">入庫量(バラ)</th><th class="num">入庫金額</th>` +
+        `<th class="num">出庫量(バラ)</th><th class="num">出庫金額</th></tr></thead><tbody>`;
+      if (rows.length === 0) h += emptyRow(5);
+      const t = { rq: 0, ra: 0, iq: 0, ia: 0 };
+      rows.forEach((r) => {
+        t.rq += r.receipt_qty; t.ra += r.receipt_amount; t.iq += r.issue_qty; t.ia += r.issue_amount;
+        h += `<tr><td>${esc(r.ym)}</td><td class="num">${num(r.receipt_qty)}</td><td class="num">${yen(r.receipt_amount)}</td>` +
+          `<td class="num">${num(r.issue_qty)}</td><td class="num">${yen(r.issue_amount)}</td></tr>`;
+      });
+      h += `<tr><th>合計</th><th class="num">${num(t.rq)}</th><th class="num">${yen(t.ra)}</th><th class="num">${num(t.iq)}</th><th class="num">${yen(t.ia)}</th></tr>`;
       return h + `</tbody></table>`;
     }
 

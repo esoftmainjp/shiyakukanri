@@ -217,6 +217,7 @@ app.use('/api/issues',    requireLogin, requireRole('admin', 'general'), require
 app.use('/api/inventory', requireLogin, requireRole('admin', 'general'), require('./routes/inventory'));
 app.use('/api/barcodes',  requireLogin, requireRole('admin', 'general'), require('./routes/barcodes'));
 app.use('/api/ledger',    requireLogin, requireRole('admin', 'general'), require('./routes/ledger'));
+app.use('/api/reports',   requireLogin, requireRole('admin', 'general'), require('./routes/reports'));
 app.use('/api/masters',   requireLogin, requireRole('admin'), require('./routes/masters'));
 app.use('/api/import',    requireLogin, requireRole('admin'), require('./routes/import'));
 app.use('/api/logs',      requireLogin, requireRole('admin'), require('./routes/logs'));

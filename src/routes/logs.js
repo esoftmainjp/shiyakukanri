@@ -49,6 +49,7 @@ const TABLE_LABELS = {
   logs: '操作ログ',
   receipts_list: '入庫履歴', issues_list: '出庫履歴',
   orders_list: '発注履歴', movements_list: '在庫調整履歴',
+  usage_report: '使用量集計', monthly_report: '月次推移',
 };
 
 // フィルタ用の候補(操作区分・対象テーブル・ユーザー)
