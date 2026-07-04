@@ -4,8 +4,11 @@ const express = require('express');
 const { pool, getClient } = require('../db');
 const { writeLog } = require('../services/log');
 const { refreshOrderReceiptStatus } = require('../services/inventory');
+const { sendCsv } = require('../services/csv');
 
 const router = express.Router();
+
+const ORDER_STATUS_LABEL = { unordered: '未発注', ordered: '発注済み', received: '入庫済み', canceled: 'キャンセル' };
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -65,6 +68,59 @@ router.get('/', async (req, res) => {
     res.json({ orders: result });
   } catch (err) {
     console.error('発注一覧エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 発注履歴CSV(状態・問屋で絞り込み)
+// GET /api/orders/csv?status=&supplierId=
+router.get('/csv', async (req, res) => {
+  const { status, supplierId } = req.query;
+  try {
+    const params = [];
+    const conds = [];
+    if (status === 'canceled') {
+      conds.push(`(o.order_status = 'canceled'
+                   OR EXISTS (SELECT 1 FROM order_details od WHERE od.order_id = o.id AND od.canceled_flag = TRUE))`);
+    } else if (status) {
+      params.push(status);
+      conds.push(`o.order_status = $${params.length}`);
+    }
+    if (supplierId) {
+      params.push(supplierId);
+      conds.push(`o.supplier_id = $${params.length}`);
+    }
+    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+    const { rows } = await pool.query(
+      `SELECT o.id, o.order_status, o.order_date, s.name AS supplier_name, o.note,
+              (SELECT COUNT(*) FROM order_details od WHERE od.order_id = o.id) AS detail_count
+         FROM orders o
+         LEFT JOIN suppliers s ON s.id = o.supplier_id
+         ${where}
+        ORDER BY o.id DESC`,
+      params
+    );
+    const data = rows.map((o) => ({
+      ...o,
+      order_status: ORDER_STATUS_LABEL[o.order_status] || o.order_status,
+      order_date: o.order_date || '',
+    }));
+    const columns = [
+      { key: 'id', label: 'ID' },
+      { key: 'order_status', label: '状態' },
+      { key: 'order_date', label: '発注日' },
+      { key: 'supplier_name', label: '問屋' },
+      { key: 'detail_count', label: '明細件数' },
+      { key: 'note', label: '備考' },
+    ];
+    await writeLog(pool, {
+      userId: req.session.user && req.session.user.id,
+      targetTable: 'orders', operationType: 'CSV出力',
+      after: { file: '発注履歴.csv', count: rows.length },
+    });
+    sendCsv(res, '発注履歴.csv', columns, data);
+  } catch (err) {
+    console.error('発注履歴CSVエラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
   }
 });

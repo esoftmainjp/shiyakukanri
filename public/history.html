@@ -55,6 +55,8 @@
         </div>
         <div id="fltQuery" style="flex:1;"><label>キーワード</label><input id="query" placeholder="商品名/備考" /></div>
         <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">検索</button></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="csvList()">CSV出力</button></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="printList()">印刷</button></div>
       </div>
       <p class="msg" id="msg"></p>
       <div id="listArea"></div>
@@ -181,6 +183,22 @@
       return `<span class="actions">${h}</span>`;
     }
     function printRow(kind, id) { window.open('/print.html?type=' + kind + '&id=' + id, '_blank'); }
+
+    // 現在のタブ・絞り込み条件で一覧をCSV出力/印刷する
+    function listQuery() {
+      const s = qs();
+      return s ? s + '&limit=2000' : 'limit=2000';
+    }
+    const CSV_ENDPOINT = {
+      receipts: '/api/receipts/csv', issues: '/api/issues/csv',
+      orders: '/api/orders/csv', movements: '/api/inventory/movements/csv',
+    };
+    const PRINT_TYPE = {
+      receipts: 'receipts_list', issues: 'issues_list',
+      orders: 'orders_list', movements: 'movements_list',
+    };
+    function csvList() { window.location = CSV_ENDPOINT[tab] + '?' + listQuery(); }
+    function printList() { window.open('/print.html?type=' + PRINT_TYPE[tab] + '&' + listQuery(), '_blank'); }
 
     function renderReceipts(rows) {
       let h = `<table><thead><tr><th>ID</th><th>入庫日</th><th>問屋</th><th>明細</th><th>バラ計</th><th>BC(使用)</th><th>備考</th><th>担当</th><th></th></tr></thead><tbody>`;

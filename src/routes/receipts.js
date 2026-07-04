@@ -4,6 +4,7 @@ const express = require('express');
 const { pool, getClient } = require('../db');
 const { applyStockChange, issueBarcodes, refreshOrderReceiptStatus, reverseReceipt } = require('../services/inventory');
 const { writeLog } = require('../services/log');
+const { sendCsv } = require('../services/csv');
 
 const router = express.Router();
 
@@ -157,37 +158,69 @@ router.post('/', async (req, res) => {
 
 // 入庫履歴一覧 (from/to/商品/キーワード)。明細件数・バラ合計・バーコード発行/使用状況を付与。
 // GET /api/receipts?from=&to=&productId=&query=
+async function queryReceiptList(q) {
+  const { from, to, productId, query } = q;
+  const limit = Math.min(Number(q.limit) || 500, 2000);
+  const params = [];
+  let cond = '1 = 1';
+  if (from) { params.push(from); cond += ` AND r.receipt_date >= $${params.length}`; }
+  if (to) { params.push(to); cond += ` AND r.receipt_date <= $${params.length}`; }
+  if (productId) { params.push(productId); cond += ` AND EXISTS (SELECT 1 FROM receipt_details rd WHERE rd.receipt_id = r.id AND rd.product_id = $${params.length})`; }
+  if (query) { params.push('%' + query + '%'); cond += ` AND (r.note ILIKE $${params.length} OR EXISTS (SELECT 1 FROM receipt_details rd JOIN products p ON p.id = rd.product_id WHERE rd.receipt_id = r.id AND p.name ILIKE $${params.length}))`; }
+  params.push(limit);
+  const { rows } = await pool.query(
+    `SELECT r.id, r.receipt_date, r.supplier_id, s.name AS supplier_name, r.note, r.created_at,
+            u.name AS user_name,
+            (SELECT COUNT(*) FROM receipt_details rd WHERE rd.receipt_id = r.id) AS detail_count,
+            (SELECT COALESCE(SUM(rd.stock_added_quantity), 0) FROM receipt_details rd WHERE rd.receipt_id = r.id) AS total_bara,
+            (SELECT COUNT(*) FROM barcodes b JOIN receipt_details rd ON rd.id = b.receipt_detail_id
+              WHERE rd.receipt_id = r.id AND b.voided_flag = FALSE) AS barcode_count,
+            (SELECT COUNT(*) FROM barcodes b JOIN receipt_details rd ON rd.id = b.receipt_detail_id
+              WHERE rd.receipt_id = r.id AND b.voided_flag = FALSE AND b.used_flag = TRUE) AS barcode_used_count
+       FROM receipts r
+       LEFT JOIN suppliers s ON s.id = r.supplier_id
+       LEFT JOIN users u ON u.id = r.user_id
+      WHERE ${cond}
+      ORDER BY r.id DESC
+      LIMIT $${params.length}`,
+    params
+  );
+  return rows;
+}
+
 router.get('/', async (req, res) => {
-  const { from, to, productId, query } = req.query;
-  const limit = Math.min(Number(req.query.limit) || 500, 2000);
   try {
-    const params = [];
-    let cond = '1 = 1';
-    if (from) { params.push(from); cond += ` AND r.receipt_date >= $${params.length}`; }
-    if (to) { params.push(to); cond += ` AND r.receipt_date <= $${params.length}`; }
-    if (productId) { params.push(productId); cond += ` AND EXISTS (SELECT 1 FROM receipt_details rd WHERE rd.receipt_id = r.id AND rd.product_id = $${params.length})`; }
-    if (query) { params.push('%' + query + '%'); cond += ` AND (r.note ILIKE $${params.length} OR EXISTS (SELECT 1 FROM receipt_details rd JOIN products p ON p.id = rd.product_id WHERE rd.receipt_id = r.id AND p.name ILIKE $${params.length}))`; }
-    params.push(limit);
-    const { rows } = await pool.query(
-      `SELECT r.id, r.receipt_date, r.supplier_id, s.name AS supplier_name, r.note, r.created_at,
-              u.name AS user_name,
-              (SELECT COUNT(*) FROM receipt_details rd WHERE rd.receipt_id = r.id) AS detail_count,
-              (SELECT COALESCE(SUM(rd.stock_added_quantity), 0) FROM receipt_details rd WHERE rd.receipt_id = r.id) AS total_bara,
-              (SELECT COUNT(*) FROM barcodes b JOIN receipt_details rd ON rd.id = b.receipt_detail_id
-                WHERE rd.receipt_id = r.id AND b.voided_flag = FALSE) AS barcode_count,
-              (SELECT COUNT(*) FROM barcodes b JOIN receipt_details rd ON rd.id = b.receipt_detail_id
-                WHERE rd.receipt_id = r.id AND b.voided_flag = FALSE AND b.used_flag = TRUE) AS barcode_used_count
-         FROM receipts r
-         LEFT JOIN suppliers s ON s.id = r.supplier_id
-         LEFT JOIN users u ON u.id = r.user_id
-        WHERE ${cond}
-        ORDER BY r.id DESC
-        LIMIT $${params.length}`,
-      params
-    );
-    res.json({ receipts: rows });
+    res.json({ receipts: await queryReceiptList(req.query) });
   } catch (err) {
     console.error('入庫履歴エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 入庫履歴CSV
+// GET /api/receipts/csv
+router.get('/csv', async (req, res) => {
+  try {
+    const rows = await queryReceiptList(req.query);
+    const columns = [
+      { key: 'id', label: 'ID' },
+      { key: 'receipt_date', label: '入庫日' },
+      { key: 'supplier_name', label: '問屋' },
+      { key: 'detail_count', label: '明細件数' },
+      { key: 'total_bara', label: 'バラ計' },
+      { key: 'barcode_count', label: 'BC発行' },
+      { key: 'barcode_used_count', label: 'BC使用' },
+      { key: 'note', label: '備考' },
+      { key: 'user_name', label: '担当' },
+    ];
+    await writeLog(pool, {
+      userId: req.session.user && req.session.user.id,
+      targetTable: 'receipts', operationType: 'CSV出力',
+      after: { file: '入庫履歴.csv', count: rows.length },
+    });
+    sendCsv(res, '入庫履歴.csv', columns, rows);
+  } catch (err) {
+    console.error('入庫履歴CSVエラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
   }
 });

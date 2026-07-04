@@ -47,6 +47,8 @@ const TABLE_LABELS = {
   ledger: '試薬管理台帳',
   inventory: '在庫一覧',
   logs: '操作ログ',
+  receipts_list: '入庫履歴', issues_list: '出庫履歴',
+  orders_list: '発注履歴', movements_list: '在庫調整履歴',
 };
 
 // フィルタ用の候補(操作区分・対象テーブル・ユーザー)

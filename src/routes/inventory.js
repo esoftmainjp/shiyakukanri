@@ -129,36 +129,82 @@ router.get('/expiry', async (req, res) => {
 // 在庫調整・廃棄・返品などの在庫移動履歴
 // GET /api/inventory/movements?from=&to=&productId=&type=
 //   type未指定は手動調整系(adjust/disposal/return)を表示。receipt/issue等も個別指定可。
+async function queryMovements(q) {
+  const { from, to, productId, type } = q;
+  const limit = Math.min(Number(q.limit) || 500, 2000);
+  const params = [];
+  let cond;
+  if (type && ['receipt', 'issue', 'adjust', 'disposal', 'return'].includes(type)) {
+    params.push(type); cond = `m.movement_type = $${params.length}`;
+  } else {
+    cond = `m.movement_type IN ('adjust', 'disposal', 'return')`;
+  }
+  if (from) { params.push(from); cond += ` AND m.created_at::date >= $${params.length}`; }
+  if (to) { params.push(to); cond += ` AND m.created_at::date <= $${params.length}`; }
+  if (productId) { params.push(productId); cond += ` AND m.product_id = $${params.length}`; }
+  params.push(limit);
+  const { rows } = await pool.query(
+    `SELECT m.id, m.created_at, m.movement_type, m.product_id, p.name AS product_name,
+            m.lot_number, m.expiry_date, m.quantity_change, m.quantity_before, m.quantity_after,
+            m.reason, u.name AS user_name, m.related_id
+       FROM stock_movements m
+       JOIN products p ON p.id = m.product_id
+       LEFT JOIN users u ON u.id = m.user_id
+      WHERE ${cond}
+      ORDER BY m.id DESC
+      LIMIT $${params.length}`,
+    params
+  );
+  return rows;
+}
+
 router.get('/movements', async (req, res) => {
-  const { from, to, productId, type } = req.query;
-  const limit = Math.min(Number(req.query.limit) || 500, 2000);
   try {
-    const params = [];
-    let cond;
-    if (type && ['receipt', 'issue', 'adjust', 'disposal', 'return'].includes(type)) {
-      params.push(type); cond = `m.movement_type = $${params.length}`;
-    } else {
-      cond = `m.movement_type IN ('adjust', 'disposal', 'return')`;
-    }
-    if (from) { params.push(from); cond += ` AND m.created_at::date >= $${params.length}`; }
-    if (to) { params.push(to); cond += ` AND m.created_at::date <= $${params.length}`; }
-    if (productId) { params.push(productId); cond += ` AND m.product_id = $${params.length}`; }
-    params.push(limit);
-    const { rows } = await pool.query(
-      `SELECT m.id, m.created_at, m.movement_type, m.product_id, p.name AS product_name,
-              m.lot_number, m.expiry_date, m.quantity_change, m.quantity_before, m.quantity_after,
-              m.reason, u.name AS user_name, m.related_id
-         FROM stock_movements m
-         JOIN products p ON p.id = m.product_id
-         LEFT JOIN users u ON u.id = m.user_id
-        WHERE ${cond}
-        ORDER BY m.id DESC
-        LIMIT $${params.length}`,
-      params
-    );
-    res.json({ movements: rows });
+    res.json({ movements: await queryMovements(req.query) });
   } catch (err) {
     console.error('在庫移動履歴エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 在庫調整履歴CSV
+// GET /api/inventory/movements/csv
+const MOVE_LABEL = { receipt: '入庫', issue: '出庫', adjust: '在庫調整', disposal: '廃棄', return: '返品' };
+router.get('/movements/csv', async (req, res) => {
+  try {
+    const rows = await queryMovements(req.query);
+    const data = rows.map((m) => ({
+      created_at: m.created_at ? String(m.created_at).replace('T', ' ').slice(0, 19) : '',
+      movement_type: MOVE_LABEL[m.movement_type] || m.movement_type,
+      product_name: m.product_name,
+      lot_number: m.lot_number,
+      expiry_date: m.expiry_date,
+      quantity_change: m.quantity_change,
+      quantity_before: m.quantity_before,
+      quantity_after: m.quantity_after,
+      reason: m.reason,
+      user_name: m.user_name || '',
+    }));
+    const columns = [
+      { key: 'created_at', label: '日時' },
+      { key: 'movement_type', label: '区分' },
+      { key: 'product_name', label: '商品' },
+      { key: 'lot_number', label: 'ロット' },
+      { key: 'expiry_date', label: '使用期限' },
+      { key: 'quantity_change', label: '増減(バラ)' },
+      { key: 'quantity_before', label: '調整前' },
+      { key: 'quantity_after', label: '調整後' },
+      { key: 'reason', label: '理由' },
+      { key: 'user_name', label: '担当' },
+    ];
+    await writeLog(pool, {
+      userId: req.session.user && req.session.user.id,
+      targetTable: 'stock_movements', operationType: 'CSV出力',
+      after: { file: '在庫調整履歴.csv', count: rows.length },
+    });
+    sendCsv(res, '在庫調整履歴.csv', columns, data);
+  } catch (err) {
+    console.error('在庫調整履歴CSVエラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
   }
 });

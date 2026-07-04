@@ -4,6 +4,7 @@ const express = require('express');
 const { pool, getClient } = require('../db');
 const { applyStockChange, addOrderPlan, createUsageRecords, reverseIssue } = require('../services/inventory');
 const { writeLog } = require('../services/log');
+const { sendCsv } = require('../services/csv');
 
 const router = express.Router();
 
@@ -196,31 +197,60 @@ router.post('/', async (req, res) => {
 
 // 出庫履歴一覧 (from/to/商品/キーワード)
 // GET /api/issues?from=&to=&productId=&query=
+async function queryIssueList(q) {
+  const { from, to, productId, query } = q;
+  const limit = Math.min(Number(q.limit) || 500, 2000);
+  const params = [];
+  let cond = '1 = 1';
+  if (from) { params.push(from); cond += ` AND i.issue_date >= $${params.length}`; }
+  if (to) { params.push(to); cond += ` AND i.issue_date <= $${params.length}`; }
+  if (productId) { params.push(productId); cond += ` AND EXISTS (SELECT 1 FROM issue_details d WHERE d.issue_id = i.id AND d.product_id = $${params.length})`; }
+  if (query) { params.push('%' + query + '%'); cond += ` AND (i.note ILIKE $${params.length} OR EXISTS (SELECT 1 FROM issue_details d JOIN products p ON p.id = d.product_id WHERE d.issue_id = i.id AND p.name ILIKE $${params.length}))`; }
+  params.push(limit);
+  const { rows } = await pool.query(
+    `SELECT i.id, i.issue_date, i.note, i.created_at, u.name AS user_name,
+            (SELECT COUNT(*) FROM issue_details d WHERE d.issue_id = i.id) AS detail_count,
+            (SELECT COALESCE(SUM(d.issue_total_quantity), 0) FROM issue_details d WHERE d.issue_id = i.id) AS total_bara
+       FROM issues i
+       LEFT JOIN users u ON u.id = i.user_id
+      WHERE ${cond}
+      ORDER BY i.id DESC
+      LIMIT $${params.length}`,
+    params
+  );
+  return rows;
+}
+
 router.get('/', async (req, res) => {
-  const { from, to, productId, query } = req.query;
-  const limit = Math.min(Number(req.query.limit) || 500, 2000);
   try {
-    const params = [];
-    let cond = '1 = 1';
-    if (from) { params.push(from); cond += ` AND i.issue_date >= $${params.length}`; }
-    if (to) { params.push(to); cond += ` AND i.issue_date <= $${params.length}`; }
-    if (productId) { params.push(productId); cond += ` AND EXISTS (SELECT 1 FROM issue_details d WHERE d.issue_id = i.id AND d.product_id = $${params.length})`; }
-    if (query) { params.push('%' + query + '%'); cond += ` AND (i.note ILIKE $${params.length} OR EXISTS (SELECT 1 FROM issue_details d JOIN products p ON p.id = d.product_id WHERE d.issue_id = i.id AND p.name ILIKE $${params.length}))`; }
-    params.push(limit);
-    const { rows } = await pool.query(
-      `SELECT i.id, i.issue_date, i.note, i.created_at, u.name AS user_name,
-              (SELECT COUNT(*) FROM issue_details d WHERE d.issue_id = i.id) AS detail_count,
-              (SELECT COALESCE(SUM(d.issue_total_quantity), 0) FROM issue_details d WHERE d.issue_id = i.id) AS total_bara
-         FROM issues i
-         LEFT JOIN users u ON u.id = i.user_id
-        WHERE ${cond}
-        ORDER BY i.id DESC
-        LIMIT $${params.length}`,
-      params
-    );
-    res.json({ issues: rows });
+    res.json({ issues: await queryIssueList(req.query) });
   } catch (err) {
     console.error('出庫履歴エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 出庫履歴CSV
+// GET /api/issues/csv
+router.get('/csv', async (req, res) => {
+  try {
+    const rows = await queryIssueList(req.query);
+    const columns = [
+      { key: 'id', label: 'ID' },
+      { key: 'issue_date', label: '出庫日' },
+      { key: 'detail_count', label: '明細件数' },
+      { key: 'total_bara', label: 'バラ計' },
+      { key: 'note', label: '備考' },
+      { key: 'user_name', label: '担当' },
+    ];
+    await writeLog(pool, {
+      userId: req.session.user && req.session.user.id,
+      targetTable: 'issues', operationType: 'CSV出力',
+      after: { file: '出庫履歴.csv', count: rows.length },
+    });
+    sendCsv(res, '出庫履歴.csv', columns, rows);
+  } catch (err) {
+    console.error('出庫履歴CSVエラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
   }
 });

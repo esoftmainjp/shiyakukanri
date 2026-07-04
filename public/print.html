@@ -34,9 +34,20 @@
 
   <script src="/common.js"></script>
   <script>
-    const TITLES = { receipts: '入 庫 伝 票', issues: '出 庫 伝 票', orders: '発 注 書', ledger: '試 薬 管 理 台 帳', logs: '操 作 ロ グ' };
+    const TITLES = {
+      receipts: '入 庫 伝 票', issues: '出 庫 伝 票', orders: '発 注 書',
+      ledger: '試 薬 管 理 台 帳', logs: '操 作 ロ グ',
+      receipts_list: '入 庫 履 歴', issues_list: '出 庫 履 歴',
+      orders_list: '発 注 履 歴', movements_list: '在 庫 調 整 履 歴',
+    };
     // id を使わず期間/絞り込みで出力する一覧系
-    const LIST_TYPES = ['ledger', 'logs'];
+    const LIST_TYPES = ['ledger', 'logs', 'receipts_list', 'issues_list', 'orders_list', 'movements_list'];
+    // 一覧系の取得先(type名とAPIパスが異なるものをマッピング)
+    const LIST_ENDPOINT = {
+      ledger: '/api/ledger', logs: '/api/logs',
+      receipts_list: '/api/receipts', issues_list: '/api/issues',
+      orders_list: '/api/orders', movements_list: '/api/inventory/movements',
+    };
     const q = new URLSearchParams(location.search);
     const type = q.get('type');
     const id = q.get('id');
@@ -60,7 +71,7 @@
       const cs = await api('/api/settings');
       if (cs.ok) company = cs.data.settings || {};
       const url = LIST_TYPES.includes(type)
-        ? '/api/' + type + '?' + q.toString()
+        ? (LIST_ENDPOINT[type] || '/api/' + type) + '?' + q.toString()
         : '/api/' + type + '/' + id;
       const { ok, data } = await api(url);
       if (!ok) {
@@ -105,6 +116,10 @@
       else if (type === 'issues') html += issueBody(data);
       else if (type === 'ledger') html += ledgerBody(data);
       else if (type === 'logs') html += logsBody(data);
+      else if (type === 'receipts_list') html += receiptsListBody(data);
+      else if (type === 'issues_list') html += issuesListBody(data);
+      else if (type === 'orders_list') html += ordersListBody(data);
+      else if (type === 'movements_list') html += movementsListBody(data);
       else html += orderBody(data);
       document.getElementById('sheet').innerHTML = html;
     }
@@ -218,6 +233,77 @@
       }
       h += `</tbody></table>`;
       return h;
+    }
+
+    // ===== 履歴の一覧印刷 =====
+    function listMeta(count) {
+      const from = q.get('from') || '';
+      const to = q.get('to') || '';
+      const pairs = [];
+      if (from || to) pairs.push(['期間', `${from || '—'} ～ ${to || '—'}`]);
+      pairs.push(['件数', count]);
+      return metaRow(pairs);
+    }
+    function emptyRow(cols) { return `<tr><td colspan="${cols}" style="text-align:center;">該当がありません。</td></tr>`; }
+
+    function receiptsListBody(data) {
+      const rows = data.receipts || [];
+      let h = listMeta(rows.length);
+      h += `<table><thead><tr><th>ID</th><th>入庫日</th><th>問屋</th><th class="num">明細</th>` +
+        `<th class="num">バラ計</th><th class="num">BC(使用)</th><th>備考</th><th>担当</th></tr></thead><tbody>`;
+      if (rows.length === 0) h += emptyRow(8);
+      rows.forEach((r) => {
+        h += `<tr><td>${r.id}</td><td>${r.receipt_date || ''}</td><td>${esc(r.supplier_name)}</td>` +
+          `<td class="num">${r.detail_count}</td><td class="num">${r.total_bara}</td>` +
+          `<td class="num">${r.barcode_count}(${r.barcode_used_count})</td><td>${esc(r.note)}</td><td>${esc(r.user_name)}</td></tr>`;
+      });
+      return h + `</tbody></table>`;
+    }
+
+    function issuesListBody(data) {
+      const rows = data.issues || [];
+      let h = listMeta(rows.length);
+      h += `<table><thead><tr><th>ID</th><th>出庫日</th><th class="num">明細</th>` +
+        `<th class="num">バラ計</th><th>備考</th><th>担当</th></tr></thead><tbody>`;
+      if (rows.length === 0) h += emptyRow(6);
+      rows.forEach((r) => {
+        h += `<tr><td>${r.id}</td><td>${r.issue_date || ''}</td><td class="num">${r.detail_count}</td>` +
+          `<td class="num">${r.total_bara}</td><td>${esc(r.note)}</td><td>${esc(r.user_name)}</td></tr>`;
+      });
+      return h + `</tbody></table>`;
+    }
+
+    function ordersListBody(data) {
+      const rows = data.orders || [];
+      let h = listMeta(rows.length);
+      h += `<table><thead><tr><th>ID</th><th>状態</th><th>発注日</th><th>問屋</th>` +
+        `<th class="num">明細</th><th>備考</th></tr></thead><tbody>`;
+      if (rows.length === 0) h += emptyRow(6);
+      rows.forEach((o) => {
+        const dc = (o.details || []).length;
+        h += `<tr><td>${o.id}</td><td>${STATUS[o.order_status] || o.order_status}</td>` +
+          `<td>${o.order_date || '-'}</td><td>${esc(o.supplier_name)}</td>` +
+          `<td class="num">${dc}</td><td>${esc(o.note)}</td></tr>`;
+      });
+      return h + `</tbody></table>`;
+    }
+
+    const MOVE_JP = { receipt: '入庫', issue: '出庫', adjust: '在庫調整', disposal: '廃棄', return: '返品' };
+    function movementsListBody(data) {
+      const rows = data.movements || [];
+      let h = listMeta(rows.length);
+      h += `<table><thead><tr><th>日時</th><th>区分</th><th>商品</th><th>ロット</th><th>使用期限</th>` +
+        `<th class="num">増減</th><th class="num">調整前</th><th class="num">調整後</th><th>理由</th><th>担当</th></tr></thead><tbody>`;
+      if (rows.length === 0) h += emptyRow(10);
+      rows.forEach((m) => {
+        const dt = m.created_at ? String(m.created_at).replace('T', ' ').slice(0, 16) : '';
+        const chg = Number(m.quantity_change);
+        h += `<tr><td>${esc(dt)}</td><td>${MOVE_JP[m.movement_type] || m.movement_type}</td>` +
+          `<td>${esc(m.product_name)}</td><td>${esc(m.lot_number) || '(なし)'}</td><td>${m.expiry_date || '(なし)'}</td>` +
+          `<td class="num">${(chg > 0 ? '+' : '') + chg}</td><td class="num">${m.quantity_before}</td>` +
+          `<td class="num">${m.quantity_after}</td><td>${esc(m.reason)}</td><td>${esc(m.user_name)}</td></tr>`;
+      });
+      return h + `</tbody></table>`;
     }
 
     boot();
