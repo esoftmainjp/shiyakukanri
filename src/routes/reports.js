@@ -17,8 +17,11 @@ function range(q) {
   return { from: q.from || '0001-01-01', to: q.to || '9999-12-31' };
 }
 
-// 使用量集計(出庫)。groupBy: product | department | category
-function usageSql(groupBy) {
+// 使用量集計(出庫)。groupBy: product | department | category。問屋/メーカーで絞り込み可。
+function usageQuery(q) {
+  const groupBy = ['product', 'department', 'category'].includes(q.groupBy) ? q.groupBy : 'product';
+  const { from, to } = range(q);
+  const params = [from, to];
   let gjoin = '';
   let gid = 'p.id';
   let gname = 'p.name';
@@ -29,8 +32,13 @@ function usageSql(groupBy) {
     gjoin = 'LEFT JOIN categories cat ON cat.id = p.category_id';
     gid = 'cat.id'; gname = "COALESCE(cat.name, '(未設定)')";
   }
-  return `
+  let cond = 'i.issue_date >= $1 AND i.issue_date <= $2';
+  if (q.supplierId) { params.push(q.supplierId); cond += ` AND pd.supplier_id = $${params.length}`; }
+  if (q.makerId) { params.push(q.makerId); cond += ` AND pd.maker_id = $${params.length}`; }
+  const sql = `
     SELECT ${gid} AS group_id, ${gname} AS group_name,
+           string_agg(DISTINCT s.name, ', ') AS supplier_names,
+           string_agg(DISTINCT mk.name, ', ') AS maker_names,
            COALESCE(SUM(d.issue_total_quantity), 0) AS quantity,
            COALESCE(SUM(d.issue_quantity * COALESCE(pd.unit_price, 0)), 0) AS amount,
            COUNT(*) AS line_count
@@ -38,18 +46,21 @@ function usageSql(groupBy) {
       JOIN issues i ON i.id = d.issue_id
       JOIN products p ON p.id = d.product_id
       LEFT JOIN product_details pd ON pd.id = d.product_detail_id
+      LEFT JOIN suppliers s ON s.id = pd.supplier_id
+      LEFT JOIN makers mk ON mk.id = pd.maker_id
       ${gjoin}
-     WHERE i.issue_date >= $1 AND i.issue_date <= $2
+     WHERE ${cond}
      GROUP BY ${gid}, ${gname}
      ORDER BY amount DESC, quantity DESC`;
+  return { sql, params, groupBy };
 }
 
 const GROUP_LABEL = { product: '商品', department: '部門', category: '分類' };
 
 async function fetchUsage(q) {
+  const { sql, params, groupBy } = usageQuery(q);
   const { from, to } = range(q);
-  const groupBy = ['product', 'department', 'category'].includes(q.groupBy) ? q.groupBy : 'product';
-  const { rows } = await pool.query(usageSql(groupBy), [from, to]);
+  const { rows } = await pool.query(sql, params);
   const total = rows.reduce((a, r) => ({
     quantity: a.quantity + Number(r.quantity),
     amount: a.amount + Number(r.amount),
@@ -75,11 +86,14 @@ router.get('/usage/csv', async (req, res) => {
     const r = await fetchUsage(req.query);
     const label = GROUP_LABEL[r.groupBy] || '商品';
     const data = r.rows.map((x) => ({
-      group_name: x.group_name, quantity: x.quantity, amount: x.amount, line_count: x.line_count,
+      group_name: x.group_name, supplier_names: x.supplier_names || '', maker_names: x.maker_names || '',
+      quantity: x.quantity, amount: x.amount, line_count: x.line_count,
     }));
-    data.push({ group_name: '合計', quantity: r.total.quantity, amount: r.total.amount, line_count: r.total.line_count });
+    data.push({ group_name: '合計', supplier_names: '', maker_names: '', quantity: r.total.quantity, amount: r.total.amount, line_count: r.total.line_count });
     const columns = [
       { key: 'group_name', label },
+      { key: 'supplier_names', label: '問屋' },
+      { key: 'maker_names', label: 'メーカー' },
       { key: 'quantity', label: '使用量(バラ)' },
       { key: 'amount', label: '金額' },
       { key: 'line_count', label: '明細件数' },

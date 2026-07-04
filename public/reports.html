@@ -37,6 +37,12 @@
             <option value="category">分類別</option>
           </select>
         </div>
+        <div id="supBox" style="flex:0; min-width:150px;"><label>問屋</label>
+          <select id="supplierId" onchange="load()"><option value="">(すべて)</option></select>
+        </div>
+        <div id="mkBox" style="flex:0; min-width:150px;"><label>メーカー</label>
+          <select id="makerId" onchange="load()"><option value="">(すべて)</option></select>
+        </div>
         <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">表示</button></div>
         <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="csvOut()">CSV出力</button></div>
         <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="printOut()">印刷</button></div>
@@ -54,6 +60,13 @@
     async function boot() {
       const user = await initPage('reports');
       if (!user) return;
+      // 問屋・メーカーの選択肢を構築
+      const sr = await api('/api/lookup/suppliers');
+      const supSel = document.getElementById('supplierId');
+      (sr.data.suppliers || []).forEach((s) => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; supSel.appendChild(o); });
+      const mr = await api('/api/lookup/makers');
+      const mkSel = document.getElementById('makerId');
+      (mr.data.makers || []).forEach((m) => { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; mkSel.appendChild(o); });
       // 既定期間: 使用量=今年初〜今日 / 月次=直近12ヶ月
       setDefaultRange();
       load();
@@ -72,7 +85,10 @@
       tab = t;
       document.getElementById('tab-usage').classList.toggle('active', t === 'usage');
       document.getElementById('tab-monthly').classList.toggle('active', t === 'monthly');
-      document.getElementById('grpBox').style.display = (t === 'usage') ? '' : 'none';
+      const isUsage = (t === 'usage');
+      document.getElementById('grpBox').style.display = isUsage ? '' : 'none';
+      document.getElementById('supBox').style.display = isUsage ? '' : 'none';
+      document.getElementById('mkBox').style.display = isUsage ? '' : 'none';
       setDefaultRange();
       load();
     }
@@ -81,7 +97,11 @@
       const p = new URLSearchParams();
       const f = document.getElementById('from').value; if (f) p.set('from', f);
       const t = document.getElementById('to').value; if (t) p.set('to', t);
-      if (tab === 'usage') p.set('groupBy', document.getElementById('groupBy').value);
+      if (tab === 'usage') {
+        p.set('groupBy', document.getElementById('groupBy').value);
+        const sid = document.getElementById('supplierId').value; if (sid) p.set('supplierId', sid);
+        const mid = document.getElementById('makerId').value; if (mid) p.set('makerId', mid);
+      }
       return p.toString();
     }
 
@@ -104,13 +124,13 @@
     function renderUsage(data) {
       const rows = data.rows || [];
       const label = GLABEL[data.groupBy] || '商品';
-      let h = `<table id="rtable"><thead><tr><th>${label}</th><th class="num">使用量(バラ)</th><th class="num">金額</th><th class="num">明細件数</th></tr></thead><tbody>`;
-      if (rows.length === 0) h += `<tr><td colspan="4">該当がありません。</td></tr>`;
+      let h = `<table id="rtable"><thead><tr><th>${label}</th><th>問屋</th><th>メーカー</th><th class="num">使用量(バラ)</th><th class="num">金額</th><th class="num">明細件数</th></tr></thead><tbody>`;
+      if (rows.length === 0) h += `<tr><td colspan="6">該当がありません。</td></tr>`;
       rows.forEach((r) => {
-        h += `<tr><td>${esc(r.group_name)}</td><td class="num">${num(r.quantity)}</td>` +
-          `<td class="num">${yen(r.amount)}</td><td class="num">${num(r.line_count)}</td></tr>`;
+        h += `<tr><td>${esc(r.group_name)}</td><td>${esc(r.supplier_names)}</td><td>${esc(r.maker_names)}</td>` +
+          `<td class="num">${num(r.quantity)}</td><td class="num">${yen(r.amount)}</td><td class="num">${num(r.line_count)}</td></tr>`;
       });
-      h += `</tbody><tfoot><tr><td>合計</td><td class="num">${num(data.total.quantity)}</td>` +
+      h += `</tbody><tfoot><tr><td>合計</td><td></td><td></td><td class="num">${num(data.total.quantity)}</td>` +
         `<td class="num">${yen(data.total.amount)}</td><td class="num">${num(data.total.line_count)}</td></tr></tfoot></table>`;
       document.getElementById('area').innerHTML = h;
     }

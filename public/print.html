@@ -318,14 +318,14 @@
       const rows = data.rows || [];
       const label = GLABEL[data.groupBy] || '商品';
       let h = listMeta(rows.length);
-      h += `<table><thead><tr><th>${label}</th><th class="num">使用量(バラ)</th><th class="num">金額</th><th class="num">明細件数</th></tr></thead><tbody>`;
-      if (rows.length === 0) h += emptyRow(4);
+      h += `<table><thead><tr><th>${label}</th><th>問屋</th><th>メーカー</th><th class="num">使用量(バラ)</th><th class="num">金額</th><th class="num">明細件数</th></tr></thead><tbody>`;
+      if (rows.length === 0) h += emptyRow(6);
       rows.forEach((r) => {
-        h += `<tr><td>${esc(r.group_name)}</td><td class="num">${num(r.quantity)}</td>` +
-          `<td class="num">${yen(r.amount)}</td><td class="num">${num(r.line_count)}</td></tr>`;
+        h += `<tr><td>${esc(r.group_name)}</td><td>${esc(r.supplier_names)}</td><td>${esc(r.maker_names)}</td>` +
+          `<td class="num">${num(r.quantity)}</td><td class="num">${yen(r.amount)}</td><td class="num">${num(r.line_count)}</td></tr>`;
       });
       const t = data.total || { quantity: 0, amount: 0, line_count: 0 };
-      h += `<tr><th>合計</th><th class="num">${num(t.quantity)}</th><th class="num">${yen(t.amount)}</th><th class="num">${num(t.line_count)}</th></tr>`;
+      h += `<tr><th>合計</th><th></th><th></th><th class="num">${num(t.quantity)}</th><th class="num">${yen(t.amount)}</th><th class="num">${num(t.line_count)}</th></tr>`;
       return h + `</tbody></table>`;
     }
     function niceMax(v) {
