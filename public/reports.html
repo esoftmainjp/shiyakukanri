@@ -124,13 +124,13 @@
     function renderUsage(data) {
       const rows = data.rows || [];
       const label = GLABEL[data.groupBy] || '商品';
-      let h = `<table id="rtable"><thead><tr><th>${label}</th><th>問屋</th><th>メーカー</th><th class="num">使用量(バラ)</th><th class="num">金額</th><th class="num">明細件数</th></tr></thead><tbody>`;
-      if (rows.length === 0) h += `<tr><td colspan="6">該当がありません。</td></tr>`;
+      let h = `<table id="rtable"><thead><tr><th>${label}</th><th class="num">使用量(バラ)</th><th class="num">金額</th><th class="num">明細件数</th></tr></thead><tbody>`;
+      if (rows.length === 0) h += `<tr><td colspan="4">該当がありません。</td></tr>`;
       rows.forEach((r) => {
-        h += `<tr><td>${esc(r.group_name)}</td><td>${esc(r.supplier_names)}</td><td>${esc(r.maker_names)}</td>` +
-          `<td class="num">${num(r.quantity)}</td><td class="num">${yen(r.amount)}</td><td class="num">${num(r.line_count)}</td></tr>`;
+        h += `<tr><td>${esc(r.group_name)}</td><td class="num">${num(r.quantity)}</td>` +
+          `<td class="num">${yen(r.amount)}</td><td class="num">${num(r.line_count)}</td></tr>`;
       });
-      h += `</tbody><tfoot><tr><td>合計</td><td></td><td></td><td class="num">${num(data.total.quantity)}</td>` +
+      h += `</tbody><tfoot><tr><td>合計</td><td class="num">${num(data.total.quantity)}</td>` +
         `<td class="num">${yen(data.total.amount)}</td><td class="num">${num(data.total.line_count)}</td></tr></tfoot></table>`;
       document.getElementById('area').innerHTML = h;
     }
