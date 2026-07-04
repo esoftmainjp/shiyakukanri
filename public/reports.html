@@ -87,8 +87,9 @@
       document.getElementById('tab-monthly').classList.toggle('active', t === 'monthly');
       const isUsage = (t === 'usage');
       document.getElementById('grpBox').style.display = isUsage ? '' : 'none';
-      document.getElementById('supBox').style.display = isUsage ? '' : 'none';
-      document.getElementById('mkBox').style.display = isUsage ? '' : 'none';
+      // 問屋・メーカーの絞り込みは両タブで使用可能
+      document.getElementById('supBox').style.display = '';
+      document.getElementById('mkBox').style.display = '';
       setDefaultRange();
       load();
     }
@@ -97,11 +98,9 @@
       const p = new URLSearchParams();
       const f = document.getElementById('from').value; if (f) p.set('from', f);
       const t = document.getElementById('to').value; if (t) p.set('to', t);
-      if (tab === 'usage') {
-        p.set('groupBy', document.getElementById('groupBy').value);
-        const sid = document.getElementById('supplierId').value; if (sid) p.set('supplierId', sid);
-        const mid = document.getElementById('makerId').value; if (mid) p.set('makerId', mid);
-      }
+      if (tab === 'usage') p.set('groupBy', document.getElementById('groupBy').value);
+      const sid = document.getElementById('supplierId').value; if (sid) p.set('supplierId', sid);
+      const mid = document.getElementById('makerId').value; if (mid) p.set('makerId', mid);
       return p.toString();
     }
 
@@ -208,12 +207,12 @@
     }
     function selText(id) { const s = document.getElementById(id); return s.value ? s.options[s.selectedIndex].text : ''; }
     function printOut() {
-      if (tab === 'monthly') { window.open('/print.html?type=monthly_report&' + qs(), '_blank'); return; }
-      // 使用量: 絞り込み条件を可読名で渡す(印刷に表示するため)
+      // 絞り込み条件を可読名で渡す(印刷に表示するため)
       const p = new URLSearchParams(qs());
-      p.set('groupLabel', selText('groupBy'));
       const sn = selText('supplierId'); if (sn) p.set('supplierName', sn);
       const mn = selText('makerId'); if (mn) p.set('makerName', mn);
+      if (tab === 'monthly') { window.open('/print.html?type=monthly_report&' + p.toString(), '_blank'); return; }
+      p.set('groupLabel', selText('groupBy'));
       window.open('/print.html?type=usage_report&' + p.toString(), '_blank');
     }
 

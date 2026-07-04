@@ -377,7 +377,13 @@
     }
     function monthlyReportBody(data) {
       const rows = data.rows || [];
-      let h = listMeta(rows.length) + buildMonthlyChart(rows);
+      const from = q.get('from') || '';
+      const to = q.get('to') || '';
+      const pairs = [['期間', `${from || '—'} ～ ${to || '—'}`]];
+      if (q.get('supplierName')) pairs.push(['問屋', q.get('supplierName')]);
+      if (q.get('makerName')) pairs.push(['メーカー', q.get('makerName')]);
+      pairs.push(['件数', rows.length]);
+      let h = metaRow(pairs) + buildMonthlyChart(rows);
       h += `<table><thead><tr><th>年月</th><th class="num">入庫量(バラ)</th><th class="num">入庫金額</th>` +
         `<th class="num">出庫量(バラ)</th><th class="num">出庫金額</th></tr></thead><tbody>`;
       if (rows.length === 0) h += emptyRow(5);

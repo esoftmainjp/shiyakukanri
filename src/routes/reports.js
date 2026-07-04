@@ -113,14 +113,24 @@ router.get('/usage/csv', async (req, res) => {
 // 月次推移(入庫・出庫を月別に集計)
 async function fetchMonthly(q) {
   const { from, to } = range(q);
+  // 問屋/メーカーは商品詳細(product_details)基準で入庫・出庫の両方を絞り込む
+  const filterSql = (params) => {
+    let s = '';
+    if (q.supplierId) { params.push(q.supplierId); s += ` AND pd.supplier_id = $${params.length}`; }
+    if (q.makerId) { params.push(q.makerId); s += ` AND pd.maker_id = $${params.length}`; }
+    return s;
+  };
+  const rparams = [from, to];
   const recp = await pool.query(
     `SELECT to_char(r.receipt_date, 'YYYY-MM') AS ym,
             COALESCE(SUM(rd.stock_added_quantity), 0) AS qty,
             COALESCE(SUM(rd.receipt_quantity * rd.unit_price), 0) AS amount
        FROM receipt_details rd
        JOIN receipts r ON r.id = rd.receipt_id
-      WHERE r.receipt_date >= $1 AND r.receipt_date <= $2
-      GROUP BY ym`, [from, to]);
+       LEFT JOIN product_details pd ON pd.id = rd.product_detail_id
+      WHERE r.receipt_date >= $1 AND r.receipt_date <= $2${filterSql(rparams)}
+      GROUP BY ym`, rparams);
+  const iparams = [from, to];
   const iss = await pool.query(
     `SELECT to_char(i.issue_date, 'YYYY-MM') AS ym,
             COALESCE(SUM(d.issue_total_quantity), 0) AS qty,
@@ -128,8 +138,8 @@ async function fetchMonthly(q) {
        FROM issue_details d
        JOIN issues i ON i.id = d.issue_id
        LEFT JOIN product_details pd ON pd.id = d.product_detail_id
-      WHERE i.issue_date >= $1 AND i.issue_date <= $2
-      GROUP BY ym`, [from, to]);
+      WHERE i.issue_date >= $1 AND i.issue_date <= $2${filterSql(iparams)}
+      GROUP BY ym`, iparams);
 
   const map = {};
   const get = (ym) => (map[ym] || (map[ym] = { ym, receipt_qty: 0, receipt_amount: 0, issue_qty: 0, issue_amount: 0 }));
