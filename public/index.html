@@ -83,6 +83,8 @@
     }
     let warnDays = 30;
     function showApp(user) {
+      // 初回ログイン(パスワード変更要求)時は変更画面へ誘導
+      if (user && user.mustChangePassword) { location.href = '/password.html'; return; }
       document.getElementById('loginCard').style.display = 'none';
       document.getElementById('appArea').style.display = 'block';
       renderHeader(user, 'dashboard');
