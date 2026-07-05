@@ -340,6 +340,7 @@
       const added = [];
       if (data.departmentsCreated) added.push(`部門${data.departmentsCreated}件`);
       if (data.categoriesCreated) added.push(`分類${data.categoriesCreated}件`);
+      if (data.suppliersCreated) added.push(`問屋${data.suppliersCreated}件`);
       if (data.makersCreated) added.push(`メーカー${data.makersCreated}件`);
       if (added.length) summary += `（${added.join('・')}を自動追加）`;
       setMsg(msg, summary, 'ok');

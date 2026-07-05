@@ -122,6 +122,7 @@ router.post('/product-details', async (req, res) => {
     const errors = [];
     let inserted = 0;
     let makersCreated = 0;
+    let suppliersCreated = 0;
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
@@ -139,9 +140,8 @@ router.post('/product-details', async (req, res) => {
         if (mk.created) makersCreated++;
       }
       if (r['問屋']) {
-        const s = await client.query(`SELECT id FROM suppliers WHERE name = $1 AND facility_id = $2`, [r['問屋'].trim(), fid]);
-        if (s.rowCount === 0) { errors.push({ line: i + 2, error: `問屋が存在しません: ${r['問屋']}` }); continue; }
-        supplierId = s.rows[0].id;
+        const s = await resolveNamed(client, 'suppliers', r['問屋'], fid);
+        supplierId = s.id; if (s.created) suppliersCreated++;
       }
 
       await client.query(
@@ -177,7 +177,7 @@ router.post('/product-details', async (req, res) => {
       return res.status(400).json({ error: '取込中にエラーがあります(全件取消)', inserted: 0, errors });
     }
     await client.query('COMMIT');
-    res.json({ ok: true, inserted, makersCreated });
+    res.json({ ok: true, inserted, makersCreated, suppliersCreated });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('商品詳細インポートエラー:', err.message);
@@ -206,6 +206,7 @@ router.post('/products-combined', async (req, res) => {
     let makersCreated = 0;
     let departmentsCreated = 0;
     let categoriesCreated = 0;
+    let suppliersCreated = 0;
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
@@ -233,9 +234,8 @@ router.post('/products-combined', async (req, res) => {
         if (mk.created) makersCreated++;
       }
       if (r['問屋']) {
-        const s = await client.query(`SELECT id FROM suppliers WHERE name = $1 AND facility_id = $2`, [r['問屋'].trim(), fid]);
-        if (s.rowCount === 0) { errors.push({ line, error: `問屋が存在しません: ${r['問屋']}` }); continue; }
-        supplierId = s.rows[0].id;
+        const s = await resolveNamed(client, 'suppliers', r['問屋'], fid);
+        supplierId = s.id; if (s.created) suppliersCreated++;
       }
 
       // 商品: 商品名で検索し、あれば再利用/なければ新規作成(重複チェックは商品名・同一施設)
@@ -287,7 +287,7 @@ router.post('/products-combined', async (req, res) => {
       return res.status(400).json({ error: '取込中にエラーがあります(全件取消)', productsCreated: 0, detailsCreated: 0, makersCreated: 0, errors });
     }
     await client.query('COMMIT');
-    res.json({ ok: true, productsCreated, detailsCreated, makersCreated, departmentsCreated, categoriesCreated });
+    res.json({ ok: true, productsCreated, detailsCreated, makersCreated, departmentsCreated, categoriesCreated, suppliersCreated });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('商品＋詳細インポートエラー:', err.message);
