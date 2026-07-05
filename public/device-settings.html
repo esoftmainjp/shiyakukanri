@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>端末設定 | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header></header>
+  <main>
+    <div id="area" style="display:none;">
+      <div class="card">
+        <p style="font-size:0.85rem; color:#555; margin-top:0;">
+          ここは<strong>この端末だけ</strong>の設定です（この端末のブラウザに保存されます）。
+          利用者ごと・端末ごとに自由に変更でき、他の端末や他の利用者には影響しません。
+        </p>
+      </div>
+
+      <div class="card">
+        <h2>画面デザイン（カラー）</h2>
+        <div>
+          <label>テーマ</label>
+          <select id="theme" onchange="applyTheme(this.value)" style="min-width:220px; display:block;">
+            <option value="blue">パステルブルー（標準）</option>
+            <option value="green">パステルグリーン</option>
+            <option value="pink">パステルピンク</option>
+            <option value="purple">パステルパープル</option>
+            <option value="warm">パステルオレンジ</option>
+            <option value="gray">パステルグレー</option>
+          </select>
+        </div>
+        <p style="color:#6b7280; font-size:0.83rem; margin-top:10px;">選ぶと即座にこの端末の画面に反映されます。</p>
+      </div>
+
+      <div class="card">
+        <h2>バーコードラベル（この端末の既定）</h2>
+        <div class="row">
+          <div style="flex:0;"><label>ラベル幅(mm)</label><input type="number" id="label_width_mm" min="10" max="200" style="width:110px;" /></div>
+          <div style="flex:0;"><label>ラベル高(mm)</label><input type="number" id="label_height_mm" min="10" max="200" style="width:110px;" /></div>
+          <div style="flex:0;"><label>バーコード高(px)</label><input type="number" id="barcode_height_px" min="20" max="140" style="width:120px;" /></div>
+          <div style="flex:0;"><label>バーコード幅(mm)</label><input type="number" id="barcode_width_mm" min="10" max="200" style="width:120px;" /></div>
+        </div>
+        <div class="row">
+          <div style="flex:0;"><label>バーコード情報の文字サイズ</label><input type="number" id="label_barcode_font" min="4" max="30" style="width:180px;" /></div>
+          <div style="flex:0;"><label>名称の文字サイズ</label><input type="number" id="label_name_font" min="6" max="40" style="width:150px;" /></div>
+          <div style="flex:0;"><label>ロット・期限・内容物Noの文字サイズ</label><input type="number" id="label_sub_font" min="6" max="40" style="width:220px;" /></div>
+        </div>
+        <p style="color:#6b7280; font-size:0.83rem;">入庫時の印刷・バーコード印刷画面で、この端末の既定サイズとして使われます。<br>
+          「バーコード情報」＝バーコード下の数字、「名称」＝商品名、「ロット・期限・内容物No」＝その下の行。</p>
+      </div>
+
+      <div class="card">
+        <button onclick="save()">保存</button>
+        <button class="secondary" onclick="resetDefaults()">既定値に戻す</button>
+        <p class="msg" id="msg"></p>
+      </div>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    // 端末別に保持するラベル設定のキーと既定値
+    const LABEL_KEYS = ['label_width_mm', 'label_height_mm', 'barcode_height_px', 'barcode_width_mm',
+      'label_barcode_font', 'label_name_font', 'label_sub_font'];
+
+    async function boot() {
+      const user = await initPage('device');
+      if (!user) return;
+      document.getElementById('area').style.display = 'block';
+      // テーマ(端末別)。localStorageの現在値を選択状態に。
+      let theme = 'blue';
+      try { theme = localStorage.getItem('appTheme') || 'blue'; } catch (e) { /* ignore */ }
+      document.getElementById('theme').value = theme;
+      // ラベル設定(端末別)
+      LABEL_KEYS.forEach((k) => { document.getElementById(k).value = getDeviceSetting(k); });
+    }
+
+    function save() {
+      applyTheme(document.getElementById('theme').value); // テーマは端末に保存
+      LABEL_KEYS.forEach((k) => { setDeviceSetting(k, document.getElementById(k).value); });
+      setMsg(document.getElementById('msg'), 'この端末に保存しました', 'ok');
+    }
+
+    function resetDefaults() {
+      applyTheme('blue');
+      document.getElementById('theme').value = 'blue';
+      LABEL_KEYS.forEach((k) => {
+        try { localStorage.removeItem('dev_' + k); } catch (e) { /* ignore */ }
+        document.getElementById(k).value = getDeviceSetting(k);
+      });
+      setMsg(document.getElementById('msg'), '既定値に戻しました（保存済み）', 'ok');
+    }
+
+    boot();
+  </script>
+</body>
+</html>

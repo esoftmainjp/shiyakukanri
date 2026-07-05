@@ -97,17 +97,15 @@
         o.value = p.productId; o.textContent = p.productName;
         sel.appendChild(o);
       });
-      // ラベル設定を設定画面(サーバー)から取得
-      const cs = await api('/api/settings');
-      const s = (cs.ok && cs.data.settings) || {};
+      // ラベル設定は端末別(端末設定画面/localStorage)から取得
       cfg = {
-        lw: num(s.label_width_mm, 52),
-        lh: num(s.label_height_mm, 29),
-        bh: num(s.barcode_height_px, 60),
-        bwmm: num(s.barcode_width_mm, 45),
-        bcFont: num(s.label_barcode_font, 6),
-        nameFont: num(s.label_name_font, 13),
-        subFont: num(s.label_sub_font, 13),
+        lw: num(getDeviceSetting('label_width_mm'), 52),
+        lh: num(getDeviceSetting('label_height_mm'), 29),
+        bh: num(getDeviceSetting('barcode_height_px'), 60),
+        bwmm: num(getDeviceSetting('barcode_width_mm'), 45),
+        bcFont: num(getDeviceSetting('label_barcode_font'), 6),
+        nameFont: num(getDeviceSetting('label_name_font'), 13),
+        subFont: num(getDeviceSetting('label_sub_font'), 13),
       };
       setToday();
       applySize();

@@ -105,7 +105,6 @@
       const { ok, data } = await api('/api/settings');
       if (ok && data.settings) {
         warnDays = Number(data.settings.expiry_warn_days) || 30;
-        if (data.settings.theme) applyTheme(data.settings.theme);
       }
       loadExpiry();
     }

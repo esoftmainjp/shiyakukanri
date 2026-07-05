@@ -13,12 +13,22 @@ function applyTheme(name) {
     if (t) document.documentElement.setAttribute('data-theme', t);
   } catch (e) { /* ignore */ }
 })();
-// サーバー(設定画面)のテーマを取得して反映
-async function syncTheme() {
+// ===== 端末別設定(この端末のブラウザ=localStorageに保存) =====
+// テーマ(画面カラー)とバーコードラベルの既定サイズは端末ごとに保持する。
+// 全ユーザーが「端末設定」画面から変更できる(施設共通設定とは別)。
+const DEVICE_LABEL_DEFAULTS = {
+  label_width_mm: 52, label_height_mm: 29, barcode_height_px: 60, barcode_width_mm: 45,
+  label_barcode_font: 6, label_name_font: 13, label_sub_font: 13,
+};
+function getDeviceSetting(key, def) {
   try {
-    const { ok, data } = await api('/api/settings');
-    if (ok && data.settings && data.settings.theme) applyTheme(data.settings.theme);
+    const v = localStorage.getItem('dev_' + key);
+    if (v !== null && v !== '') return v;
   } catch (e) { /* ignore */ }
+  return (def !== undefined) ? def : DEVICE_LABEL_DEFAULTS[key];
+}
+function setDeviceSetting(key, value) {
+  try { localStorage.setItem('dev_' + key, String(value)); } catch (e) { /* ignore */ }
 }
 
 // 共通APIヘルパー
@@ -51,7 +61,7 @@ async function initPage(activeKey) {
   renderHeader(data.user, activeKey);
   // パスワード有効期限切れ(0=無効)ならメッセージを表示
   if (data.passwordExpired && activeKey !== 'password') showPasswordExpiryBanner();
-  syncTheme();
+  // テーマは端末別(localStorage)。ページ読込時のIIFEで適用済み。
   return data.user;
 }
 
@@ -83,6 +93,7 @@ function renderHeader(user, activeKey) {
     const facSelected = currentMe && currentMe.activeFacilityId != null;
     nav = [['facilities', '/facilities.html', '施設管理']];
     if (facSelected) nav.push(['masters', '/masters.html', 'マスター編集']);
+    nav.push(['device', '/device-settings.html', '端末設定']);
     nav.push(['password', '/password.html', 'パスワード変更']);
     nav.push(['manual', '/manual.pdf', '取扱説明書']);
   } else if (user.userType === 'supplier') {
@@ -90,6 +101,7 @@ function renderHeader(user, activeKey) {
       ['dashboard', '/', 'ホーム'],
       ['receipts', '/receipts.html', '入庫'],
       ['orders', '/orders.html', '発注'],
+      ['device', '/device-settings.html', '端末設定'],
       ['password', '/password.html', 'パスワード変更'],
       ['manual', '/manual.pdf', '取扱説明書'],
     ];
@@ -110,8 +122,9 @@ function renderHeader(user, activeKey) {
     if (user.userType === 'admin') {
       nav.push(['masters', '/masters.html', 'マスター編集']);
       nav.push(['logs', '/logs.html', '操作ログ']);
-      nav.push(['settings', '/settings.html', '設定']);
+      nav.push(['settings', '/settings.html', '施設設定']);
     }
+    nav.push(['device', '/device-settings.html', '端末設定']);
     nav.push(['password', '/password.html', 'パスワード変更']);
     nav.push(['manual', '/manual.pdf', '取扱説明書']);
   }
