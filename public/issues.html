@@ -64,7 +64,7 @@
       document.getElementById('issueDate').value = new Date().toISOString().slice(0, 10);
       products = await getProducts();
       document.getElementById('product').innerHTML =
-        products.map((p) => `<option value="${p.productId}">${p.productName}</option>`).join('');
+        products.map((p) => `<option value="${p.productId}">${attr(p.productName)}</option>`).join('');
       // バーコード欄: Enter(スキャナ送出)で読取実行
       document.getElementById('barcode').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); addBarcode(); }
@@ -88,7 +88,7 @@
       const stocks = data.stocks || [];
       sel.innerHTML = stocks.map((s, i) =>
         `<option value='${JSON.stringify({ lot: s.lot_number, exp: s.expiry_date })}'>` +
-        `${i === 0 ? '★最短期限 ' : ''}${s.lot_number || '(ロットなし)'} / 期限:${s.expiry_date || 'なし'} / 在庫:${s.stock_quantity}</option>`
+        `${i === 0 ? '★最短期限 ' : ''}${attr(s.lot_number || '(ロットなし)')} / 期限:${s.expiry_date || 'なし'} / 在庫:${s.stock_quantity}</option>`
       ).join('') || '<option value="">在庫なし</option>';
       sel.selectedIndex = 0; // FEFO: 最短期限を既定選択
     }
@@ -162,8 +162,8 @@
         const tr = document.createElement('tr');
         tr.innerHTML =
           `<td>${l.kind === 'barcode' ? 'バーコード' : '数量'}</td>` +
-          `<td>${l.kind === 'barcode' ? l.barcodeValue + ' ' + l.label : l.label}</td>` +
-          `<td>${l.lot || '(なし)'}</td><td style="text-align:right;">${l.bara}</td>` +
+          `<td>${l.kind === 'barcode' ? attr(l.barcodeValue) + ' ' + attr(l.label) : attr(l.label)}</td>` +
+          `<td>${attr(l.lot || '(なし)')}</td><td style="text-align:right;">${l.bara}</td>` +
           `<td><input value="${attr(l.note)}" oninput="lines[${i}].note=this.value" placeholder="任意" style="width:130px;" /></td>` +
           `<td><button class="danger" onclick="removeLine(${i})">削除</button></td>`;
         tbody.appendChild(tr);

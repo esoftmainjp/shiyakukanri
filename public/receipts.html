@@ -200,7 +200,7 @@
       const list = products.filter((p) => (p.details || []).some((d) => String(d.supplierId) === String(sid)));
       sel.innerHTML = list.map((p) => {
         const d = (p.details || []).find((x) => String(x.supplierId) === String(sid)) || p.details[0];
-        return `<option value="${p.productId}">${p.productName}${d && d.spec ? '（' + d.spec + '）' : ''}</option>`;
+        return `<option value="${p.productId}">${attr(p.productName)}${d && d.spec ? '（' + attr(d.spec) + '）' : ''}</option>`;
       }).join('') || '<option value="">（この問屋の商品がありません）</option>';
       fillDefaults();
     }

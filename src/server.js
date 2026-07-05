@@ -5,6 +5,9 @@ const path = require('path');
 const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const { pool } = require('./db');
 const { writeLog } = require('./services/log');
 const { getSetting } = require('./routes/settings');
@@ -13,27 +16,54 @@ const { als } = require('./services/context');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const isProd = process.env.NODE_ENV === 'production';
+
+// セキュリティHTTPヘッダ(クリックジャッキング防止・MIMEスニッフィング防止など)。
+// 本アプリはインラインscript/onclick属性を多用するため、CSPは無効化して他ヘッダのみ有効化する。
+app.use(helmet({ contentSecurityPolicy: false }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // 本番(Render)ではプロキシ配下のためsecure cookieを有効化できるようにする
-if (process.env.NODE_ENV === 'production') {
+if (isProd) {
   app.set('trust proxy', 1);
+}
+
+// セッション署名鍵。本番で未設定/既定値のままだとCookie偽造の恐れがあるため、
+// その場合は起動ごとにランダム鍵を使う(既知の鍵での運用を防ぐ。再起動で全セッション失効)。
+let sessionSecret = process.env.SESSION_SECRET;
+if (!sessionSecret || sessionSecret === 'change-this-secret') {
+  if (isProd) {
+    console.warn('[security] SESSION_SECRET が未設定/既定値です。起動ごとのランダム鍵を使用します。恒久運用のため環境変数 SESSION_SECRET を設定してください。');
+    sessionSecret = crypto.randomBytes(32).toString('hex');
+  } else {
+    sessionSecret = 'local-dev-secret';
+  }
 }
 
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || 'change-this-secret',
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isProd,
+      sameSite: 'lax', // CSRF緩和(クロスサイトからのCookie送信を抑制)
       maxAge: 1000 * 60 * 60 * 8, // 8時間
     },
   })
 );
+
+// ログイン試行のレート制限(ブルートフォース対策)。IP単位で一定回数まで。
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15分
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'ログイン試行が多すぎます。しばらくしてから再度お試しください。' },
+});
 
 // リクエスト単位の操作施設をコンテキストに保持(操作ログの施設付与に使用)。
 // ここでは現在のセッションの操作施設を格納する(未ログインや未選択はNULL)。
@@ -81,7 +111,7 @@ app.get('/api/health', async (req, res) => {
 // ------------------------------------------------------------
 // ログイン / ログアウト / 現在ユーザー
 // ------------------------------------------------------------
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
   const { loginId, password } = req.body || {};
   if (!loginId || !password) {
     return res.status(400).json({ error: 'ログインIDとパスワードは必須です' });
@@ -104,6 +134,9 @@ app.post('/api/login', async (req, res) => {
         return res.status(403).json({ error: 'この施設は現在利用できません（無効化されています）。管理者にお問い合わせください。' });
       }
     }
+
+    // セッション固定攻撃対策: 認証成功時にセッションIDを再生成する
+    await new Promise((resolve, reject) => req.session.regenerate((e) => (e ? reject(e) : resolve())));
 
     req.session.user = {
       id: user.id,

@@ -205,7 +205,7 @@
       if (rows.length === 0) h += `<tr><td colspan="9">該当がありません。</td></tr>`;
       rows.forEach((r) => {
         h += `<tr>` +
-          `<td>${r.id}</td><td class="nowrap">${r.receipt_date}</td><td>${r.supplier_name || ''}</td>` +
+          `<td>${r.id}</td><td class="nowrap">${r.receipt_date}</td><td>${esc(r.supplier_name || '')}</td>` +
           `<td><a href="#" onclick="toggle('receipts',${r.id},this);return false;">${r.detail_count}件</a></td>` +
           `<td>${r.total_bara}</td><td>${r.barcode_count}(${r.barcode_used_count})</td>` +
           `<td>${esc(r.note)}</td><td>${esc(r.user_name || '')}</td>` +
@@ -237,7 +237,7 @@
         const dc = (o.details || []).length;
         h += `<tr>` +
           `<td>${o.id}</td><td><span class="pill ${o.order_status}">${STATUS_LABEL[o.order_status] || o.order_status}</span></td>` +
-          `<td class="nowrap">${o.order_date || '-'}</td><td>${o.supplier_name || ''}</td>` +
+          `<td class="nowrap">${o.order_date || '-'}</td><td>${esc(o.supplier_name || '')}</td>` +
           `<td><a href="#" onclick="toggle('orders',${o.id},this);return false;">${dc}件</a></td>` +
           `<td>${esc(o.note)}</td>` +
           `<td class="nowrap">${actionButtons('orders', o.id, '削除')}</td></tr>`;

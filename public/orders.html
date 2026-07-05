@@ -204,8 +204,8 @@
         } else if (canEdit && o.order_status === 'ordered') actionCell = `<td style="text-align:center;"><button class="danger" ${btnStyle} onclick="cancelDetail('${o.id}','${d.id}')">キャンセル</button></td>`;
         const rowStyle = (isCanceled || d.held_flag) ? ' style="color:#999;"' : '';
         const nameCell = isCanceled
-          ? `<span style="text-decoration:line-through;">${d.product_name}</span>`
-          : (d.held_flag ? `${escHtml(d.product_name)} <span class="pill canceled">保留中</span>` : d.product_name);
+          ? `<span style="text-decoration:line-through;">${escHtml(d.product_name)}</span>`
+          : (d.held_flag ? `${escHtml(d.product_name)} <span class="pill canceled">保留中</span>` : escHtml(d.product_name));
         return `<tr${rowStyle}><td>${nameCell}</td>` +
           `<td style="text-align:right;">${d.order_bara}</td>` +
           `<td style="text-align:right;">${d.pack_size}</td>` +
@@ -230,7 +230,7 @@
       return `<div class="card" style="background:#fafcfe;">
         <div class="row" style="align-items:center;">
           <div><strong>発注 #${o.id}</strong> <span class="pill ${o.order_status}">${statusLabel(o.order_status)}</span>${partialTag}</div>
-          <div>問屋: ${o.supplier_name || '-'}</div>
+          <div>問屋: ${escHtml(o.supplier_name) || '-'}</div>
           <div>発注日: ${o.order_date || '-'}</div>
           <div class="spacer"></div>
         </div>

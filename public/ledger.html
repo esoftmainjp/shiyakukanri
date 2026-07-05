@@ -58,11 +58,17 @@
       rows.forEach((r) => {
         const tr = document.createElement('tr');
         tr.innerHTML =
-          `<td>${r.receipt_date || ''}</td><td>${r.product_name}</td><td>${r.lot_number || '(なし)'}</td>` +
-          `<td>${r.content_code}</td><td>${r.expiry_date || ''}</td><td>${r.use_start_date || ''}</td>` +
+          `<td>${r.receipt_date || ''}</td><td>${esc(r.product_name)}</td><td>${esc(r.lot_number || '(なし)')}</td>` +
+          `<td>${esc(r.content_code)}</td><td>${r.expiry_date || ''}</td><td>${r.use_start_date || ''}</td>` +
           `<td>${r.use_end_date || ''}</td>`;
         tbody.appendChild(tr);
       });
+    }
+
+    // HTMLエスケープ(XSS対策)
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
     function downloadCsv() { window.location = '/api/ledger/csv?' + queryString(); }

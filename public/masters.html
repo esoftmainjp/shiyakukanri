@@ -171,7 +171,7 @@
         } else if (def.type === 'ref') {
           const rows = await loadRef(def.refType);
           inner += `<select id="fld_${def.key}"><option value="">(未選択)</option>` +
-            rows.map((r) => `<option value="${r.id}">${r.name}</option>`).join('') + `</select>`;
+            rows.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('') + `</select>`;
         } else if (def.type === 'checkbox') {
           inner += `<input type="checkbox" id="fld_${def.key}" />`;
         } else {
@@ -293,7 +293,7 @@
         area.innerHTML = `<div style="flex:0; min-width:280px;"><label>商品で絞り込み</label>
           <select id="listFilterProduct" onchange="applyListFilter()">
             <option value="">すべて</option>
-            ${prods.map((p) => `<option value="${p.id}">${p.name}</option>`).join('')}
+            ${prods.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
           </select></div>`;
       } else {
         area.innerHTML = `<div style="flex:0; min-width:280px;"><label>名称で絞り込み</label>
@@ -314,7 +314,7 @@
       const tbody = document.querySelector('#tbl tbody');
       if (rows.length === 0) { tbody.innerHTML = '<tr><td>該当データがありません</td></tr>'; return; }
       tbody.innerHTML = rows.map((r) => {
-        const tds = listKeys.map((k) => `<td>${cellValue(k, r[k], listRefMaps)}</td>`).join('');
+        const tds = listKeys.map((k) => `<td>${esc(cellValue(k, r[k], listRefMaps))}</td>`).join('');
         const hasActive = 'is_active' in r;
         const toggleBtn = hasActive ? `<button class="${r.is_active ? 'danger' : ''}" onclick="toggle('${r.id}')">${r.is_active ? '無効化' : '有効化'}</button>` : '';
         const editData = JSON.stringify(r).replace(/'/g, '&#39;');
@@ -331,6 +331,12 @@
       const sel = document.getElementById('listFilterProduct');
       if (sel) { sel.value = String(productId); applyListFilter(); }
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // HTMLエスケープ(XSS対策)。innerHTMLへ埋める文字列は必ずこれを通す。
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
     function cellValue(key, v, refMaps) {

@@ -32,6 +32,11 @@ function getType(req, res) {
   return t;
 }
 
+// マスタ画面から作成/変更できるユーザー種別。
+// superadmin(全体管理者)はここから作成/変更させない: 施設に紐づくsuperadminは
+// 全施設を横断できてしまうため(権限昇格・テナント越境の防止)。superadminはseed/移行でのみ発行する。
+const ASSIGNABLE_USER_TYPES = ['admin', 'general', 'supplier'];
+
 // 物理削除時の参照チェック定義(このマスタを参照する側のテーブル・カラム・表示名)。
 // 1件でも参照があれば削除をブロックする。
 const REFERENCES = {
@@ -110,6 +115,9 @@ router.post('/:type', async (req, res) => {
     cols.push('facility_id'); vals.push(scope.facilityId);
     // ユーザーはパスワードをハッシュ化して追加
     if (t.table === 'users') {
+      if (!ASSIGNABLE_USER_TYPES.includes(String(body.user_type))) {
+        return res.status(400).json({ error: 'ユーザー種別が不正です（管理者・一般・問屋のみ登録できます）' });
+      }
       if (!body.password) return res.status(400).json({ error: 'パスワードは必須です' });
       if (!isEmail(body.login_id)) return res.status(400).json({ error: 'ログインIDはメールアドレス形式で入力してください' });
       // ログインIDは全施設で重複不可。事前チェックで分かりやすく案内。
@@ -149,6 +157,9 @@ router.put('/:type/:id', async (req, res) => {
   const scope = facilityScope(req);
   const body = req.body || {};
   try {
+    if (t.table === 'users' && body.user_type !== undefined && !ASSIGNABLE_USER_TYPES.includes(String(body.user_type))) {
+      return res.status(400).json({ error: 'ユーザー種別が不正です（管理者・一般・問屋のみ設定できます）' });
+    }
     if (t.table === 'users' && body.login_id !== undefined) {
       if (!isEmail(body.login_id)) {
         return res.status(400).json({ error: 'ログインIDはメールアドレス形式で入力してください' });

@@ -84,7 +84,7 @@
     async function boot() {
       const user = await initPage('inventory');
       if (!user) return;
-      const opt = (arr) => '<option value="">すべて</option>' + (arr || []).map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+      const opt = (arr) => '<option value="">すべて</option>' + (arr || []).map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
       const [sup, mk, dep, cat] = await Promise.all([
         api('/api/lookup/suppliers'), api('/api/lookup/makers'),
         api('/api/lookup/departments'), api('/api/lookup/categories'),

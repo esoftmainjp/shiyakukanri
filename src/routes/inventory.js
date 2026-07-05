@@ -268,11 +268,14 @@ router.post('/movement', async (req, res) => {
 
     const result = await applyStockChange(client, opts);
 
-    // 個体(独自バーコード)対象なら使用済みにする
+    // 個体(独自バーコード)対象なら使用済みにする。
+    // 施設スコープ: 操作施設の商品に紐づくバーコードのみ対象(他施設の個体を改変させない)。
     if (barcodeValue) {
       await client.query(
-        `UPDATE barcodes SET used_flag = TRUE WHERE barcode_value = $1`,
-        [barcodeValue]
+        `UPDATE barcodes SET used_flag = TRUE
+          WHERE barcode_value = $1
+            AND product_id IN (SELECT id FROM products WHERE facility_id = $2)`,
+        [barcodeValue, scope.facilityId]
       );
     }
 

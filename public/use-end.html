@@ -65,11 +65,17 @@
         const tr = document.createElement('tr');
         const kindLabel = b.kind === 'barcode' ? '独自BC' : 'JAN(使用記録)';
         tr.innerHTML =
-          `<td>${kindLabel}</td><td>${b.product_name}</td><td>${b.content_code}</td>` +
-          `<td>${b.lot_number || '(なし)'}</td><td>${b.use_start_date || ''}</td>` +
+          `<td>${kindLabel}</td><td>${esc(b.product_name)}</td><td>${esc(b.content_code)}</td>` +
+          `<td>${esc(b.lot_number || '(なし)')}</td><td>${b.use_start_date || ''}</td>` +
           `<td><button onclick="register('${b.kind}','${b.key}')">終了登録</button></td>`;
         tbody.appendChild(tr);
       });
+    }
+
+    // HTMLエスケープ(XSS対策)
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
     async function register(kind, key) {
