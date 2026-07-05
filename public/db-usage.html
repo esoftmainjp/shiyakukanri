@@ -16,11 +16,16 @@
     .barrow { display: grid; grid-template-columns: 170px 1fr 160px; align-items: center; gap: 10px; padding: 4px 0; }
     .barrow .nm { font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .bartrack { background: rgba(120,140,170,0.15); border-radius: 6px; height: 20px; overflow: hidden; }
-    .barfill { height: 100%; background: linear-gradient(90deg, #4a90d9, #6aa9e6); border-radius: 6px; min-width: 2px; }
+    .barfill { height: 100%; border-radius: 6px; min-width: 2px; display: flex; overflow: hidden; }
+    .barseg { height: 100%; min-width: 0; }
     .barval { text-align: right; font-size: 0.85rem; color: #445; white-space: nowrap; }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0 10px; }
+    .legend .lg { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: #556; }
+    .legend .lg i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: 0 0 auto; }
     .note { font-size: 0.82rem; color: #8a6d3b; background: #fcf8e3; border: 1px solid #f5e79e; border-radius: 6px; padding: 6px 10px; margin-top: 8px; }
     @media (prefers-color-scheme: dark) {
       .kpi .sub { color: #9aa4b2; } .barval { color: #cbd3dd; } .seg button { color: #aab3c0; }
+      .legend .lg { color: #aab3c0; }
       .note { color: #e6d8a8; background: #3a3320; border-color: #5c5230; }
     }
   </style>
@@ -60,7 +65,8 @@
 
       <div class="card">
         <h2 id="chartTitle">テーブル別（大きい順）</h2>
-        <p style="font-size:0.85rem; color:#667; margin-top:0;">バーは最大テーブルを100%とした相対値です。（ ）内は全体に占める割合。</p>
+        <p style="font-size:0.85rem; color:#667; margin-top:0;">バーは最大テーブルを100%とした相対値です。（ ）内は全体に占める割合。<span id="chartHint"></span></p>
+        <div id="legend" class="legend" style="display:none;"></div>
         <div id="chart"></div>
       </div>
     </div>
@@ -70,6 +76,12 @@
   <script>
     let DATA = null;
     let metric = 'bytes'; // 'bytes' | 'rows'
+    let CMAP = {}; // 施設ID(文字列) -> 色
+
+    // 施設別の色分け用パレット（施設一覧の並び順で一貫して割り当てる）
+    const PALETTE = ['#4a90d9','#e07a3f','#4bb372','#9b6ad6','#e05c86','#37b0c4','#d9a53b','#6d7bd6','#59b89a','#d96a6a','#7bb241','#c065b8'];
+    const COL_COMMON = '#c2cad4';   // 施設共通テーブル
+    const COL_UNASSIGNED = '#9aa4b2'; // 施設未割当(facility_id が NULL)
 
     async function boot() {
       const user = await initPage('dbusage');
@@ -104,6 +116,9 @@
       if (!ok) { setMsg(document.getElementById('msg'), (data && data.error) || '取得に失敗しました', 'error'); return; }
       setMsg(document.getElementById('msg'), '', '');
       DATA = data;
+      // 施設ID→色（施設一覧の並び順で固定割り当て）
+      CMAP = {};
+      (data.facilities || []).forEach((f, i) => { CMAP[String(f.id)] = PALETTE[i % PALETTE.length]; });
       // 施設セレクタ構築
       const sel = document.getElementById('facility');
       sel.innerHTML = '<option value="">（全施設）</option>' +
@@ -111,6 +126,29 @@
       document.getElementById('genAt').textContent = data.generatedAt
         ? '（' + new Date(data.generatedAt).toLocaleString('ja-JP') + ' 時点）' : '';
       render();
+    }
+
+    // 全施設表示時、1テーブルを施設別セグメントに分解する。
+    // 施設別集計できないテーブルは「施設共通」1本、facility_id=NULL 分は「未割当」。
+    function segmentsOf(t) {
+      const out = [];
+      const toVal = (c) => (metric === 'rows' ? c : (t.rows > 0 ? t.bytes * c / t.rows : 0));
+      if (t.facilityRows) {
+        (DATA.facilities || []).forEach((f) => {
+          const c = t.facilityRows[String(f.id)];
+          if (!c) return;
+          const v = toVal(c);
+          if (v > 0) out.push({ label: f.name, value: v, color: CMAP[String(f.id)] });
+        });
+        if (t.facilityRows['null']) {
+          const v = toVal(t.facilityRows['null']);
+          if (v > 0) out.push({ label: '未割当', value: v, color: COL_UNASSIGNED });
+        }
+      } else {
+        const v = metric === 'rows' ? t.rows : t.bytes;
+        if (v > 0) out.push({ label: '施設共通', value: v, color: COL_COMMON });
+      }
+      return out;
     }
 
     // 選択中の施設・数値種別に応じた各テーブルの値を返す。null=対象外(施設別に集計できない)
@@ -155,13 +193,40 @@
         note.style.display = 'none';
       }
 
-      // グラフ
+      // 凡例・補足（全施設のときのみ施設別の色分けを表示）
+      const legendEl = document.getElementById('legend');
+      const hintEl = document.getElementById('chartHint');
+      if (!fid) {
+        legendEl.innerHTML =
+          (DATA.facilities || []).map((f) =>
+            `<span class="lg"><i style="background:${CMAP[String(f.id)]}"></i>${esc(f.name)}</span>`).join('') +
+          `<span class="lg"><i style="background:${COL_COMMON}"></i>施設共通</span>`;
+        legendEl.style.display = 'flex';
+        hintEl.textContent = ' 色は施設別の内訳です。';
+      } else {
+        legendEl.style.display = 'none';
+        hintEl.textContent = '';
+      }
+
+      // グラフ（全施設=施設別に色分けした積み上げ、施設選択時=その施設色の単色）
       document.getElementById('chart').innerHTML = rows.map(({ t, v }) => {
         const w = pct(v, max);
         const share = pct(v, total).toFixed(1);
+        let inner;
+        if (fid) {
+          inner = `<div class="barseg" style="width:100%;background:${CMAP[String(fid)] || '#4a90d9'};"></div>`;
+        } else {
+          const segs = segmentsOf(t);
+          const covered = segs.reduce((s, x) => s + x.value, 0);
+          inner = segs.map((seg) =>
+            `<div class="barseg" title="${esc(seg.label)}：${fmtVal(seg.value)}" style="width:${pct(seg.value, v).toFixed(2)}%;background:${seg.color};"></div>`).join('');
+          if (v - covered > Math.max(1, v * 0.005)) {
+            inner += `<div class="barseg" title="未集計：${fmtVal(v - covered)}" style="width:${pct(v - covered, v).toFixed(2)}%;background:rgba(140,150,165,0.30);"></div>`;
+          }
+        }
         return `<div class="barrow">
           <div class="nm" title="${esc(t.label)}（${esc(t.name)}）">${esc(t.label)}</div>
-          <div class="bartrack"><div class="barfill" style="width:${w.toFixed(1)}%;"></div></div>
+          <div class="bartrack"><div class="barfill" style="width:${w.toFixed(1)}%;">${inner}</div></div>
           <div class="barval">${fmtVal(v)}（${share}%）</div>
         </div>`;
       }).join('') || '<p>表示できるデータがありません。</p>';
