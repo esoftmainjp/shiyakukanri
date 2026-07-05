@@ -93,6 +93,8 @@
     function showApp(user) {
       // 初回ログイン(パスワード変更要求)時は変更画面へ誘導
       if (user && user.mustChangePassword) { location.href = '/password.html'; return; }
+      // 全体管理者はホーム(ダッシュボード)ではなく施設管理へ誘導
+      if (user && user.userType === 'superadmin') { location.href = '/facilities.html'; return; }
       document.getElementById('loginCard').style.display = 'none';
       document.getElementById('appArea').style.display = 'block';
       renderHeader(user, 'dashboard');

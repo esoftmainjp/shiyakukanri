@@ -30,6 +30,17 @@ async function resolveMaker(client, name, janCode, facilityId) {
   return { id: ins.rows[0].id, created: true };
 }
 
+// 名称マスタ(部門・分類)を施設スコープ内で解決。無ければ自動追加する。
+// 戻り値: { id, created }
+async function resolveNamed(client, table, name, facilityId) {
+  const nm = (name || '').trim();
+  if (!nm) return { id: null, created: false };
+  const found = await client.query(`SELECT id FROM ${table} WHERE name = $1 AND facility_id = $2`, [nm, facilityId]);
+  if (found.rowCount > 0) return { id: found.rows[0].id, created: false };
+  const ins = await client.query(`INSERT INTO ${table} (name, facility_id) VALUES ($1, $2) RETURNING id`, [nm, facilityId]);
+  return { id: ins.rows[0].id, created: true };
+}
+
 // 全体管理者が施設未選択のときは施設を特定できないため取込不可。
 function requireFacility(req, res) {
   const scope = facilityScope(req);
@@ -50,6 +61,8 @@ router.post('/products', async (req, res) => {
     const errors = [];
     let inserted = 0;
     let skipped = 0;
+    let departmentsCreated = 0;
+    let categoriesCreated = 0;
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
@@ -60,16 +73,15 @@ router.post('/products', async (req, res) => {
       const dup = await client.query(`SELECT id FROM products WHERE name = $1 AND facility_id = $2`, [name, fid]);
       if (dup.rowCount > 0) { skipped++; continue; }
 
+      // 部門・分類は無ければ自動追加(同一施設内)
       let deptId = null, catId = null;
       if (r['部門']) {
-        const d = await client.query(`SELECT id FROM departments WHERE name = $1 AND facility_id = $2`, [r['部門'].trim(), fid]);
-        if (d.rowCount === 0) { errors.push({ line: i + 2, error: `部門が存在しません: ${r['部門']}` }); continue; }
-        deptId = d.rows[0].id;
+        const d = await resolveNamed(client, 'departments', r['部門'], fid);
+        deptId = d.id; if (d.created) departmentsCreated++;
       }
       if (r['分類']) {
-        const c = await client.query(`SELECT id FROM categories WHERE name = $1 AND facility_id = $2`, [r['分類'].trim(), fid]);
-        if (c.rowCount === 0) { errors.push({ line: i + 2, error: `分類が存在しません: ${r['分類']}` }); continue; }
-        catId = c.rows[0].id;
+        const c = await resolveNamed(client, 'categories', r['分類'], fid);
+        catId = c.id; if (c.created) categoriesCreated++;
       }
 
       // 管理コードは顧客用の任意コード(システムキーではない)
@@ -86,7 +98,7 @@ router.post('/products', async (req, res) => {
       return res.status(400).json({ error: '取込中にエラーがあります(全件取消)', inserted: 0, errors });
     }
     await client.query('COMMIT');
-    res.json({ ok: true, inserted, skipped });
+    res.json({ ok: true, inserted, skipped, departmentsCreated, categoriesCreated });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('商品インポートエラー:', err.message);
@@ -192,6 +204,8 @@ router.post('/products-combined', async (req, res) => {
     let productsCreated = 0;
     let detailsCreated = 0;
     let makersCreated = 0;
+    let departmentsCreated = 0;
+    let categoriesCreated = 0;
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
@@ -200,17 +214,15 @@ router.post('/products-combined', async (req, res) => {
       const code = (r['管理コード'] || '').trim(); // 顧客用の任意コード(システムキーではない)
       if (!name) { errors.push({ line, error: '名称が空です' }); continue; }
 
-      // 部門・分類の解決(同一施設内)
+      // 部門・分類は無ければ自動追加(同一施設内)
       let deptId = null, catId = null;
       if (r['部門']) {
-        const d = await client.query(`SELECT id FROM departments WHERE name = $1 AND facility_id = $2`, [r['部門'].trim(), fid]);
-        if (d.rowCount === 0) { errors.push({ line, error: `部門が存在しません: ${r['部門']}` }); continue; }
-        deptId = d.rows[0].id;
+        const d = await resolveNamed(client, 'departments', r['部門'], fid);
+        deptId = d.id; if (d.created) departmentsCreated++;
       }
       if (r['分類']) {
-        const c = await client.query(`SELECT id FROM categories WHERE name = $1 AND facility_id = $2`, [r['分類'].trim(), fid]);
-        if (c.rowCount === 0) { errors.push({ line, error: `分類が存在しません: ${r['分類']}` }); continue; }
-        catId = c.rows[0].id;
+        const c = await resolveNamed(client, 'categories', r['分類'], fid);
+        catId = c.id; if (c.created) categoriesCreated++;
       }
 
       // メーカー(無ければJAN先頭7桁で自動追加)・問屋の解決
@@ -275,7 +287,7 @@ router.post('/products-combined', async (req, res) => {
       return res.status(400).json({ error: '取込中にエラーがあります(全件取消)', productsCreated: 0, detailsCreated: 0, makersCreated: 0, errors });
     }
     await client.query('COMMIT');
-    res.json({ ok: true, productsCreated, detailsCreated, makersCreated });
+    res.json({ ok: true, productsCreated, detailsCreated, makersCreated, departmentsCreated, categoriesCreated });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('商品＋詳細インポートエラー:', err.message);

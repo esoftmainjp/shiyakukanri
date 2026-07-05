@@ -93,7 +93,6 @@
 
     const IMPORT_HINTS = {
       products: 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象',
-      'product-details': 'ヘッダー: 商品名,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行',
     };
     const COMBINED_HINT = 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行';
 
@@ -106,7 +105,7 @@
       quantity_unit: '数量単位', pack_size: '梱包数', pack_unit: '梱包単位', spec: '規格',
       unit_price: '単価', test_count: 'テスト数', min_quantity: '最低個数', order_quantity: '発注個数',
       jan_code: 'JANコード', maker_id: 'メーカー', supplier_id: '問屋', barcode_issue_flag: 'バーコード発行',
-      user_type: 'タイプ', login_id: 'ログインID',
+      user_type: 'タイプ', login_id: 'ログインID', password_updated_at: 'パスワード更新日時',
     };
     // ID列 → 参照マスター種別(名称表示に使う)
     const REF_COLS = { department_id: 'departments', category_id: 'categories', maker_id: 'makers', supplier_id: 'suppliers', product_id: 'products' };
@@ -338,7 +337,11 @@
       let summary = combined
         ? `商品${data.productsCreated}件・詳細${data.detailsCreated}件を取り込みました`
         : `${data.inserted}件取り込みました`;
-      if (data.makersCreated) summary += `（メーカー${data.makersCreated}件を自動追加）`;
+      const added = [];
+      if (data.departmentsCreated) added.push(`部門${data.departmentsCreated}件`);
+      if (data.categoriesCreated) added.push(`分類${data.categoriesCreated}件`);
+      if (data.makersCreated) added.push(`メーカー${data.makersCreated}件`);
+      if (added.length) summary += `（${added.join('・')}を自動追加）`;
       setMsg(msg, summary, 'ok');
       refCache = {};
       loadList();
