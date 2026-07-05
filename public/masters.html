@@ -38,13 +38,17 @@
     </div>
 
     <div class="card" id="importCard" style="display:none;">
-      <h3>CSVインポート</h3>
+      <h3>CSV インポート／エクスポート</h3>
       <div id="combinedRow" style="display:none; margin-bottom:8px;">
-        <label><input type="checkbox" id="combined" onchange="updateImportHint()" /> 商品＋商品詳細を同時に取り込む（1行で商品と詳細）</label>
+        <label><input type="checkbox" id="combined" onchange="updateImportHint()" /> 商品＋商品詳細をまとめて扱う（1行で商品と詳細。取込・出力の両方に適用）</label>
       </div>
       <p id="importHint" style="font-size:0.85rem; color:#555;"></p>
       <input type="file" id="csvFile" accept=".csv" />
-      <div style="margin-top:10px;"><button class="secondary" onclick="importCsv()">取込実行</button></div>
+      <div style="margin-top:10px;">
+        <button class="secondary" onclick="importCsv()">取込実行</button>
+        <button class="secondary" onclick="exportCsv()">CSVエクスポート</button>
+      </div>
+      <p style="font-size:0.8rem; color:#777; margin-top:6px;">エクスポートは上のヘッダー形式で、この施設の全商品を出力します（そのまま取込に再利用できます）。</p>
       <p class="msg" id="importMsg"></p>
     </div>
 
@@ -337,6 +341,14 @@
     function fmt(v) {
       if (v === true) return '○'; if (v === false) return '';
       return v == null ? '' : String(v);
+    }
+
+    // CSVエクスポート(商品マスタ)。商品＋詳細チェックに応じて形式を切り替え、
+    // インポートと同じヘッダーで出力する。
+    function exportCsv() {
+      const combined = curType() === 'products' && document.getElementById('combined').checked;
+      const endpoint = combined ? 'products-combined/export' : 'products/export';
+      window.location = '/api/import/' + endpoint;
     }
 
     async function importCsv() {

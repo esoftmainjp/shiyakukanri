@@ -1,9 +1,10 @@
 'use strict';
 
 const express = require('express');
-const { getClient } = require('../db');
-const { parseCsv } = require('../services/csv');
+const { pool, getClient } = require('../db');
+const { parseCsv, sendCsv } = require('../services/csv');
 const { facilityScope } = require('../services/facility');
+const { writeLog } = require('../services/log');
 
 const router = express.Router();
 
@@ -294,6 +295,85 @@ router.post('/products-combined', async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
+  }
+});
+
+// 商品マスタCSVエクスポート(商品のみ。インポートと同じ形式)
+// ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象
+router.get('/products/export', async (req, res) => {
+  const fid = requireFacility(req, res); if (fid == null) return;
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.name, p.kana, d.name AS dept, c.name AS cat, p.management_code,
+              CASE WHEN p.qc_target_flag THEN '1' ELSE '' END AS qc
+         FROM products p
+         LEFT JOIN departments d ON d.id = p.department_id
+         LEFT JOIN categories c ON c.id = p.category_id
+        WHERE p.facility_id = $1
+        ORDER BY p.name`,
+      [fid]
+    );
+    const columns = [
+      { key: 'name', label: '名称' }, { key: 'kana', label: 'カナ' },
+      { key: 'dept', label: '部門' }, { key: 'cat', label: '分類' },
+      { key: 'management_code', label: '管理コード' }, { key: 'qc', label: '試薬管理対象' },
+    ];
+    await writeLog(pool, {
+      userId: req.session.user && req.session.user.id,
+      targetTable: 'products', operationType: 'CSV出力',
+      after: { file: '商品マスタ.csv', count: rows.length },
+    });
+    sendCsv(res, '商品マスタ.csv', columns, rows);
+  } catch (err) {
+    console.error('商品エクスポートエラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 商品＋商品詳細CSVエクスポート(インポートの「商品＋商品詳細」と同じ形式)
+// ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,適用開始日,適用終了日,
+//           数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行
+router.get('/products-combined/export', async (req, res) => {
+  const fid = requireFacility(req, res); if (fid == null) return;
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.name, p.kana, d.name AS dept, c.name AS cat, p.management_code,
+              CASE WHEN p.qc_target_flag THEN '1' ELSE '' END AS qc,
+              to_char(pd.apply_start_date, 'YYYY-MM-DD') AS apply_start_date,
+              to_char(pd.apply_end_date, 'YYYY-MM-DD')   AS apply_end_date,
+              pd.quantity_unit, pd.pack_size, pd.pack_unit, pd.spec, pd.unit_price,
+              pd.test_count, pd.min_quantity, pd.order_quantity, pd.jan_code,
+              mk.name AS maker, s.name AS supplier,
+              CASE WHEN pd.barcode_issue_flag THEN '1' ELSE '' END AS bc
+         FROM products p
+         JOIN product_details pd ON pd.product_id = p.id
+         LEFT JOIN departments d ON d.id = p.department_id
+         LEFT JOIN categories c ON c.id = p.category_id
+         LEFT JOIN makers mk ON mk.id = pd.maker_id
+         LEFT JOIN suppliers s ON s.id = pd.supplier_id
+        WHERE p.facility_id = $1
+        ORDER BY p.name, pd.id`,
+      [fid]
+    );
+    const columns = [
+      { key: 'name', label: '名称' }, { key: 'kana', label: 'カナ' },
+      { key: 'dept', label: '部門' }, { key: 'cat', label: '分類' },
+      { key: 'management_code', label: '管理コード' }, { key: 'qc', label: '試薬管理対象' },
+      { key: 'apply_start_date', label: '適用開始日' }, { key: 'apply_end_date', label: '適用終了日' },
+      { key: 'quantity_unit', label: '数量単位' }, { key: 'pack_size', label: '梱包数' }, { key: 'pack_unit', label: '梱包単位' },
+      { key: 'spec', label: '規格' }, { key: 'unit_price', label: '単価' }, { key: 'test_count', label: 'テスト数' },
+      { key: 'min_quantity', label: '最低個数' }, { key: 'order_quantity', label: '発注個数' }, { key: 'jan_code', label: 'JANコード' },
+      { key: 'maker', label: 'メーカー' }, { key: 'supplier', label: '問屋' }, { key: 'bc', label: 'バーコード発行' },
+    ];
+    await writeLog(pool, {
+      userId: req.session.user && req.session.user.id,
+      targetTable: 'product_details', operationType: 'CSV出力',
+      after: { file: '商品＋商品詳細.csv', count: rows.length },
+    });
+    sendCsv(res, '商品＋商品詳細.csv', columns, rows);
+  } catch (err) {
+    console.error('商品＋詳細エクスポートエラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
   }
 });
 
