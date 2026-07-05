@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs');
 const { pool } = require('./db');
 const { writeLog } = require('./services/log');
 const { getSetting } = require('./routes/settings');
+const { facilityScope } = require('./services/facility');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -235,11 +236,17 @@ app.post('/api/activity', requireLogin, async (req, res) => {
 // ------------------------------------------------------------
 app.get('/api/stocks', requireLogin, async (req, res) => {
   try {
+    const scope = facilityScope(req);
+    const params = [];
+    let where = '';
+    if (!scope.all) { params.push(scope.facilityId); where = 'WHERE p.facility_id = $1'; }
     const { rows } = await pool.query(
       `SELECT s.id, p.name AS product_name, s.lot_number, s.expiry_date, s.stock_quantity
          FROM product_stocks s
          JOIN products p ON p.id = s.product_id
-        ORDER BY p.name, s.expiry_date NULLS LAST`
+        ${where}
+        ORDER BY p.name, s.expiry_date NULLS LAST`,
+      params
     );
     res.json({ stocks: rows });
   } catch (err) {

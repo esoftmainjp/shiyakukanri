@@ -5,6 +5,7 @@ const { pool, getClient } = require('../db');
 const { applyStockChange, addOrderPlan, createUsageRecords, reverseIssue } = require('../services/inventory');
 const { writeLog } = require('../services/log');
 const { sendCsv } = require('../services/csv');
+const { facilityScope } = require('../services/facility');
 
 const router = express.Router();
 
@@ -13,6 +14,18 @@ function requireEditor(req, res, next) {
   const t = req.session.user && req.session.user.userType;
   if (t === 'admin' || t === 'general') return next();
   return res.status(403).json({ error: 'この操作の権限がありません' });
+}
+
+// 指定出庫が操作施設のものか(明細商品の所属施設で判定)
+async function issueInFacility(db, issueId, scope) {
+  if (!scope || scope.all) return true;
+  const r = await db.query(
+    `SELECT 1 FROM issues i
+      WHERE i.id = $1 AND EXISTS (SELECT 1 FROM issue_details d JOIN products p ON p.id = d.product_id
+                                   WHERE d.issue_id = i.id AND p.facility_id = $2)`,
+    [issueId, scope.facilityId]
+  );
+  return r.rowCount > 0;
 }
 
 // 出庫登録
@@ -31,6 +44,7 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: '出庫日と明細は必須です' });
   }
 
+  const scope = facilityScope(req);
   const client = await getClient();
   try {
     await client.query('BEGIN');
@@ -88,6 +102,14 @@ router.post('/', async (req, res) => {
         expiryDate = d.expiryDate || null;
         issueQty = d.issueQuantity;
         packSize = d.packSize;
+      }
+
+      // 施設スコープ: 対象商品(バーコード/数量いずれも)が操作施設のものか確認
+      if (!scope.all) {
+        const pf = await client.query('SELECT facility_id FROM products WHERE id = $1', [productId]);
+        if (pf.rowCount === 0 || String(pf.rows[0].facility_id) !== String(scope.facilityId)) {
+          throw Object.assign(new Error('対象施設外の商品が含まれています'), { status: 400 });
+        }
       }
 
       // 期限切れ出庫の制御 (許可設定がfalseなら保存不可)
@@ -197,11 +219,12 @@ router.post('/', async (req, res) => {
 
 // 出庫履歴一覧 (from/to/商品/キーワード)
 // GET /api/issues?from=&to=&productId=&query=
-async function queryIssueList(q) {
+async function queryIssueList(q, scope) {
   const { from, to, productId, query } = q;
   const limit = Math.min(Number(q.limit) || 500, 2000);
   const params = [];
   let cond = '1 = 1';
+  if (scope && !scope.all) { params.push(scope.facilityId); cond += ` AND EXISTS (SELECT 1 FROM issue_details d JOIN products p ON p.id = d.product_id WHERE d.issue_id = i.id AND p.facility_id = $${params.length})`; }
   if (from) { params.push(from); cond += ` AND i.issue_date >= $${params.length}`; }
   if (to) { params.push(to); cond += ` AND i.issue_date <= $${params.length}`; }
   if (productId) { params.push(productId); cond += ` AND EXISTS (SELECT 1 FROM issue_details d WHERE d.issue_id = i.id AND d.product_id = $${params.length})`; }
@@ -223,7 +246,7 @@ async function queryIssueList(q) {
 
 router.get('/', async (req, res) => {
   try {
-    res.json({ issues: await queryIssueList(req.query) });
+    res.json({ issues: await queryIssueList(req.query, facilityScope(req)) });
   } catch (err) {
     console.error('出庫履歴エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
@@ -234,7 +257,7 @@ router.get('/', async (req, res) => {
 // GET /api/issues/csv
 router.get('/csv', async (req, res) => {
   try {
-    const rows = await queryIssueList(req.query);
+    const rows = await queryIssueList(req.query, facilityScope(req));
     const columns = [
       { key: 'id', label: 'ID' },
       { key: 'issue_date', label: '出庫日' },
@@ -258,7 +281,9 @@ router.get('/csv', async (req, res) => {
 // 出庫明細
 // GET /api/issues/:id
 router.get('/:id', async (req, res) => {
+  const scope = facilityScope(req);
   try {
+    if (!(await issueInFacility(pool, req.params.id, scope))) return res.status(404).json({ error: '出庫が見つかりません' });
     const head = await pool.query(
       `SELECT i.id, i.issue_date, i.note, i.created_at, u.name AS user_name
          FROM issues i LEFT JOIN users u ON u.id = i.user_id
@@ -288,9 +313,11 @@ router.get('/:id', async (req, res) => {
 // PATCH /api/issues/:id  body: { note?, issueDate? }
 router.patch('/:id', requireEditor, async (req, res) => {
   const { note, issueDate } = req.body || {};
+  const scope = facilityScope(req);
   const client = await getClient();
   try {
     await client.query('BEGIN');
+    if (!(await issueInFacility(client, req.params.id, scope))) { await client.query('ROLLBACK'); return res.status(404).json({ error: '出庫が見つかりません' }); }
     const cur = await client.query(`SELECT id, issue_date, note FROM issues WHERE id = $1 FOR UPDATE`, [req.params.id]);
     if (cur.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: '出庫が見つかりません' }); }
     const oldDate = cur.rows[0].issue_date;
@@ -329,9 +356,11 @@ router.patch('/:id', requireEditor, async (req, res) => {
 // 出庫の削除(巻き戻し)
 // DELETE /api/issues/:id
 router.delete('/:id', requireEditor, async (req, res) => {
+  const scope = facilityScope(req);
   const client = await getClient();
   try {
     await client.query('BEGIN');
+    if (!(await issueInFacility(client, req.params.id, scope))) { await client.query('ROLLBACK'); return res.status(404).json({ error: '出庫が見つかりません' }); }
     const before = await client.query(`SELECT issue_date, note FROM issues WHERE id = $1`, [req.params.id]);
     await reverseIssue(client, req.params.id, req.session.user.id);
     await writeLog(client, {

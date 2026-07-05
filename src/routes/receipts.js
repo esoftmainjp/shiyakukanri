@@ -5,6 +5,7 @@ const { pool, getClient } = require('../db');
 const { applyStockChange, issueBarcodes, refreshOrderReceiptStatus, reverseReceipt } = require('../services/inventory');
 const { writeLog } = require('../services/log');
 const { sendCsv } = require('../services/csv');
+const { facilityScope } = require('../services/facility');
 
 const router = express.Router();
 
@@ -13,6 +14,18 @@ function requireEditor(req, res, next) {
   const t = req.session.user && req.session.user.userType;
   if (t === 'admin' || t === 'general') return next();
   return res.status(403).json({ error: 'この操作の権限がありません' });
+}
+
+// 指定入庫が操作施設のものか(明細商品の所属施設で判定)
+async function receiptInFacility(db, receiptId, scope) {
+  if (!scope || scope.all) return true;
+  const r = await db.query(
+    `SELECT 1 FROM receipts r
+      WHERE r.id = $1 AND EXISTS (SELECT 1 FROM receipt_details rd JOIN products p ON p.id = rd.product_id
+                                   WHERE rd.receipt_id = r.id AND p.facility_id = $2)`,
+    [receiptId, scope.facilityId]
+  );
+  return r.rowCount > 0;
 }
 
 // 入庫登録
@@ -34,9 +47,23 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: '問屋は必須です' });
   }
 
+  const scope = facilityScope(req);
   const client = await getClient();
   try {
     await client.query('BEGIN');
+
+    // 施設スコープ: 問屋と全明細の商品が操作施設のものか確認
+    if (!scope.all) {
+      const sup = await client.query('SELECT facility_id FROM suppliers WHERE id = $1', [supplierId]);
+      if (sup.rowCount === 0 || String(sup.rows[0].facility_id) !== String(scope.facilityId)) {
+        await client.query('ROLLBACK'); return res.status(400).json({ error: '問屋が見つかりません' });
+      }
+      const pids = [...new Set(details.map((d) => d.productId).filter(Boolean))];
+      const chk = await client.query('SELECT COUNT(*) AS c FROM products WHERE id = ANY($1::bigint[]) AND facility_id = $2', [pids, scope.facilityId]);
+      if (Number(chk.rows[0].c) !== pids.length) {
+        await client.query('ROLLBACK'); return res.status(400).json({ error: '対象施設外の商品が含まれています' });
+      }
+    }
 
     const rcpt = await client.query(
       `INSERT INTO receipts (receipt_date, supplier_id, user_id, order_id, note)
@@ -158,11 +185,12 @@ router.post('/', async (req, res) => {
 
 // 入庫履歴一覧 (from/to/商品/キーワード)。明細件数・バラ合計・バーコード発行/使用状況を付与。
 // GET /api/receipts?from=&to=&productId=&query=
-async function queryReceiptList(q) {
+async function queryReceiptList(q, scope) {
   const { from, to, productId, query } = q;
   const limit = Math.min(Number(q.limit) || 500, 2000);
   const params = [];
   let cond = '1 = 1';
+  if (scope && !scope.all) { params.push(scope.facilityId); cond += ` AND EXISTS (SELECT 1 FROM receipt_details rd JOIN products p ON p.id = rd.product_id WHERE rd.receipt_id = r.id AND p.facility_id = $${params.length})`; }
   if (from) { params.push(from); cond += ` AND r.receipt_date >= $${params.length}`; }
   if (to) { params.push(to); cond += ` AND r.receipt_date <= $${params.length}`; }
   if (productId) { params.push(productId); cond += ` AND EXISTS (SELECT 1 FROM receipt_details rd WHERE rd.receipt_id = r.id AND rd.product_id = $${params.length})`; }
@@ -190,7 +218,7 @@ async function queryReceiptList(q) {
 
 router.get('/', async (req, res) => {
   try {
-    res.json({ receipts: await queryReceiptList(req.query) });
+    res.json({ receipts: await queryReceiptList(req.query, facilityScope(req)) });
   } catch (err) {
     console.error('入庫履歴エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
@@ -201,7 +229,7 @@ router.get('/', async (req, res) => {
 // GET /api/receipts/csv
 router.get('/csv', async (req, res) => {
   try {
-    const rows = await queryReceiptList(req.query);
+    const rows = await queryReceiptList(req.query, facilityScope(req));
     const columns = [
       { key: 'id', label: 'ID' },
       { key: 'receipt_date', label: '入庫日' },
@@ -228,7 +256,9 @@ router.get('/csv', async (req, res) => {
 // 入庫明細
 // GET /api/receipts/:id
 router.get('/:id', async (req, res) => {
+  const scope = facilityScope(req);
   try {
+    if (!(await receiptInFacility(pool, req.params.id, scope))) return res.status(404).json({ error: '入庫が見つかりません' });
     const head = await pool.query(
       `SELECT r.id, r.receipt_date, r.supplier_id, s.name AS supplier_name, r.note,
               r.created_at, u.name AS user_name
@@ -262,7 +292,9 @@ router.get('/:id', async (req, res) => {
 // PATCH /api/receipts/:id  body: { note?, receiptDate? }
 router.patch('/:id', requireEditor, async (req, res) => {
   const { note, receiptDate } = req.body || {};
+  const scope = facilityScope(req);
   try {
+    if (!(await receiptInFacility(pool, req.params.id, scope))) return res.status(404).json({ error: '入庫が見つかりません' });
     const cur = await pool.query(`SELECT id, receipt_date, note FROM receipts WHERE id = $1`, [req.params.id]);
     if (cur.rowCount === 0) return res.status(404).json({ error: '入庫が見つかりません' });
 
@@ -295,9 +327,11 @@ router.patch('/:id', requireEditor, async (req, res) => {
 // 入庫の削除(巻き戻し)
 // DELETE /api/receipts/:id
 router.delete('/:id', requireEditor, async (req, res) => {
+  const scope = facilityScope(req);
   const client = await getClient();
   try {
     await client.query('BEGIN');
+    if (!(await receiptInFacility(client, req.params.id, scope))) { await client.query('ROLLBACK'); return res.status(404).json({ error: '入庫が見つかりません' }); }
     const before = await client.query(`SELECT receipt_date, note FROM receipts WHERE id = $1`, [req.params.id]);
     await reverseReceipt(client, req.params.id, req.session.user.id);
     await writeLog(client, {

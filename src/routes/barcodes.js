@@ -3,6 +3,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { writeLog } = require('../services/log');
+const { facilityScope } = require('../services/facility');
 
 const router = express.Router();
 
@@ -12,9 +13,11 @@ router.get('/list', async (req, res) => {
   const { from, to, productId, query, receiptId } = req.query;
   const includePrinted = String(req.query.includePrinted) === 'true';
   const limit = Math.min(Number(req.query.limit) || 1000, 5000);
+  const scope = facilityScope(req);
   try {
     const params = [];
     let cond = 'b.voided_flag = FALSE';
+    if (!scope.all) { params.push(scope.facilityId); cond += ` AND p.facility_id = $${params.length}`; }
     // 既定は未印刷のみ。receiptId指定(入庫時の初回印刷)またはincludePrinted時は印刷済みも含める
     if (!receiptId && !includePrinted) cond += ' AND b.printed_flag = FALSE';
     if (from) { params.push(from); cond += ` AND b.issue_date >= $${params.length}`; }
@@ -46,11 +49,15 @@ router.get('/list', async (req, res) => {
 router.post('/mark-printed', async (req, res) => {
   const values = (req.body && req.body.values) || [];
   if (!Array.isArray(values) || values.length === 0) return res.json({ ok: true, updated: 0 });
+  const scope = facilityScope(req);
   try {
+    const params = [values];
+    let facCond = '';
+    if (!scope.all) { params.push(scope.facilityId); facCond = ` AND product_id IN (SELECT id FROM products WHERE facility_id = $${params.length})`; }
     const r = await pool.query(
       `UPDATE barcodes SET printed_flag = TRUE, printed_at = now()
-        WHERE barcode_value = ANY($1::text[]) AND voided_flag = FALSE`,
-      [values]
+        WHERE barcode_value = ANY($1::text[]) AND voided_flag = FALSE${facCond}`,
+      params
     );
     await writeLog(pool, {
       userId: req.session.user && req.session.user.id,
@@ -70,10 +77,12 @@ router.post('/mark-printed', async (req, res) => {
 // フィルタ: query(部分一致) / productId / lot
 router.get('/in-use', async (req, res) => {
   const { query, productId, lot } = req.query;
+  const scope = facilityScope(req);
   try {
     // 独自バーコード
     const bcParams = [];
     let bcCond = 'b.voided_flag = FALSE AND b.used_flag = TRUE AND b.use_start_date IS NOT NULL AND b.use_end_date IS NULL';
+    if (!scope.all) { bcParams.push(scope.facilityId); bcCond += ` AND p.facility_id = $${bcParams.length}`; }
     if (query) { bcParams.push('%' + query + '%'); bcCond += ` AND (b.barcode_value ILIKE $${bcParams.length} OR p.name ILIKE $${bcParams.length} OR CAST(b.content_code AS text) ILIKE $${bcParams.length})`; }
     if (productId) { bcParams.push(productId); bcCond += ` AND b.product_id = $${bcParams.length}`; }
     if (lot) { bcParams.push(lot); bcCond += ` AND rd.lot_number = $${bcParams.length}`; }
@@ -91,6 +100,7 @@ router.get('/in-use', async (req, res) => {
     // 使用記録
     const urParams = [];
     let urCond = 'u.use_end_date IS NULL';
+    if (!scope.all) { urParams.push(scope.facilityId); urCond += ` AND p.facility_id = $${urParams.length}`; }
     if (query) { urParams.push('%' + query + '%'); urCond += ` AND (p.name ILIKE $${urParams.length} OR CAST(u.content_code AS text) ILIKE $${urParams.length})`; }
     if (productId) { urParams.push(productId); urCond += ` AND u.product_id = $${urParams.length}`; }
     if (lot) { urParams.push(lot); urCond += ` AND u.lot_number = $${urParams.length}`; }
@@ -128,19 +138,26 @@ router.get('/in-use', async (req, res) => {
 router.post('/use-end', async (req, res) => {
   const { kind, key, useEndDate } = req.body || {};
   if (!kind || !key || !useEndDate) return res.status(400).json({ error: 'kind・key・使用終了日は必須です' });
+  const scope = facilityScope(req);
   try {
     if (kind === 'barcode') {
+      const params = [useEndDate, key];
+      let facCond = '';
+      if (!scope.all) { params.push(scope.facilityId); facCond = ` AND product_id IN (SELECT id FROM products WHERE facility_id = $${params.length})`; }
       const r = await pool.query(
         `UPDATE barcodes SET use_end_date = $1
-          WHERE barcode_value = $2 AND used_flag = TRUE AND use_start_date IS NOT NULL
+          WHERE barcode_value = $2 AND used_flag = TRUE AND use_start_date IS NOT NULL${facCond}
           RETURNING barcode_value`,
-        [useEndDate, key]
+        params
       );
       if (r.rowCount === 0) return res.status(400).json({ error: '対象の独自バーコードが見つかりません' });
     } else if (kind === 'usage') {
+      const params = [useEndDate, key];
+      let facCond = '';
+      if (!scope.all) { params.push(scope.facilityId); facCond = ` AND product_id IN (SELECT id FROM products WHERE facility_id = $${params.length})`; }
       const r = await pool.query(
-        `UPDATE usage_records SET use_end_date = $1 WHERE id = $2 RETURNING id`,
-        [useEndDate, key]
+        `UPDATE usage_records SET use_end_date = $1 WHERE id = $2${facCond} RETURNING id`,
+        params
       );
       if (r.rowCount === 0) return res.status(400).json({ error: '対象の使用記録が見つかりません' });
     } else {

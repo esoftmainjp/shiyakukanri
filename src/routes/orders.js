@@ -5,6 +5,7 @@ const { pool, getClient } = require('../db');
 const { writeLog } = require('../services/log');
 const { refreshOrderReceiptStatus } = require('../services/inventory');
 const { sendCsv } = require('../services/csv');
+const { facilityScope } = require('../services/facility');
 
 const router = express.Router();
 
@@ -12,6 +13,25 @@ const ORDER_STATUS_LABEL = { unordered: '未発注', ordered: '発注済み', re
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+// 発注(alias o)を操作施設に限定するAND句を返す。問屋の所属施設で判定。
+// params に facilityId を push する。scope.all は空文字(全施設)。
+function orderScopeAnd(scope, params) {
+  if (!scope || scope.all) return '';
+  params.push(scope.facilityId);
+  return ` AND EXISTS (SELECT 1 FROM suppliers sf WHERE sf.id = o.supplier_id AND sf.facility_id = $${params.length})`;
+}
+
+// 指定発注が操作施設のものかを確認(mutation用ガード)。
+async function orderInFacility(db, orderId, scope) {
+  if (!scope || scope.all) return true;
+  const r = await db.query(
+    `SELECT 1 FROM orders o JOIN suppliers s ON s.id = o.supplier_id
+      WHERE o.id = $1 AND s.facility_id = $2`,
+    [orderId, scope.facilityId]
+  );
+  return r.rowCount > 0;
 }
 
 // 履歴の編集・削除は管理者/一般のみ
@@ -25,6 +45,7 @@ function requireEditor(req, res, next) {
 // GET /api/orders?status=unordered
 router.get('/', async (req, res) => {
   const { status, supplierId } = req.query;
+  const scope = facilityScope(req);
   try {
     const params = [];
     const conds = [];
@@ -40,6 +61,8 @@ router.get('/', async (req, res) => {
       params.push(supplierId);
       conds.push(`o.supplier_id = $${params.length}`);
     }
+    const facAnd = orderScopeAnd(scope, params);
+    if (facAnd) conds.push(facAnd.replace(/^ AND /, ''));
     const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
     const orders = await pool.query(
       `SELECT o.id, o.order_date, o.supplier_id, s.name AS supplier_name,
@@ -50,6 +73,10 @@ router.get('/', async (req, res) => {
         ORDER BY o.id DESC`,
       params
     );
+    // 明細も操作施設の発注に属するもののみ
+    const dParams = [];
+    let dWhere = '';
+    if (!scope.all) { dParams.push(scope.facilityId); dWhere = `WHERE EXISTS (SELECT 1 FROM orders o JOIN suppliers s ON s.id = o.supplier_id WHERE o.id = od.order_id AND s.facility_id = $1)`; }
     const details = await pool.query(
       `SELECT od.id, od.order_id, od.product_id, p.name AS product_name,
               od.product_detail_id, od.planned_order_quantity, od.order_quantity, od.note, od.canceled_flag, od.held_flag,
@@ -58,7 +85,9 @@ router.get('/', async (req, res) => {
          FROM order_details od
          JOIN products p ON p.id = od.product_id
          LEFT JOIN product_details pd ON pd.id = od.product_detail_id
-        ORDER BY od.id`
+         ${dWhere}
+        ORDER BY od.id`,
+      dParams
     );
     const byOrder = {};
     for (const d of details.rows) {
@@ -76,6 +105,7 @@ router.get('/', async (req, res) => {
 // GET /api/orders/csv?status=&supplierId=
 router.get('/csv', async (req, res) => {
   const { status, supplierId } = req.query;
+  const scope = facilityScope(req);
   try {
     const params = [];
     const conds = [];
@@ -90,6 +120,8 @@ router.get('/csv', async (req, res) => {
       params.push(supplierId);
       conds.push(`o.supplier_id = $${params.length}`);
     }
+    const facAnd = orderScopeAnd(scope, params);
+    if (facAnd) conds.push(facAnd.replace(/^ AND /, ''));
     const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
     const { rows } = await pool.query(
       `SELECT o.id, o.order_status, o.order_date, s.name AS supplier_name, o.note,
@@ -128,8 +160,11 @@ router.get('/csv', async (req, res) => {
 // ホーム用サマリー: 発注予定(未発注)と入庫予定(発注済み・未入庫)
 // GET /api/orders/summary
 router.get('/summary', async (req, res) => {
+  const scope = facilityScope(req);
   try {
     // 発注予定(未発注): これから発注する分
+    const pParams = [];
+    const planAnd = orderScopeAnd(scope, pParams);
     const plans = await pool.query(
       `SELECT o.id AS order_id, o.supplier_id, s.name AS supplier_name,
               od.id AS order_detail_id, p.name AS product_name,
@@ -140,11 +175,14 @@ router.get('/summary', async (req, res) => {
          JOIN products p ON p.id = od.product_id
          LEFT JOIN suppliers s ON s.id = o.supplier_id
          LEFT JOIN product_details pd ON pd.id = od.product_detail_id
-        WHERE o.order_status = 'unordered' AND od.order_quantity > 0 AND od.held_flag = FALSE
-        ORDER BY s.name, p.name`
+        WHERE o.order_status = 'unordered' AND od.order_quantity > 0 AND od.held_flag = FALSE${planAnd}
+        ORDER BY s.name, p.name`,
+      pParams
     );
 
     // 入庫予定(発注済み・未入庫): これから入ってくる分(残バラ数>0)
+    const iParams = [];
+    const incAnd = orderScopeAnd(scope, iParams);
     const incoming = await pool.query(
       `SELECT o.id AS order_id, o.order_date, o.supplier_id, s.name AS supplier_name,
               p.name AS product_name, od.order_quantity,
@@ -155,8 +193,9 @@ router.get('/summary', async (req, res) => {
          JOIN products p ON p.id = od.product_id
          LEFT JOIN suppliers s ON s.id = o.supplier_id
          LEFT JOIN product_details pd ON pd.id = od.product_detail_id
-        WHERE o.order_status = 'ordered' AND od.canceled_flag = FALSE
-        ORDER BY o.order_date, s.name, p.name`
+        WHERE o.order_status = 'ordered' AND od.canceled_flag = FALSE${incAnd}
+        ORDER BY o.order_date, s.name, p.name`,
+      iParams
     );
     const receiptPlans = incoming.rows.map((r) => {
       const orderedBara = Number(r.order_quantity) * Number(r.pack_size);
@@ -176,13 +215,17 @@ router.post('/add-product', async (req, res) => {
   const { productDetailId } = req.body || {};
   const qty = Math.max(1, Number(req.body && req.body.orderQuantity) || 1);
   if (!productDetailId) return res.status(400).json({ error: '商品詳細IDは必須です' });
+  const scope = facilityScope(req);
   const client = await getClient();
   try {
     await client.query('BEGIN');
     const pd = await client.query(
-      `SELECT product_id, supplier_id FROM product_details WHERE id = $1`, [productDetailId]
+      `SELECT product_id, supplier_id, facility_id FROM product_details WHERE id = $1`, [productDetailId]
     );
     if (pd.rowCount === 0) { await client.query('ROLLBACK'); return res.status(400).json({ error: '商品詳細が見つかりません' }); }
+    if (!scope.all && String(pd.rows[0].facility_id) !== String(scope.facilityId)) {
+      await client.query('ROLLBACK'); return res.status(404).json({ error: '対象の商品が見つかりません' });
+    }
     const productId = pd.rows[0].product_id;
     const supplierId = pd.rows[0].supplier_id;
     if (!supplierId) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'この商品は問屋が未設定のため発注予定に追加できません' }); }
@@ -247,7 +290,11 @@ router.post('/add-product', async (req, res) => {
 router.get('/incoming', async (req, res) => {
   const { supplierId } = req.query;
   if (!supplierId) return res.status(400).json({ error: '問屋IDは必須です' });
+  const scope = facilityScope(req);
   try {
+    const params = [supplierId];
+    let facAnd = '';
+    if (!scope.all) { params.push(scope.facilityId); facAnd = ` AND EXISTS (SELECT 1 FROM suppliers sf WHERE sf.id = o.supplier_id AND sf.facility_id = $${params.length})`; }
     const { rows } = await pool.query(
       `SELECT o.id AS order_id, o.order_date, od.id AS order_detail_id,
               od.product_id, p.name AS product_name, od.product_detail_id, od.note,
@@ -258,9 +305,9 @@ router.get('/incoming', async (req, res) => {
          JOIN order_details od ON od.order_id = o.id
          JOIN products p ON p.id = od.product_id
          LEFT JOIN product_details pd ON pd.id = od.product_detail_id
-        WHERE o.supplier_id = $1 AND o.order_status = 'ordered' AND od.canceled_flag = FALSE
+        WHERE o.supplier_id = $1 AND o.order_status = 'ordered' AND od.canceled_flag = FALSE${facAnd}
         ORDER BY o.order_date, p.name`,
-      [supplierId]
+      params
     );
     const items = rows.map((r) => {
       const pack = Math.max(1, Number(r.pack_size) || 1);
@@ -281,15 +328,18 @@ router.get('/incoming', async (req, res) => {
 // 発注明細詳細
 // GET /api/orders/:id
 router.get('/:id', async (req, res) => {
+  const scope = facilityScope(req);
   try {
+    const params = [req.params.id];
+    const facAnd = orderScopeAnd(scope, params);
     const head = await pool.query(
       `SELECT o.id, o.order_date, o.supplier_id, s.name AS supplier_name,
               o.order_status, o.note, o.created_at, u.name AS user_name
          FROM orders o
          LEFT JOIN suppliers s ON s.id = o.supplier_id
          LEFT JOIN users u ON u.id = o.user_id
-        WHERE o.id = $1`,
-      [req.params.id]
+        WHERE o.id = $1${facAnd}`,
+      params
     );
     if (head.rowCount === 0) return res.status(404).json({ error: '発注が見つかりません' });
     const details = await pool.query(
@@ -317,9 +367,11 @@ router.post('/:id/place', async (req, res) => {
   const orderId = req.params.id;
   const orderDate = (req.body && req.body.orderDate) || today();
   const note = (req.body && req.body.note) || '';
+  const scope = facilityScope(req);
   const client = await getClient();
   try {
     await client.query('BEGIN');
+    if (!(await orderInFacility(client, orderId, scope))) { await client.query('ROLLBACK'); return res.status(404).json({ error: '発注が見つかりません' }); }
     const ord = await client.query(`SELECT supplier_id, order_status FROM orders WHERE id = $1 FOR UPDATE`, [orderId]);
     if (ord.rowCount === 0 || ord.rows[0].order_status !== 'unordered') {
       await client.query('ROLLBACK');
@@ -360,7 +412,9 @@ router.post('/:id/place', async (req, res) => {
 router.post('/:id/details/:detailId/hold', requireEditor, async (req, res) => {
   const { id: orderId, detailId } = req.params;
   const held = !(req.body && req.body.held === false); // 既定true。releaseはheld:false
+  const scope = facilityScope(req);
   try {
+    if (!(await orderInFacility(pool, orderId, scope))) return res.status(404).json({ error: '発注が見つかりません' });
     const ord = await pool.query(`SELECT order_status FROM orders WHERE id = $1`, [orderId]);
     if (ord.rowCount === 0) return res.status(404).json({ error: '発注が見つかりません' });
     if (ord.rows[0].order_status !== 'unordered') {
@@ -382,7 +436,9 @@ router.post('/:id/details/:detailId/hold', requireEditor, async (req, res) => {
 // POST /api/orders/:id/cancel
 router.post('/:id/cancel', async (req, res) => {
   const orderId = req.params.id;
+  const scope = facilityScope(req);
   try {
+    if (!(await orderInFacility(pool, orderId, scope))) return res.status(404).json({ error: '発注が見つかりません' });
     const r = await pool.query(
       `UPDATE orders SET order_status = 'canceled'
         WHERE id = $1 AND order_status IN ('unordered', 'ordered')
@@ -412,10 +468,14 @@ router.post('/:id/details', async (req, res) => {
     return res.status(400).json({ error: '商品IDと商品詳細IDは必須です' });
   }
 
+  const scope = facilityScope(req);
   const client = await getClient();
   try {
     await client.query('BEGIN');
 
+    if (!(await orderInFacility(client, orderId, scope))) {
+      throw Object.assign(new Error('発注が見つかりません'), { status: 404 });
+    }
     const ord = await client.query(
       `SELECT supplier_id, order_status FROM orders WHERE id = $1 FOR UPDATE`,
       [orderId]
@@ -477,7 +537,9 @@ router.patch('/:id/details/:detailId', async (req, res) => {
     sets.push(`note = $${params.length}`);
   }
   if (sets.length === 0) return res.status(400).json({ error: '変更項目がありません' });
+  const scope = facilityScope(req);
   try {
+    if (!(await orderInFacility(pool, orderId, scope))) return res.status(404).json({ error: '発注が見つかりません' });
     const ord = await pool.query(`SELECT order_status FROM orders WHERE id = $1`, [orderId]);
     if (ord.rowCount === 0) return res.status(404).json({ error: '発注が見つかりません' });
     if (ord.rows[0].order_status !== 'unordered') {
@@ -506,9 +568,11 @@ router.patch('/:id/details/:detailId', async (req, res) => {
 // DELETE /api/orders/:id/details/:detailId
 router.delete('/:id/details/:detailId', requireEditor, async (req, res) => {
   const { id: orderId, detailId } = req.params;
+  const scope = facilityScope(req);
   const client = await getClient();
   try {
     await client.query('BEGIN');
+    if (!(await orderInFacility(client, orderId, scope))) { await client.query('ROLLBACK'); return res.status(404).json({ error: '発注が見つかりません' }); }
     const ord = await client.query(`SELECT order_status FROM orders WHERE id = $1 FOR UPDATE`, [orderId]);
     if (ord.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: '発注が見つかりません' }); }
     const status = ord.rows[0].order_status;
@@ -560,9 +624,11 @@ router.delete('/:id/details/:detailId', requireEditor, async (req, res) => {
 // POST /api/orders/:id/details/:detailId/cancel
 router.post('/:id/details/:detailId/cancel', requireEditor, async (req, res) => {
   const { id: orderId, detailId } = req.params;
+  const scope = facilityScope(req);
   const client = await getClient();
   try {
     await client.query('BEGIN');
+    if (!(await orderInFacility(client, orderId, scope))) { await client.query('ROLLBACK'); return res.status(404).json({ error: '発注が見つかりません' }); }
     const ord = await client.query(`SELECT order_status FROM orders WHERE id = $1 FOR UPDATE`, [orderId]);
     if (ord.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: '発注が見つかりません' }); }
     if (ord.rows[0].order_status !== 'ordered') {
@@ -614,7 +680,9 @@ router.post('/:id/details/:detailId/cancel', requireEditor, async (req, res) => 
 // PATCH /api/orders/:id  body: { note?, orderDate? }
 router.patch('/:id', requireEditor, async (req, res) => {
   const { note, orderDate } = req.body || {};
+  const scope = facilityScope(req);
   try {
+    if (!(await orderInFacility(pool, req.params.id, scope))) return res.status(404).json({ error: '発注が見つかりません' });
     const cur = await pool.query(`SELECT id, order_date, note FROM orders WHERE id = $1`, [req.params.id]);
     if (cur.rowCount === 0) return res.status(404).json({ error: '発注が見つかりません' });
     const newDate = (orderDate !== undefined && orderDate !== '') ? orderDate : cur.rows[0].order_date;
@@ -634,9 +702,11 @@ router.patch('/:id', requireEditor, async (req, res) => {
 // 発注の削除
 // DELETE /api/orders/:id  ブロック条件: 入庫予定(receipt_plans)が紐付く(入庫済み)
 router.delete('/:id', requireEditor, async (req, res) => {
+  const scope = facilityScope(req);
   const client = await getClient();
   try {
     await client.query('BEGIN');
+    if (!(await orderInFacility(client, req.params.id, scope))) { await client.query('ROLLBACK'); return res.status(404).json({ error: '発注が見つかりません' }); }
     const cur = await client.query(`SELECT id, order_status, note FROM orders WHERE id = $1 FOR UPDATE`, [req.params.id]);
     if (cur.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: '発注が見つかりません' }); }
 

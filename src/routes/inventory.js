@@ -5,15 +5,17 @@ const { pool, getClient } = require('../db');
 const { applyStockChange } = require('../services/inventory');
 const { sendCsv } = require('../services/csv');
 const { writeLog } = require('../services/log');
+const { facilityScope } = require('../services/facility');
 
 const router = express.Router();
 
-// 在庫一覧の絞り込みクエリを構築
-function buildStockQuery(q) {
+// 在庫一覧の絞り込みクエリを構築 (施設スコープ: 商品の所属施設で限定)
+function buildStockQuery(q, scope) {
   const where = [];
   const params = [];
   const add = (cond, val) => { params.push(val); where.push(cond.replace('$$', '$' + params.length)); };
 
+  if (scope && !scope.all) add('p.facility_id = $$', scope.facilityId);
   if (q.departmentId) add('p.department_id = $$', q.departmentId);
   if (q.categoryId) add('p.category_id = $$', q.categoryId);
   if (q.productName) add('p.name ILIKE $$', '%' + q.productName + '%');
@@ -46,7 +48,7 @@ function buildStockQuery(q) {
 // 在庫一覧
 router.get('/', async (req, res) => {
   try {
-    const { sql, params } = buildStockQuery(req.query);
+    const { sql, params } = buildStockQuery(req.query, facilityScope(req));
     const { rows } = await pool.query(sql, params);
     res.json({ stocks: rows });
   } catch (err) {
@@ -58,7 +60,7 @@ router.get('/', async (req, res) => {
 // 在庫一覧CSV
 router.get('/csv', async (req, res) => {
   try {
-    const { sql, params } = buildStockQuery(req.query);
+    const { sql, params } = buildStockQuery(req.query, facilityScope(req));
     const { rows } = await pool.query(sql, params);
     const columns = [
       { key: 'product_name', label: '商品名' },
@@ -95,6 +97,10 @@ router.get('/expiry', async (req, res) => {
       const { rows } = await pool.query(`SELECT value FROM app_settings WHERE key = 'expiry_warn_days'`);
       warnDays = rows.length ? parseInt(rows[0].value, 10) : 30;
     }
+    const scope = facilityScope(req);
+    const params = [String(warnDays)];
+    let facCond = '';
+    if (!scope.all) { params.push(scope.facilityId); facCond = ` AND p.facility_id = $${params.length}`; }
     const { rows } = await pool.query(
       `SELECT s.id, p.id AS product_id, p.name AS product_name,
               s.lot_number, s.expiry_date, s.stock_quantity,
@@ -115,9 +121,9 @@ router.get('/expiry', async (req, res) => {
          JOIN products p ON p.id = s.product_id
         WHERE s.stock_quantity > 0
           AND s.expiry_date IS NOT NULL
-          AND s.expiry_date <= CURRENT_DATE + ($1 || ' days')::interval
+          AND s.expiry_date <= CURRENT_DATE + ($1 || ' days')::interval${facCond}
         ORDER BY s.expiry_date`,
-      [String(warnDays)]
+      params
     );
     res.json({ warnDays, rows });
   } catch (err) {
@@ -129,7 +135,7 @@ router.get('/expiry', async (req, res) => {
 // 在庫調整・廃棄・返品などの在庫移動履歴
 // GET /api/inventory/movements?from=&to=&productId=&type=
 //   type未指定は手動調整系(adjust/disposal/return)を表示。receipt/issue等も個別指定可。
-async function queryMovements(q) {
+async function queryMovements(q, scope) {
   const { from, to, productId, type } = q;
   const limit = Math.min(Number(q.limit) || 500, 2000);
   const params = [];
@@ -139,6 +145,7 @@ async function queryMovements(q) {
   } else {
     cond = `m.movement_type IN ('adjust', 'disposal', 'return')`;
   }
+  if (scope && !scope.all) { params.push(scope.facilityId); cond += ` AND p.facility_id = $${params.length}`; }
   if (from) { params.push(from); cond += ` AND m.created_at::date >= $${params.length}`; }
   if (to) { params.push(to); cond += ` AND m.created_at::date <= $${params.length}`; }
   if (productId) { params.push(productId); cond += ` AND m.product_id = $${params.length}`; }
@@ -160,7 +167,7 @@ async function queryMovements(q) {
 
 router.get('/movements', async (req, res) => {
   try {
-    res.json({ movements: await queryMovements(req.query) });
+    res.json({ movements: await queryMovements(req.query, facilityScope(req)) });
   } catch (err) {
     console.error('在庫移動履歴エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
@@ -172,7 +179,7 @@ router.get('/movements', async (req, res) => {
 const MOVE_LABEL = { receipt: '入庫', issue: '出庫', adjust: '在庫調整', disposal: '廃棄', return: '返品' };
 router.get('/movements/csv', async (req, res) => {
   try {
-    const rows = await queryMovements(req.query);
+    const rows = await queryMovements(req.query, facilityScope(req));
     const data = rows.map((m) => ({
       created_at: m.created_at ? String(m.created_at).replace('T', ' ').slice(0, 19) : '',
       movement_type: MOVE_LABEL[m.movement_type] || m.movement_type,
@@ -229,9 +236,19 @@ router.post('/movement', async (req, res) => {
     return res.status(400).json({ error: '数量が不正です' });
   }
 
+  const scope = facilityScope(req);
   const client = await getClient();
   try {
     await client.query('BEGIN');
+
+    // 施設スコープ: 対象商品が操作施設のものか確認
+    if (!scope.all) {
+      const chk = await client.query('SELECT facility_id FROM products WHERE id = $1', [productId]);
+      if (chk.rowCount === 0 || String(chk.rows[0].facility_id) !== String(scope.facilityId)) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: '対象の商品が見つかりません' });
+      }
+    }
 
     let opts = {
       productId, lotNumber, expiryDate,
