@@ -99,6 +99,11 @@ router.post('/products', async (req, res) => {
       return res.status(400).json({ error: '取込中にエラーがあります(全件取消)', inserted: 0, errors });
     }
     await client.query('COMMIT');
+    await writeLog(pool, {
+      userId: req.session.user && req.session.user.id,
+      targetTable: 'products', operationType: 'CSV取込', facilityId: fid,
+      after: { inserted, skipped, departmentsCreated, categoriesCreated },
+    });
     res.json({ ok: true, inserted, skipped, departmentsCreated, categoriesCreated });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -178,6 +183,11 @@ router.post('/product-details', async (req, res) => {
       return res.status(400).json({ error: '取込中にエラーがあります(全件取消)', inserted: 0, errors });
     }
     await client.query('COMMIT');
+    await writeLog(pool, {
+      userId: req.session.user && req.session.user.id,
+      targetTable: 'product_details', operationType: 'CSV取込', facilityId: fid,
+      after: { inserted, makersCreated, suppliersCreated },
+    });
     res.json({ ok: true, inserted, makersCreated, suppliersCreated });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -288,6 +298,11 @@ router.post('/products-combined', async (req, res) => {
       return res.status(400).json({ error: '取込中にエラーがあります(全件取消)', productsCreated: 0, detailsCreated: 0, makersCreated: 0, errors });
     }
     await client.query('COMMIT');
+    await writeLog(pool, {
+      userId: req.session.user && req.session.user.id,
+      targetTable: 'products', operationType: 'CSV取込', facilityId: fid,
+      after: { productsCreated, detailsCreated, makersCreated, departmentsCreated, categoriesCreated, suppliersCreated },
+    });
     res.json({ ok: true, productsCreated, detailsCreated, makersCreated, departmentsCreated, categoriesCreated, suppliersCreated });
   } catch (err) {
     await client.query('ROLLBACK');
