@@ -4,6 +4,7 @@
 // server.js で requireRole('superadmin') を適用)。
 const express = require('express');
 const { pool } = require('../db');
+const { sendCsv } = require('../services/csv');
 
 const router = express.Router();
 
@@ -46,55 +47,120 @@ function facilityCountSql(table) {
   return null;
 }
 
+// DB使用量データを収集して返す(GET / と /csv で共用)。
+async function gatherUsage() {
+  const dbSize = await pool.query(`SELECT pg_database_size(current_database()) AS bytes`);
+  const sizeRes = await pool.query(
+    `SELECT c.relname AS name,
+            pg_total_relation_size(c.oid) AS bytes,
+            COALESCE(s.n_live_tup, 0)     AS rows
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
+      WHERE n.nspname = 'public' AND c.relkind = 'r'
+      ORDER BY pg_total_relation_size(c.oid) DESC`
+  );
+
+  const facilityable = [...DIRECT, ...VIA_PRODUCT, ...VIA_SUPPLIER, ...VIA_USER];
+  const frResults = await Promise.all(
+    facilityable.map((t) =>
+      pool.query(facilityCountSql(t)).then((r) => [t, r.rows]).catch(() => [t, null])
+    )
+  );
+  const facilityRowsByTable = {};
+  for (const [t, rows] of frResults) {
+    if (!rows) continue;
+    const map = {};
+    for (const row of rows) map[row.fid == null ? 'null' : String(row.fid)] = Number(row.c);
+    facilityRowsByTable[t] = map;
+  }
+
+  const facilities = await pool.query(`SELECT id, name FROM facilities ORDER BY name`);
+
+  const tables = sizeRes.rows.map((r) => ({
+    name: r.name,
+    label: TABLE_LABELS[r.name] || r.name,
+    bytes: Number(r.bytes || 0),
+    rows: Number(r.rows || 0),
+    facilityRows: facilityRowsByTable[r.name] || null, // null=施設別集計対象外(施設共通)
+  }));
+
+  return {
+    dbBytes: Number(dbSize.rows[0].bytes || 0),
+    tables,
+    facilities: facilities.rows.map((f) => ({ id: Number(f.id), name: f.name })),
+  };
+}
+
 // GET /api/db-usage
-// DB全体サイズ、テーブル別サイズ/行数、施設別レコード数、施設一覧を返す。
 router.get('/', async (req, res) => {
   try {
-    const dbSize = await pool.query(`SELECT pg_database_size(current_database()) AS bytes`);
-    const sizeRes = await pool.query(
-      `SELECT c.relname AS name,
-              pg_total_relation_size(c.oid) AS bytes,
-              COALESCE(s.n_live_tup, 0)     AS rows
-         FROM pg_class c
-         JOIN pg_namespace n ON n.oid = c.relnamespace
-         LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
-        WHERE n.nspname = 'public' AND c.relkind = 'r'
-        ORDER BY pg_total_relation_size(c.oid) DESC`
-    );
-
-    // 施設別レコード数(集計可能なテーブルのみ)
-    const facilityable = [...DIRECT, ...VIA_PRODUCT, ...VIA_SUPPLIER, ...VIA_USER];
-    const frResults = await Promise.all(
-      facilityable.map((t) =>
-        pool.query(facilityCountSql(t)).then((r) => [t, r.rows]).catch(() => [t, null])
-      )
-    );
-    const facilityRowsByTable = {};
-    for (const [t, rows] of frResults) {
-      if (!rows) continue;
-      const map = {};
-      for (const row of rows) map[row.fid == null ? 'null' : String(row.fid)] = Number(row.c);
-      facilityRowsByTable[t] = map;
-    }
-
-    const facilities = await pool.query(`SELECT id, name FROM facilities ORDER BY name`);
-
-    const tables = sizeRes.rows.map((r) => ({
-      name: r.name,
-      label: TABLE_LABELS[r.name] || r.name,
-      bytes: Number(r.bytes || 0),
-      rows: Number(r.rows || 0),
-      facilityRows: facilityRowsByTable[r.name] || null, // null=施設別集計対象外(施設共通)
-    }));
-
-    res.json({
-      dbBytes: Number(dbSize.rows[0].bytes || 0),
-      tables,
-      facilities: facilities.rows.map((f) => ({ id: Number(f.id), name: f.name })),
-      generatedAt: new Date().toISOString(),
-    });
+    const data = await gatherUsage();
+    res.json({ ...data, generatedAt: new Date().toISOString() });
   } catch (err) {
     console.error('DB使用量取得エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// GET /api/db-usage/csv
+// 施設×テーブルの容量マトリクス(1施設=1行、列=テーブル、値=容量バイト)。
+// 施設別の容量はレコード数比による概算。施設共通テーブルは「施設共通」行に計上。
+router.get('/csv', async (req, res) => {
+  try {
+    const { tables, facilities } = await gatherUsage();
+
+    // 施設別の概算容量: テーブル容量 × その施設のレコード数 / 総レコード数
+    const est = (t, key) => {
+      if (!t.facilityRows) return 0;
+      const c = t.facilityRows[key] || 0;
+      return t.rows > 0 ? Math.round(t.bytes * c / t.rows) : 0;
+    };
+
+    // 列: 施設 + 各テーブル(容量の大きい順) + 合計
+    const columns = [{ key: 'facility', label: '施設' }]
+      .concat(tables.map((t) => ({ key: t.name, label: t.label })))
+      .concat([{ key: '_total', label: '合計' }]);
+
+    const dataRows = [];
+    const pushRow = (facilityLabel, valueFn) => {
+      const row = { facility: facilityLabel };
+      let tot = 0;
+      let any = false;
+      for (const t of tables) {
+        const v = valueFn(t);
+        row[t.name] = v;
+        tot += v;
+        if (v) any = true;
+      }
+      row._total = tot;
+      return { row, any };
+    };
+
+    // 施設ごと(1施設=1行): 施設帰属テーブルの概算容量
+    for (const f of facilities) {
+      dataRows.push(pushRow(f.name, (t) => est(t, String(f.id))).row);
+    }
+    // 施設ID未割当(facility_id が NULL)の分
+    const un = pushRow('未割当(施設ID無し)', (t) => est(t, 'null'));
+    if (un.any) dataRows.push(un.row);
+    // 施設共通(施設に紐づかないテーブルの実容量)
+    const common = pushRow('施設共通', (t) => (t.facilityRows ? 0 : t.bytes));
+    if (common.any) dataRows.push(common.row);
+    // 合計行(列ごとの合計)
+    const totalRow = { facility: '合計' };
+    let grand = 0;
+    for (const t of tables) {
+      const s = dataRows.reduce((a, r) => a + (r[t.name] || 0), 0);
+      totalRow[t.name] = s;
+      grand += s;
+    }
+    totalRow._total = grand;
+    dataRows.push(totalRow);
+
+    sendCsv(res, 'DB使用量_施設別容量.csv', columns, dataRows);
+  } catch (err) {
+    console.error('DB使用量CSVエラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
   }
 });
