@@ -147,8 +147,18 @@ router.put('/:type/:id', async (req, res) => {
     }
     const sets = [];
     const vals = [];
+    const changedCols = [];
     for (const c of t.cols) {
-      if (body[c] !== undefined) { vals.push(body[c]); sets.push(`${c} = $${vals.length}`); }
+      if (body[c] !== undefined) { vals.push(body[c]); sets.push(`${c} = $${vals.length}`); changedCols.push(c); }
+    }
+    // 変更前の値(変更対象カラムのみ)を取得してログに残す
+    let beforeObj = {};
+    if (changedCols.length) {
+      const gvals = [req.params.id];
+      let gwhere = 'id = $1';
+      if (!scope.all) { gvals.push(scope.facilityId); gwhere += ' AND facility_id = $2'; }
+      const cur = await pool.query(`SELECT ${changedCols.join(', ')} FROM ${t.table} WHERE ${gwhere}`, gvals);
+      if (cur.rowCount) beforeObj = cur.rows[0];
     }
     if (t.table === 'users' && body.password) {
       vals.push(bcrypt.hashSync(String(body.password), 10));
@@ -169,9 +179,13 @@ router.put('/:type/:id', async (req, res) => {
       vals
     );
     if (rowCount === 0) return res.status(404).json({ error: '対象が見つかりません' });
-    const safe = { ...body }; delete safe.password;
+    // 変更後(変更対象カラムのみ)。パスワードはハッシュを残さず「(変更)」と記録。
+    const afterObj = {};
+    for (const c of changedCols) afterObj[c] = body[c];
+    if (t.table === 'users' && body.password) afterObj.password = '(変更)';
     await writeLog(pool, {
-      userId: req.session.user.id, targetTable: t.table, targetId: req.params.id, operationType: '更新', after: safe,
+      userId: req.session.user.id, targetTable: t.table, targetId: req.params.id, operationType: '更新',
+      before: beforeObj, after: afterObj,
     });
     res.json({ ok: true });
   } catch (err) {
@@ -196,7 +210,7 @@ router.post('/:type/:id/toggle', async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ error: '対象が見つかりません' });
     await writeLog(pool, {
       userId: req.session.user.id, targetTable: t.table, targetId: req.params.id,
-      operationType: '更新', after: { is_active: rows[0].is_active },
+      operationType: '更新', before: { is_active: !rows[0].is_active }, after: { is_active: rows[0].is_active },
     });
     res.json({ ok: true, isActive: rows[0].is_active });
   } catch (err) {

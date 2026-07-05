@@ -11,6 +11,11 @@
       margin: 4px 0 0; padding: 8px 10px; background: #f6f8fa; border: 1px solid var(--line);
       border-radius: 8px; font-size: 0.78rem; white-space: pre-wrap; word-break: break-all;
     }
+    .difftbl { margin: 6px 0 2px; border-collapse: collapse; font-size: 0.8rem; }
+    .difftbl th, .difftbl td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; }
+    .difftbl th { background: #eef2f5; font-weight: 700; }
+    .difftbl tr.chg td { background: #fff7e6; }
+    .difftbl tr.chg td:nth-child(3) { color: #b26a00; font-weight: 700; }
     .oppill {
       display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.78rem; white-space: nowrap;
       background: #eef2f5; color: #333;
@@ -165,18 +170,74 @@
       return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
     }
 
+    // ===== 変更前/変更後の表示(詳細) =====
+    const KEY_LABELS = {
+      name: '名称', kana: 'カナ', note: '備考', is_active: '有効', login_id: 'ログインID', user_type: 'タイプ',
+      password: 'パスワード', department_id: '部門', category_id: '分類', management_code: '管理コード', qc_target_flag: '試薬管理対象',
+      product_id: '商品', supplier_id: '問屋', maker_id: 'メーカー', product_detail_id: '商品詳細',
+      lot_number: 'ロット', expiry_date: '使用期限', unit_price: '単価', pack_size: '梱包数',
+      quantity_unit: '数量単位', pack_unit: '梱包単位', spec: '規格', jan_code: 'JANコード',
+      test_count: 'テスト数', min_quantity: '最低個数', order_quantity: '発注数', jan_maker_code: 'JANメーカーコード',
+      stock_quantity: '在庫数', movementType: '区分', reason: '理由', receipt_date: '入庫日', issue_date: '出庫日',
+      order_date: '発注日', order_status: '状態', apply_start_date: '適用開始日', apply_end_date: '適用終了日',
+      barcode_issue_flag: 'バーコード発行', canceled_flag: 'キャンセル', held_flag: '保留',
+      password_changed: 'パスワード変更', file: 'ファイル', count: '件数',
+    };
+    const MOVE_LABEL = { adjust: '在庫調整', disposal: '廃棄', return: '返品', receipt: '入庫', issue: '出庫' };
+    const OSTATUS_LABEL = { unordered: '未発注', ordered: '発注済み', received: '入庫済み', canceled: 'キャンセル' };
+    const UTYPE_LABEL = { superadmin: '全体管理者', admin: '管理者', general: '一般', supplier: '問屋' };
+    function fmtLogVal(k, v) {
+      if (v === undefined) return '';           // その項目が存在しない側
+      if (v === null || v === '') return '(空)';
+      if (typeof v === 'boolean') {
+        if (k === 'is_active') return v ? '有効' : '無効';
+        return v ? 'はい' : 'いいえ';
+      }
+      if (k === 'movementType') return MOVE_LABEL[v] || v;
+      if (k === 'order_status') return OSTATUS_LABEL[v] || v;
+      if (k === 'user_type') return UTYPE_LABEL[v] || v;
+      if (typeof v === 'object') { try { return JSON.stringify(v); } catch (e) { return String(v); } }
+      return String(v);
+    }
+    // 変更前/変更後の比較テーブル
+    function diffTable(r) {
+      const b = r.before_data, a = r.after_data;
+      if (b == null && a == null) return '';
+      const keys = [...new Set([...(b ? Object.keys(b) : []), ...(a ? Object.keys(a) : [])])];
+      if (!keys.length) return '';
+      const body = keys.map((k) => {
+        const bv = b ? b[k] : undefined, av = a ? a[k] : undefined;
+        const changed = fmtLogVal(k, bv) !== fmtLogVal(k, av);
+        return `<tr class="${changed ? 'chg' : ''}"><td>${esc(KEY_LABELS[k] || k)}</td>` +
+          `<td>${esc(fmtLogVal(k, bv))}</td><td>${esc(fmtLogVal(k, av))}</td></tr>`;
+      }).join('');
+      return `<table class="difftbl"><thead><tr><th>項目</th><th>変更前</th><th>変更後</th></tr></thead><tbody>${body}</tbody></table>`;
+    }
+    function toggleDetail(i) {
+      const el = document.getElementById('detail_' + i);
+      if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+    }
+
     function render() {
       const tbody = document.querySelector('#logTbl tbody');
       if (rows.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5">該当するログがありません。</td></tr>';
       } else {
-        tbody.innerHTML = rows.map((r) => {
+        tbody.innerHTML = rows.map((r, i) => {
+          const hasDetail = r.before_data != null || r.after_data != null;
+          const name = (r.target_name && r.target_name !== r.user_name) ? esc(r.target_name) : '';
+          const detailBtn = hasDetail
+            ? ` <button class="secondary" style="padding:1px 7px; font-size:0.75rem;" onclick="toggleDetail(${i})">詳細</button>`
+            : '';
+          const detail = hasDetail
+            ? `<div class="logdetail" id="detail_${i}" style="display:none;">${diffTable(r)}</div>`
+            : '';
           return `<tr>
             <td>${fmtDate(r.created_at)}</td>
             <td>${esc(r.user_name || '(不明)')}</td>
             <td><span class="oppill op-${esc(r.operation_type)}">${esc(r.operation_type) || '-'}</span></td>
             <td>${esc(r.target_table_label || '')}</td>
-            <td>${(r.target_name && r.target_name !== r.user_name) ? esc(r.target_name) : ''}</td>
+            <td>${name}${detailBtn}${detail}</td>
           </tr>`;
         }).join('');
       }
