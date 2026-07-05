@@ -309,7 +309,7 @@
         const editData = JSON.stringify(r).replace(/'/g, '&#39;');
         // 商品一覧には「詳細」ボタン(その商品の商品詳細へ)
         const detailBtn = (t === 'products') ? `<button onclick="showDetails('${r.id}')">詳細</button> ` : '';
-        const delBtn = `<button class="danger" style="padding:4px 10px; font-size:0.82rem;" onclick="del('${r.id}')">削除</button>`;
+        const delBtn = `<button class="danger" onclick="del('${r.id}')">削除</button>`;
         return `<tr>${tds}<td style="white-space:nowrap;">${detailBtn}<button class="secondary" onclick='edit(${editData})'>編集</button> ${toggleBtn} ${delBtn}</td></tr>`;
       }).join('');
     }
