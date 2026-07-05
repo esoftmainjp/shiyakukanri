@@ -578,13 +578,17 @@ CREATE INDEX idx_usage_records_open    ON usage_records(product_id, lot_number) 
 
 -- 運用設定 (使用期限の警告日数、期限切れ出庫の許可など)
 CREATE TABLE app_settings (
-    key        VARCHAR(64)  PRIMARY KEY,
-    value      VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ  NOT NULL DEFAULT now()
+    key         VARCHAR(64)  NOT NULL,
+    value       VARCHAR(255) NOT NULL,
+    facility_id BIGINT       REFERENCES facilities(id),  -- 施設別設定(NULL=全体既定)
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_app_settings UNIQUE NULLS NOT DISTINCT (facility_id, key)
 );
-COMMENT ON TABLE  app_settings       IS '運用設定(キーバリュー)';
-COMMENT ON COLUMN app_settings.key   IS '設定キー';
-COMMENT ON COLUMN app_settings.value IS '設定値(文字列)';
+COMMENT ON TABLE  app_settings             IS '運用設定(施設別キーバリュー)';
+COMMENT ON COLUMN app_settings.key         IS '設定キー';
+COMMENT ON COLUMN app_settings.value       IS '設定値(文字列)';
+COMMENT ON COLUMN app_settings.facility_id IS '施設ID(施設別設定。NULLは全体既定)';
+CREATE INDEX idx_app_settings_facility ON app_settings(facility_id);
 
 CREATE TRIGGER trg_app_settings_updated_at
     BEFORE UPDATE ON app_settings

@@ -4,14 +4,17 @@
 const express = require('express');
 const { pool } = require('../db');
 const { sendCsv } = require('../services/csv');
+const { facilityScope } = require('../services/facility');
 
 const router = express.Router();
 
 // 絞り込み条件(WHERE)を構築。GET / と /csv で共用。
-function buildLogFilter(q) {
+// 施設スコープ: ログを記録したユーザーの所属施設で限定する。
+function buildLogFilter(q, scope) {
   const conds = [];
   const params = [];
   const add = (frag, val) => { params.push(val); conds.push(frag.replace('$', '$' + params.length)); };
+  if (scope && !scope.all) add('u.facility_id = $', scope.facilityId);
   if (q.from) add('l.created_at >= $', q.from);
   if (q.to) add("l.created_at < ($::date + INTERVAL '1 day')", q.to);
   if (q.userId) add('l.user_id = $', q.userId);
@@ -62,8 +65,13 @@ router.get('/meta', async (req, res) => {
     const tables = await pool.query(
       `SELECT DISTINCT target_table FROM operation_logs WHERE target_table <> '' ORDER BY target_table`
     );
+    const scope = facilityScope(req);
+    const uParams = [];
+    let uWhere = '';
+    if (!scope.all) { uParams.push(scope.facilityId); uWhere = 'WHERE facility_id = $1'; }
     const users = await pool.query(
-      `SELECT id, name, login_id FROM users ORDER BY name`
+      `SELECT id, name, login_id FROM users ${uWhere} ORDER BY name`,
+      uParams
     );
     res.json({
       operationTypes: ops.rows.map((r) => r.operation_type),
@@ -103,7 +111,7 @@ router.get('/storage', async (req, res) => {
 router.get('/', async (req, res) => {
   const q = req.query;
   try {
-    const { where, params } = buildLogFilter(q);
+    const { where, params } = buildLogFilter(q, facilityScope(req));
 
     const limit = Math.min(10000, Math.max(1, Number(q.limit) || 50));
     const offset = Math.max(0, Number(q.offset) || 0);
@@ -141,7 +149,7 @@ router.get('/', async (req, res) => {
 // GET /api/logs/csv?from&to&userId&operationType&targetTable&keyword
 router.get('/csv', async (req, res) => {
   try {
-    const { where, params } = buildLogFilter(req.query);
+    const { where, params } = buildLogFilter(req.query, facilityScope(req));
     const p = params.slice();
     p.push(50000);
     const { rows } = await pool.query(

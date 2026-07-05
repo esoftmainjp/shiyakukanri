@@ -117,7 +117,7 @@ app.get('/api/me', requireLogin, async (req, res) => {
   let passwordExpiryDays = 0;
   let daysSinceChange = null;
   try {
-    passwordExpiryDays = Number(await getSetting('password_expiry_days', '0')) || 0;
+    passwordExpiryDays = Number(await getSetting('password_expiry_days', '0', facilityScope(req).facilityId)) || 0;
     if (passwordExpiryDays > 0) {
       const { rows } = await pool.query('SELECT password_updated_at FROM users WHERE id = $1', [req.session.user.id]);
       if (rows.length && rows[0].password_updated_at) {

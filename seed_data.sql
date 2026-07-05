@@ -157,6 +157,9 @@ INSERT INTO app_settings (key, value) VALUES
     ('label_name_font', '13'),
     ('label_sub_font', '13');
 
+-- 運用設定を既定施設へ割当 (施設別管理 Step4)
+UPDATE app_settings SET facility_id = (SELECT id FROM facilities ORDER BY id LIMIT 1) WHERE facility_id IS NULL;
+
 -- ============================================================
 -- 以上
 -- ============================================================

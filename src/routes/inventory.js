@@ -92,12 +92,15 @@ router.get('/csv', async (req, res) => {
 // GET /api/inventory/expiry?warnDays=30
 router.get('/expiry', async (req, res) => {
   try {
+    const scope = facilityScope(req);
     let warnDays = parseInt(req.query.warnDays, 10);
     if (Number.isNaN(warnDays)) {
-      const { rows } = await pool.query(`SELECT value FROM app_settings WHERE key = 'expiry_warn_days'`);
+      const { rows } = await pool.query(
+        `SELECT value FROM app_settings WHERE key = 'expiry_warn_days' AND facility_id IS NOT DISTINCT FROM $1`,
+        [scope.all ? null : scope.facilityId]
+      );
       warnDays = rows.length ? parseInt(rows[0].value, 10) : 30;
     }
-    const scope = facilityScope(req);
     const params = [String(warnDays)];
     let facCond = '';
     if (!scope.all) { params.push(scope.facilityId); facCond = ` AND p.facility_id = $${params.length}`; }

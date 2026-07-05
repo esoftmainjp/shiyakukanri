@@ -9,6 +9,7 @@ const express = require('express');
 const { pool } = require('../db');
 const { sendCsv } = require('../services/csv');
 const { writeLog } = require('../services/log');
+const { facilityScope } = require('../services/facility');
 
 const router = express.Router();
 
@@ -18,7 +19,7 @@ function range(q) {
 }
 
 // 使用量集計(出庫)。groupBy: product | department | category。問屋/メーカーで絞り込み可。
-function usageQuery(q) {
+function usageQuery(q, scope) {
   const groupBy = ['product', 'department', 'category'].includes(q.groupBy) ? q.groupBy : 'product';
   const { from, to } = range(q);
   const params = [from, to];
@@ -33,6 +34,7 @@ function usageQuery(q) {
     gid = 'cat.id'; gname = "COALESCE(cat.name, '(未設定)')";
   }
   let cond = 'i.issue_date >= $1 AND i.issue_date <= $2';
+  if (scope && !scope.all) { params.push(scope.facilityId); cond += ` AND p.facility_id = $${params.length}`; }
   if (q.supplierId) { params.push(q.supplierId); cond += ` AND pd.supplier_id = $${params.length}`; }
   if (q.makerId) { params.push(q.makerId); cond += ` AND pd.maker_id = $${params.length}`; }
   const sql = `
@@ -57,8 +59,8 @@ function usageQuery(q) {
 
 const GROUP_LABEL = { product: '商品', department: '部門', category: '分類' };
 
-async function fetchUsage(q) {
-  const { sql, params, groupBy } = usageQuery(q);
+async function fetchUsage(q, scope) {
+  const { sql, params, groupBy } = usageQuery(q, scope);
   const { from, to } = range(q);
   const { rows } = await pool.query(sql, params);
   const total = rows.reduce((a, r) => ({
@@ -72,7 +74,7 @@ async function fetchUsage(q) {
 // GET /api/reports/usage?from&to&groupBy
 router.get('/usage', async (req, res) => {
   try {
-    const r = await fetchUsage(req.query);
+    const r = await fetchUsage(req.query, facilityScope(req));
     res.json(r);
   } catch (err) {
     console.error('使用量集計エラー:', err.message);
@@ -83,7 +85,7 @@ router.get('/usage', async (req, res) => {
 // GET /api/reports/usage/csv
 router.get('/usage/csv', async (req, res) => {
   try {
-    const r = await fetchUsage(req.query);
+    const r = await fetchUsage(req.query, facilityScope(req));
     const label = GROUP_LABEL[r.groupBy] || '商品';
     const data = r.rows.map((x) => ({
       group_name: x.group_name, supplier_names: x.supplier_names || '', maker_names: x.maker_names || '',
@@ -111,11 +113,13 @@ router.get('/usage/csv', async (req, res) => {
 });
 
 // 月次推移(入庫・出庫を月別に集計)
-async function fetchMonthly(q) {
+async function fetchMonthly(q, scope) {
   const { from, to } = range(q);
-  // 問屋/メーカーは商品詳細(product_details)基準で入庫・出庫の両方を絞り込む
-  const filterSql = (params) => {
+  // 問屋/メーカーは商品詳細(product_details)基準で入庫・出庫の両方を絞り込む。
+  // 施設スコープは明細商品の所属施設で限定する。
+  const filterSql = (params, productCol) => {
     let s = '';
+    if (scope && !scope.all) { params.push(scope.facilityId); s += ` AND ${productCol} IN (SELECT id FROM products WHERE facility_id = $${params.length})`; }
     if (q.supplierId) { params.push(q.supplierId); s += ` AND pd.supplier_id = $${params.length}`; }
     if (q.makerId) { params.push(q.makerId); s += ` AND pd.maker_id = $${params.length}`; }
     return s;
@@ -128,7 +132,7 @@ async function fetchMonthly(q) {
        FROM receipt_details rd
        JOIN receipts r ON r.id = rd.receipt_id
        LEFT JOIN product_details pd ON pd.id = rd.product_detail_id
-      WHERE r.receipt_date >= $1 AND r.receipt_date <= $2${filterSql(rparams)}
+      WHERE r.receipt_date >= $1 AND r.receipt_date <= $2${filterSql(rparams, 'rd.product_id')}
       GROUP BY ym`, rparams);
   const iparams = [from, to];
   const iss = await pool.query(
@@ -138,7 +142,7 @@ async function fetchMonthly(q) {
        FROM issue_details d
        JOIN issues i ON i.id = d.issue_id
        LEFT JOIN product_details pd ON pd.id = d.product_detail_id
-      WHERE i.issue_date >= $1 AND i.issue_date <= $2${filterSql(iparams)}
+      WHERE i.issue_date >= $1 AND i.issue_date <= $2${filterSql(iparams, 'd.product_id')}
       GROUP BY ym`, iparams);
 
   const map = {};
@@ -152,7 +156,7 @@ async function fetchMonthly(q) {
 // GET /api/reports/monthly?from&to
 router.get('/monthly', async (req, res) => {
   try {
-    res.json(await fetchMonthly(req.query));
+    res.json(await fetchMonthly(req.query, facilityScope(req)));
   } catch (err) {
     console.error('月次推移エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
@@ -162,7 +166,7 @@ router.get('/monthly', async (req, res) => {
 // GET /api/reports/monthly/csv
 router.get('/monthly/csv', async (req, res) => {
   try {
-    const r = await fetchMonthly(req.query);
+    const r = await fetchMonthly(req.query, facilityScope(req));
     const columns = [
       { key: 'ym', label: '年月' },
       { key: 'receipt_qty', label: '入庫量(バラ)' },

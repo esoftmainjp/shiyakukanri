@@ -4,14 +4,18 @@ const express = require('express');
 const { pool } = require('../db');
 const { sendCsv } = require('../services/csv');
 const { writeLog } = require('../services/log');
+const { facilityScope } = require('../services/facility');
 
 const router = express.Router();
 
 // 試薬管理台帳のデータ取得
 // 試薬管理対象商品で、入庫日～出庫日(使用開始日)が指定期間と重なるもの。
-function buildLedgerQuery(q) {
+function buildLedgerQuery(q, scope) {
   const from = q.from || '0001-01-01';
   const to = q.to || '9999-12-31';
+  const params = [from, to];
+  let facCond = '';
+  if (scope && !scope.all) { params.push(scope.facilityId); facCond = ` AND p.facility_id = $${params.length}`; }
   // 独自バーコード品(barcodes)と非バーコード品(usage_records)を統合して出力する。
   const sql =
     `SELECT * FROM (
@@ -26,7 +30,7 @@ function buildLedgerQuery(q) {
         WHERE p.qc_target_flag = TRUE
           AND b.voided_flag = FALSE
           AND r.receipt_date <= $2
-          AND COALESCE(b.use_start_date, DATE '9999-12-31') >= $1
+          AND COALESCE(b.use_start_date, DATE '9999-12-31') >= $1${facCond}
        UNION ALL
        -- 非バーコード品(使用記録)。入庫日は保持しないため使用開始日を代替表示。
        SELECT u.use_start_date AS receipt_date, p.name AS product_name,
@@ -36,16 +40,16 @@ function buildLedgerQuery(q) {
          JOIN products p ON p.id = u.product_id
         WHERE p.qc_target_flag = TRUE
           AND u.use_start_date <= $2
-          AND u.use_start_date >= $1
+          AND u.use_start_date >= $1${facCond}
      ) t
      ORDER BY receipt_date, product_name, content_code`;
-  return { sql, params: [from, to] };
+  return { sql, params };
 }
 
 // 台帳データ(JSON)
 router.get('/', async (req, res) => {
   try {
-    const { sql, params } = buildLedgerQuery(req.query);
+    const { sql, params } = buildLedgerQuery(req.query, facilityScope(req));
     const { rows } = await pool.query(sql, params);
     res.json({ rows });
   } catch (err) {
@@ -57,7 +61,7 @@ router.get('/', async (req, res) => {
 // 台帳CSV
 router.get('/csv', async (req, res) => {
   try {
-    const { sql, params } = buildLedgerQuery(req.query);
+    const { sql, params } = buildLedgerQuery(req.query, facilityScope(req));
     const { rows } = await pool.query(sql, params);
     const columns = [
       { key: 'receipt_date', label: '入庫日' },

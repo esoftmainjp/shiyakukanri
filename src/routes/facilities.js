@@ -49,6 +49,12 @@ router.post('/', async (req, res) => {
       [String(name).trim(), kana ? String(kana) : '']
     );
     const facilityId = f.rows[0].id;
+    // 伝票印字用の施設名(company_name)を施設名で初期化(後で設定画面から変更可)
+    await client.query(
+      `INSERT INTO app_settings (key, value, facility_id) VALUES ('company_name', $1, $2)
+       ON CONFLICT (facility_id, key) DO NOTHING`,
+      [String(name).trim(), facilityId]
+    );
     // 初期管理者(初回ログイン時にパスワード変更必須)
     const hash = bcrypt.hashSync(String(adminPassword), 10);
     const u = await client.query(

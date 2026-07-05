@@ -49,8 +49,11 @@ router.post('/', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 期限切れ出庫の許可設定と当日日付を取得
-    const setting = await client.query(`SELECT value FROM app_settings WHERE key = 'allow_expired_issue'`);
+    // 期限切れ出庫の許可設定(操作施設)と当日日付を取得
+    const setting = await client.query(
+      `SELECT value FROM app_settings WHERE key = 'allow_expired_issue' AND facility_id IS NOT DISTINCT FROM $1`,
+      [scope.all ? null : scope.facilityId]
+    );
     const allowExpired = setting.rowCount ? String(setting.rows[0].value) === 'true' : false;
     const todayRow = await client.query(`SELECT CURRENT_DATE::text AS today`);
     const today = todayRow.rows[0].today;
