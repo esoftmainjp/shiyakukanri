@@ -143,17 +143,7 @@ router.get('/storage', async (req, res) => {
     let where = '';
     if (!scope.all) { params.push(scope.facilityId); where = 'WHERE facility_id = $1'; }
     const r = await pool.query(`SELECT COUNT(*) AS c FROM operation_logs ${where}`, params);
-    const out = { count: Number((r.rows[0] || {}).c || 0) };
-    // DB使用量は全体管理者のみに返す(納入先の管理者には出さない)
-    if (req.session.user && req.session.user.userType === 'superadmin') {
-      const d = await pool.query(
-        `SELECT pg_database_size(current_database()) AS db_bytes,
-                pg_total_relation_size('operation_logs') AS logs_bytes`
-      );
-      out.dbBytes = Number(d.rows[0].db_bytes || 0);
-      out.logsBytes = Number(d.rows[0].logs_bytes || 0);
-    }
-    res.json(out);
+    res.json({ count: Number((r.rows[0] || {}).c || 0) });
   } catch (err) {
     console.error('操作ログ件数エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });

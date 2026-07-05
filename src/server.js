@@ -323,6 +323,7 @@ app.use('/api/barcodes',  requireLogin, requireRole('admin', 'general', 'superad
 app.use('/api/ledger',    requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/ledger'));
 app.use('/api/reports',   requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/reports'));
 app.use('/api/facilities', requireLogin, requireRole('superadmin'), require('./routes/facilities'));
+app.use('/api/db-usage',  requireLogin, requireRole('superadmin'), require('./routes/db-usage'));
 app.use('/api/masters',   requireLogin, requireRole('admin', 'superadmin'), require('./routes/masters'));
 app.use('/api/import',    requireLogin, requireRole('admin', 'superadmin'), require('./routes/import'));
 app.use('/api/logs',      requireLogin, requireRole('admin', 'superadmin'), require('./routes/logs'));

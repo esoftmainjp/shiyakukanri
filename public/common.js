@@ -145,7 +145,10 @@ function renderHeader(user, activeKey) {
   const main = [];
   if (user.userType === 'superadmin') {
     const facSelected = currentMe && currentMe.activeFacilityId != null;
-    main.push(mkLink('facilities', '/facilities.html', '施設管理'));
+    main.push(mkGroup('システム', [
+      ['facilities', '/facilities.html', '施設管理'],
+      ['dbusage', '/db-usage.html', 'DB使用量'],
+    ]));
     // 施設を選択中は、その施設の管理者と同等のメニューを表示
     if (facSelected) operationalMenu(true).forEach((m) => main.push(m));
   } else if (user.userType === 'supplier') {
