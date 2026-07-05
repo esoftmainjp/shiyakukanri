@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
 const { writeLog } = require('../services/log');
 const { isEmail } = require('../services/validate');
+const { facilityScope } = require('../services/facility');
 
 const router = express.Router();
 
@@ -31,15 +32,19 @@ function getType(req, res) {
   return t;
 }
 
-// 一覧
+// 一覧 (施設スコープ。全体管理者が施設未選択なら全施設横断)
 router.get('/:type', async (req, res) => {
   const t = getType(req, res); if (!t) return;
+  const scope = facilityScope(req);
   try {
     // usersはパスワードハッシュを返さない
     const select = t.table === 'users'
       ? 'id, user_type, name, kana, login_id, note, is_active, password_updated_at, created_at, updated_at'
       : '*';
-    const { rows } = await pool.query(`SELECT ${select} FROM ${t.table} ORDER BY id`);
+    const params = [];
+    let where = '';
+    if (!scope.all) { params.push(scope.facilityId); where = 'WHERE facility_id = $1'; }
+    const { rows } = await pool.query(`SELECT ${select} FROM ${t.table} ${where} ORDER BY id`, params);
     res.json({ rows });
   } catch (err) {
     console.error('マスター一覧エラー:', err.message);
@@ -47,9 +52,11 @@ router.get('/:type', async (req, res) => {
   }
 });
 
-// 登録
+// 登録 (対象施設に紐付け。全体管理者は施設未選択だと不可)
 router.post('/:type', async (req, res) => {
   const t = getType(req, res); if (!t) return;
+  const scope = facilityScope(req);
+  if (scope.all) return res.status(400).json({ error: '対象施設を選択してから登録してください' });
   const body = req.body || {};
   try {
     const cols = [];
@@ -57,6 +64,9 @@ router.post('/:type', async (req, res) => {
     for (const c of t.cols) {
       if (body[c] !== undefined) { cols.push(c); vals.push(body[c]); }
     }
+    if (cols.length === 0 && t.table !== 'users') return res.status(400).json({ error: '登録項目がありません' });
+    // 所属施設を付与(全マスタ共通)
+    cols.push('facility_id'); vals.push(scope.facilityId);
     // ユーザーはパスワードをハッシュ化して追加
     if (t.table === 'users') {
       if (!body.password) return res.status(400).json({ error: 'パスワードは必須です' });
@@ -69,7 +79,6 @@ router.post('/:type', async (req, res) => {
       cols.push('must_change_password');
       vals.push(true);
     }
-    if (cols.length === 0) return res.status(400).json({ error: '登録項目がありません' });
 
     const ph = vals.map((_, i) => '$' + (i + 1)).join(', ');
     const { rows } = await pool.query(
@@ -86,9 +95,10 @@ router.post('/:type', async (req, res) => {
   }
 });
 
-// 更新
+// 更新 (対象施設の行のみ。全体管理者が施設未選択なら全施設対象)
 router.put('/:type/:id', async (req, res) => {
   const t = getType(req, res); if (!t) return;
+  const scope = facilityScope(req);
   const body = req.body || {};
   try {
     if (t.table === 'users' && body.login_id !== undefined && !isEmail(body.login_id)) {
@@ -111,8 +121,10 @@ router.put('/:type/:id', async (req, res) => {
     if (sets.length === 0) return res.status(400).json({ error: '更新項目がありません' });
 
     vals.push(req.params.id);
+    let where = `id = $${vals.length}`;
+    if (!scope.all) { vals.push(scope.facilityId); where += ` AND facility_id = $${vals.length}`; }
     const { rowCount } = await pool.query(
-      `UPDATE ${t.table} SET ${sets.join(', ')} WHERE id = $${vals.length}`,
+      `UPDATE ${t.table} SET ${sets.join(', ')} WHERE ${where}`,
       vals
     );
     if (rowCount === 0) return res.status(404).json({ error: '対象が見つかりません' });
@@ -131,10 +143,14 @@ router.put('/:type/:id', async (req, res) => {
 router.post('/:type/:id/toggle', async (req, res) => {
   const t = getType(req, res); if (!t) return;
   if (!t.hasActive) return res.status(400).json({ error: 'この種別は有効フラグを持ちません' });
+  const scope = facilityScope(req);
   try {
+    const vals = [req.params.id];
+    let where = 'id = $1';
+    if (!scope.all) { vals.push(scope.facilityId); where += ' AND facility_id = $2'; }
     const { rows } = await pool.query(
-      `UPDATE ${t.table} SET is_active = NOT is_active WHERE id = $1 RETURNING is_active`,
-      [req.params.id]
+      `UPDATE ${t.table} SET is_active = NOT is_active WHERE ${where} RETURNING is_active`,
+      vals
     );
     if (rows.length === 0) return res.status(404).json({ error: '対象が見つかりません' });
     await writeLog(pool, {

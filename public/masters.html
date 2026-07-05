@@ -118,7 +118,13 @@
     async function boot() {
       const user = await initPage('masters');
       if (!user) return;
-      if (user.userType !== 'admin') { document.querySelector('main').innerHTML = '<div class="card">この画面は管理者のみ利用できます。</div>'; return; }
+      const allowed = user.userType === 'admin' || user.userType === 'superadmin';
+      if (!allowed) { document.querySelector('main').innerHTML = '<div class="card">この画面は管理者のみ利用できます。</div>'; return; }
+      // 全体管理者は対象施設を選択していないとマスターを編集できない
+      if (user.userType === 'superadmin' && !(currentMe && currentMe.activeFacilityId != null)) {
+        document.querySelector('main').innerHTML = '<div class="card">全体管理者は、画面上部の施設セレクタで対象施設を選択してからマスターを編集してください。</div>';
+        return;
+      }
       switchType();
     }
 
@@ -244,8 +250,8 @@
       const tbody = document.querySelector('#tbl tbody');
       await buildFilter();
       if (listRows.length === 0) { thead.innerHTML = ''; tbody.innerHTML = '<tr><td>データがありません</td></tr>'; return; }
-      // id と日時列は非表示。参照ID列は名称表示にする。
-      listKeys = Object.keys(listRows[0]).filter((k) => !['id', 'created_at', 'updated_at'].includes(k));
+      // id と日時列・施設列は非表示。参照ID列は名称表示にする。
+      listKeys = Object.keys(listRows[0]).filter((k) => !['id', 'created_at', 'updated_at', 'facility_id'].includes(k));
       // 参照マスターの id→名称 マップを準備
       listRefMaps = {};
       for (const k of listKeys) {

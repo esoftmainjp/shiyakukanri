@@ -78,12 +78,13 @@ function renderHeader(user, activeKey) {
   // 権限別のメニュー
   let nav;
   if (user.userType === 'superadmin') {
-    // 全体管理者: 施設管理が中心(施設データへのアクセスは順次対応)
-    nav = [
-      ['facilities', '/facilities.html', '施設管理'],
-      ['password', '/password.html', 'パスワード変更'],
-      ['manual', '/manual.pdf', '取扱説明書'],
-    ];
+    // 全体管理者: 施設管理が中心。施設を選択中はその施設のマスターを編集できる
+    // (在庫・入出庫など運用画面へのアクセスは後続ステップで対応)。
+    const facSelected = currentMe && currentMe.activeFacilityId != null;
+    nav = [['facilities', '/facilities.html', '施設管理']];
+    if (facSelected) nav.push(['masters', '/masters.html', 'マスター編集']);
+    nav.push(['password', '/password.html', 'パスワード変更']);
+    nav.push(['manual', '/manual.pdf', '取扱説明書']);
   } else if (user.userType === 'supplier') {
     nav = [
       ['dashboard', '/', 'ホーム'],

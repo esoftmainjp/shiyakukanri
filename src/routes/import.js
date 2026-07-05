@@ -3,6 +3,7 @@
 const express = require('express');
 const { getClient } = require('../db');
 const { parseCsv } = require('../services/csv');
+const { facilityScope } = require('../services/facility');
 
 const router = express.Router();
 
@@ -15,23 +16,31 @@ function truthy(v) {
 const MAKER_CODE_LEN = 7;
 
 // メーカー名を解決。無ければ商品JANの先頭N桁をJANメーカーコードにして自動追加。
-// 戻り値: { id, created }
-async function resolveMaker(client, name, janCode) {
+// 施設スコープ内で検索・作成する。戻り値: { id, created }
+async function resolveMaker(client, name, janCode, facilityId) {
   const nm = (name || '').trim();
   if (!nm) return { id: null, created: false };
-  const found = await client.query(`SELECT id FROM makers WHERE name = $1`, [nm]);
+  const found = await client.query(`SELECT id FROM makers WHERE name = $1 AND facility_id = $2`, [nm, facilityId]);
   if (found.rowCount > 0) return { id: found.rows[0].id, created: false };
   const code = String(janCode || '').replace(/\D/g, '').slice(0, MAKER_CODE_LEN);
   const ins = await client.query(
-    `INSERT INTO makers (name, jan_maker_code) VALUES ($1, $2) RETURNING id`,
-    [nm, code]
+    `INSERT INTO makers (name, jan_maker_code, facility_id) VALUES ($1, $2, $3) RETURNING id`,
+    [nm, code, facilityId]
   );
   return { id: ins.rows[0].id, created: true };
+}
+
+// 全体管理者が施設未選択のときは施設を特定できないため取込不可。
+function requireFacility(req, res) {
+  const scope = facilityScope(req);
+  if (scope.all) { res.status(400).json({ error: '対象施設を選択してから取り込んでください' }); return null; }
+  return scope.facilityId;
 }
 
 // 商品マスターCSVインポート
 // ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象
 router.post('/products', async (req, res) => {
+  const fid = requireFacility(req, res); if (fid == null) return;
   const rows = parseCsv(req.body && req.body.csv);
   if (rows.length === 0) return res.status(400).json({ error: 'データがありません' });
 
@@ -47,27 +56,27 @@ router.post('/products', async (req, res) => {
       const name = (r['名称'] || '').trim();
       if (!name) { errors.push({ line: i + 2, error: '名称が空です' }); continue; }
 
-      // 重複チェックは商品名で行う(既存があればスキップ)
-      const dup = await client.query(`SELECT id FROM products WHERE name = $1`, [name]);
+      // 重複チェックは商品名で行う(同一施設内。既存があればスキップ)
+      const dup = await client.query(`SELECT id FROM products WHERE name = $1 AND facility_id = $2`, [name, fid]);
       if (dup.rowCount > 0) { skipped++; continue; }
 
       let deptId = null, catId = null;
       if (r['部門']) {
-        const d = await client.query(`SELECT id FROM departments WHERE name = $1`, [r['部門'].trim()]);
+        const d = await client.query(`SELECT id FROM departments WHERE name = $1 AND facility_id = $2`, [r['部門'].trim(), fid]);
         if (d.rowCount === 0) { errors.push({ line: i + 2, error: `部門が存在しません: ${r['部門']}` }); continue; }
         deptId = d.rows[0].id;
       }
       if (r['分類']) {
-        const c = await client.query(`SELECT id FROM categories WHERE name = $1`, [r['分類'].trim()]);
+        const c = await client.query(`SELECT id FROM categories WHERE name = $1 AND facility_id = $2`, [r['分類'].trim(), fid]);
         if (c.rowCount === 0) { errors.push({ line: i + 2, error: `分類が存在しません: ${r['分類']}` }); continue; }
         catId = c.rows[0].id;
       }
 
       // 管理コードは顧客用の任意コード(システムキーではない)
       await client.query(
-        `INSERT INTO products (name, kana, department_id, category_id, management_code, qc_target_flag)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [name, r['カナ'] || '', deptId, catId, r['管理コード'] || '', truthy(r['試薬管理対象'] || r['精度管理対象'])]
+        `INSERT INTO products (name, kana, department_id, category_id, management_code, qc_target_flag, facility_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [name, r['カナ'] || '', deptId, catId, r['管理コード'] || '', truthy(r['試薬管理対象'] || r['精度管理対象']), fid]
       );
       inserted++;
     }
@@ -91,6 +100,7 @@ router.post('/products', async (req, res) => {
 // ヘッダー: 商品名,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行
 // 商品は「商品名」で特定する(管理コードは使わない)。同名商品が複数ある場合はエラー。
 router.post('/product-details', async (req, res) => {
+  const fid = requireFacility(req, res); if (fid == null) return;
   const rows = parseCsv(req.body && req.body.csv);
   if (rows.length === 0) return res.status(400).json({ error: 'データがありません' });
 
@@ -106,18 +116,18 @@ router.post('/product-details', async (req, res) => {
       const pname = (r['商品名'] || '').trim();
       if (!pname) { errors.push({ line: i + 2, error: '商品名が空です' }); continue; }
 
-      const p = await client.query(`SELECT id FROM products WHERE name = $1`, [pname]);
+      const p = await client.query(`SELECT id FROM products WHERE name = $1 AND facility_id = $2`, [pname, fid]);
       if (p.rowCount === 0) { errors.push({ line: i + 2, error: `商品が存在しません: ${pname}` }); continue; }
       if (p.rowCount > 1) { errors.push({ line: i + 2, error: `同名の商品が複数あります: ${pname}` }); continue; }
 
       let makerId = null, supplierId = null;
       if (r['メーカー']) {
-        const mk = await resolveMaker(client, r['メーカー'], r['JANコード']);
+        const mk = await resolveMaker(client, r['メーカー'], r['JANコード'], fid);
         makerId = mk.id;
         if (mk.created) makersCreated++;
       }
       if (r['問屋']) {
-        const s = await client.query(`SELECT id FROM suppliers WHERE name = $1`, [r['問屋'].trim()]);
+        const s = await client.query(`SELECT id FROM suppliers WHERE name = $1 AND facility_id = $2`, [r['問屋'].trim(), fid]);
         if (s.rowCount === 0) { errors.push({ line: i + 2, error: `問屋が存在しません: ${r['問屋']}` }); continue; }
         supplierId = s.rows[0].id;
       }
@@ -126,8 +136,8 @@ router.post('/product-details', async (req, res) => {
         `INSERT INTO product_details
            (product_id, apply_start_date, apply_end_date, quantity_unit, pack_size, pack_unit,
             spec, unit_price, test_count, min_quantity, order_quantity, jan_code,
-            maker_id, supplier_id, barcode_issue_flag)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+            maker_id, supplier_id, barcode_issue_flag, facility_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
         [
           p.rows[0].id,
           r['適用開始日'] || null,
@@ -144,6 +154,7 @@ router.post('/product-details', async (req, res) => {
           makerId,
           supplierId,
           truthy(r['バーコード発行']),
+          fid,
         ]
       );
       inserted++;
@@ -170,6 +181,7 @@ router.post('/product-details', async (req, res) => {
 // 各行: 商品名で商品を検索(あれば再利用/なければ新規作成)し、続けて商品詳細を1件作成する。
 // 商品と商品詳細は商品ID(内部)で紐付ける。管理コードは顧客用の任意コードで、システムキーではない。
 router.post('/products-combined', async (req, res) => {
+  const fid = requireFacility(req, res); if (fid == null) return;
   const rows = parseCsv(req.body && req.body.csv);
   if (rows.length === 0) return res.status(400).json({ error: 'データがありません' });
 
@@ -188,15 +200,15 @@ router.post('/products-combined', async (req, res) => {
       const code = (r['管理コード'] || '').trim(); // 顧客用の任意コード(システムキーではない)
       if (!name) { errors.push({ line, error: '名称が空です' }); continue; }
 
-      // 部門・分類の解決
+      // 部門・分類の解決(同一施設内)
       let deptId = null, catId = null;
       if (r['部門']) {
-        const d = await client.query(`SELECT id FROM departments WHERE name = $1`, [r['部門'].trim()]);
+        const d = await client.query(`SELECT id FROM departments WHERE name = $1 AND facility_id = $2`, [r['部門'].trim(), fid]);
         if (d.rowCount === 0) { errors.push({ line, error: `部門が存在しません: ${r['部門']}` }); continue; }
         deptId = d.rows[0].id;
       }
       if (r['分類']) {
-        const c = await client.query(`SELECT id FROM categories WHERE name = $1`, [r['分類'].trim()]);
+        const c = await client.query(`SELECT id FROM categories WHERE name = $1 AND facility_id = $2`, [r['分類'].trim(), fid]);
         if (c.rowCount === 0) { errors.push({ line, error: `分類が存在しません: ${r['分類']}` }); continue; }
         catId = c.rows[0].id;
       }
@@ -204,26 +216,26 @@ router.post('/products-combined', async (req, res) => {
       // メーカー(無ければJAN先頭7桁で自動追加)・問屋の解決
       let makerId = null, supplierId = null;
       if (r['メーカー']) {
-        const mk = await resolveMaker(client, r['メーカー'], r['JANコード']);
+        const mk = await resolveMaker(client, r['メーカー'], r['JANコード'], fid);
         makerId = mk.id;
         if (mk.created) makersCreated++;
       }
       if (r['問屋']) {
-        const s = await client.query(`SELECT id FROM suppliers WHERE name = $1`, [r['問屋'].trim()]);
+        const s = await client.query(`SELECT id FROM suppliers WHERE name = $1 AND facility_id = $2`, [r['問屋'].trim(), fid]);
         if (s.rowCount === 0) { errors.push({ line, error: `問屋が存在しません: ${r['問屋']}` }); continue; }
         supplierId = s.rows[0].id;
       }
 
-      // 商品: 商品名で検索し、あれば再利用/なければ新規作成(重複チェックは商品名)
+      // 商品: 商品名で検索し、あれば再利用/なければ新規作成(重複チェックは商品名・同一施設)
       let productId;
-      const ex = await client.query(`SELECT id FROM products WHERE name = $1`, [name]);
+      const ex = await client.query(`SELECT id FROM products WHERE name = $1 AND facility_id = $2`, [name, fid]);
       if (ex.rowCount > 0) {
         productId = ex.rows[0].id;
       } else {
         const ins = await client.query(
-          `INSERT INTO products (name, kana, department_id, category_id, management_code, qc_target_flag)
-           VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-          [name, r['カナ'] || '', deptId, catId, code, truthy(r['試薬管理対象'] || r['精度管理対象'])]
+          `INSERT INTO products (name, kana, department_id, category_id, management_code, qc_target_flag, facility_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+          [name, r['カナ'] || '', deptId, catId, code, truthy(r['試薬管理対象'] || r['精度管理対象']), fid]
         );
         productId = ins.rows[0].id;
         productsCreated++;
@@ -234,8 +246,8 @@ router.post('/products-combined', async (req, res) => {
         `INSERT INTO product_details
            (product_id, apply_start_date, apply_end_date, quantity_unit, pack_size, pack_unit,
             spec, unit_price, test_count, min_quantity, order_quantity, jan_code,
-            maker_id, supplier_id, barcode_issue_flag)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+            maker_id, supplier_id, barcode_issue_flag, facility_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
         [
           productId,
           r['適用開始日'] || null,
@@ -252,6 +264,7 @@ router.post('/products-combined', async (req, res) => {
           makerId,
           supplierId,
           truthy(r['バーコード発行']),
+          fid,
         ]
       );
       detailsCreated++;

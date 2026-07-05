@@ -109,6 +109,16 @@ VALUES
      FALSE);
 
 -- ------------------------------------------------------------
+-- 各マスタを既定施設へ割当 (施設別管理 Step2)
+-- ------------------------------------------------------------
+UPDATE suppliers       SET facility_id = (SELECT id FROM facilities ORDER BY id LIMIT 1) WHERE facility_id IS NULL;
+UPDATE makers          SET facility_id = (SELECT id FROM facilities ORDER BY id LIMIT 1) WHERE facility_id IS NULL;
+UPDATE departments     SET facility_id = (SELECT id FROM facilities ORDER BY id LIMIT 1) WHERE facility_id IS NULL;
+UPDATE categories      SET facility_id = (SELECT id FROM facilities ORDER BY id LIMIT 1) WHERE facility_id IS NULL;
+UPDATE products        SET facility_id = (SELECT id FROM facilities ORDER BY id LIMIT 1) WHERE facility_id IS NULL;
+UPDATE product_details SET facility_id = (SELECT id FROM facilities ORDER BY id LIMIT 1) WHERE facility_id IS NULL;
+
+-- ------------------------------------------------------------
 -- 商品在庫 (初期在庫の例。バラ個数で保持)
 --   GLU試薬   : ロット/使用期限あり
 --   採血管    : ロット・使用期限なし (空白=商品単位管理)

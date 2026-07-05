@@ -29,7 +29,8 @@ CREATE TABLE suppliers (
     name        VARCHAR(255) NOT NULL,
     kana        VARCHAR(255) NOT NULL DEFAULT '',
     note        TEXT         NOT NULL DEFAULT '',
-    is_active   BOOLEAN      NOT NULL DEFAULT TRUE
+    is_active   BOOLEAN      NOT NULL DEFAULT TRUE,
+    facility_id BIGINT
 );
 COMMENT ON TABLE  suppliers        IS '問屋マスタ';
 COMMENT ON COLUMN suppliers.name   IS '名称';
@@ -44,7 +45,8 @@ CREATE TABLE makers (
     kana            VARCHAR(255) NOT NULL DEFAULT '',
     jan_maker_code  VARCHAR(32)  NOT NULL DEFAULT '',
     note            TEXT         NOT NULL DEFAULT '',
-    is_active       BOOLEAN      NOT NULL DEFAULT TRUE
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    facility_id     BIGINT
 );
 COMMENT ON TABLE  makers                 IS 'メーカーマスタ';
 COMMENT ON COLUMN makers.name            IS '名称';
@@ -59,7 +61,8 @@ CREATE TABLE departments (
     name        VARCHAR(255) NOT NULL,
     kana        VARCHAR(255) NOT NULL DEFAULT '',
     note        TEXT         NOT NULL DEFAULT '',
-    is_active   BOOLEAN      NOT NULL DEFAULT TRUE
+    is_active   BOOLEAN      NOT NULL DEFAULT TRUE,
+    facility_id BIGINT
 );
 COMMENT ON TABLE  departments      IS '部門マスタ';
 COMMENT ON COLUMN departments.name IS '名称';
@@ -73,7 +76,8 @@ CREATE TABLE categories (
     name        VARCHAR(255) NOT NULL,
     kana        VARCHAR(255) NOT NULL DEFAULT '',
     note        TEXT         NOT NULL DEFAULT '',
-    is_active   BOOLEAN      NOT NULL DEFAULT TRUE
+    is_active   BOOLEAN      NOT NULL DEFAULT TRUE,
+    facility_id BIGINT
 );
 COMMENT ON TABLE  categories      IS '分類マスタ';
 COMMENT ON COLUMN categories.name IS '名称';
@@ -137,7 +141,8 @@ CREATE TABLE products (
     management_code     VARCHAR(64)  NOT NULL DEFAULT '',
     qc_target_flag      BOOLEAN      NOT NULL DEFAULT FALSE,
     note                TEXT         NOT NULL DEFAULT '',
-    is_active           BOOLEAN      NOT NULL DEFAULT TRUE
+    is_active           BOOLEAN      NOT NULL DEFAULT TRUE,
+    facility_id         BIGINT
 );
 COMMENT ON TABLE  products                 IS '商品マスター';
 COMMENT ON COLUMN products.name            IS '名称';
@@ -167,7 +172,8 @@ CREATE TABLE product_details (
     maker_id            BIGINT      REFERENCES makers(id),
     supplier_id         BIGINT      REFERENCES suppliers(id),
     barcode_issue_flag  BOOLEAN     NOT NULL DEFAULT FALSE,
-    note                TEXT        NOT NULL DEFAULT ''
+    note                TEXT        NOT NULL DEFAULT '',
+    facility_id         BIGINT
 );
 COMMENT ON TABLE  product_details                    IS '商品詳細マスター(日付管理で1商品に複数設定)';
 COMMENT ON COLUMN product_details.product_id         IS '商品ID';
@@ -188,6 +194,20 @@ COMMENT ON COLUMN product_details.barcode_issue_flag IS 'バーコード発行�
 COMMENT ON COLUMN product_details.note               IS '備考';
 
 CREATE INDEX idx_product_details_product ON product_details(product_id);
+
+-- 施設別管理(マルチテナント) Step2: 各マスタの所属施設(facilities は上部で定義済み)
+ALTER TABLE suppliers       ADD CONSTRAINT fk_suppliers_facility       FOREIGN KEY (facility_id) REFERENCES facilities(id);
+ALTER TABLE makers          ADD CONSTRAINT fk_makers_facility          FOREIGN KEY (facility_id) REFERENCES facilities(id);
+ALTER TABLE departments     ADD CONSTRAINT fk_departments_facility     FOREIGN KEY (facility_id) REFERENCES facilities(id);
+ALTER TABLE categories      ADD CONSTRAINT fk_categories_facility      FOREIGN KEY (facility_id) REFERENCES facilities(id);
+ALTER TABLE products        ADD CONSTRAINT fk_products_facility        FOREIGN KEY (facility_id) REFERENCES facilities(id);
+ALTER TABLE product_details ADD CONSTRAINT fk_product_details_facility FOREIGN KEY (facility_id) REFERENCES facilities(id);
+CREATE INDEX idx_suppliers_facility       ON suppliers(facility_id);
+CREATE INDEX idx_makers_facility          ON makers(facility_id);
+CREATE INDEX idx_departments_facility     ON departments(facility_id);
+CREATE INDEX idx_categories_facility      ON categories(facility_id);
+CREATE INDEX idx_products_facility        ON products(facility_id);
+CREATE INDEX idx_product_details_facility ON product_details(facility_id);
 
 
 -- ============================================================
