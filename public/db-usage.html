@@ -6,19 +6,22 @@
   <title>DB使用量 | 試薬在庫管理システム</title>
   <link rel="stylesheet" href="/app.css" />
   <style>
-    .kpi { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-end; }
-    .kpi .big { font-size: 2.2rem; font-weight: 800; line-height: 1.1; }
-    .kpi .sub { color: #667; font-size: 0.85rem; }
-    .barrow { display: grid; grid-template-columns: 180px 1fr 150px; align-items: center; gap: 10px; padding: 4px 0; }
+    .controls { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-end; }
+    .seg { display: inline-flex; border: 1px solid #cdd5e0; border-radius: 8px; overflow: hidden; }
+    .seg button { border: none; background: transparent; padding: 6px 16px; cursor: pointer; font-weight: 700; color: #556; }
+    .seg button.on { background: #4a90d9; color: #fff; }
+    .kpi { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-end; margin-top: 4px; }
+    .kpi .big { font-size: 2.1rem; font-weight: 800; line-height: 1.1; }
+    .kpi .sub { color: #667; font-size: 0.82rem; }
+    .barrow { display: grid; grid-template-columns: 170px 1fr 160px; align-items: center; gap: 10px; padding: 4px 0; }
     .barrow .nm { font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .bartrack { background: rgba(120,140,170,0.15); border-radius: 6px; height: 20px; overflow: hidden; }
     .barfill { height: 100%; background: linear-gradient(90deg, #4a90d9, #6aa9e6); border-radius: 6px; min-width: 2px; }
     .barval { text-align: right; font-size: 0.85rem; color: #445; white-space: nowrap; }
-    table.usage th, table.usage td { text-align: right; }
-    table.usage th:first-child, table.usage td:first-child { text-align: left; }
+    .note { font-size: 0.82rem; color: #8a6d3b; background: #fcf8e3; border: 1px solid #f5e79e; border-radius: 6px; padding: 6px 10px; margin-top: 8px; }
     @media (prefers-color-scheme: dark) {
-      .kpi .sub { color: #9aa4b2; }
-      .barval { color: #cbd3dd; }
+      .kpi .sub { color: #9aa4b2; } .barval { color: #cbd3dd; } .seg button { color: #aab3c0; }
+      .note { color: #e6d8a8; background: #3a3320; border-color: #5c5230; }
     }
   </style>
 </head>
@@ -30,39 +33,44 @@
     <div id="area" style="display:none;">
       <div class="card">
         <h2>データベース使用量 <span style="font-size:0.8rem; font-weight:normal; color:#667;" id="genAt"></span></h2>
-        <div class="kpi">
+        <div class="controls">
           <div>
-            <div class="big" id="dbTotal">—</div>
-            <div class="sub">データベース全体の使用量</div>
+            <label>表示する数値</label>
+            <div class="seg" id="segMetric">
+              <button data-v="bytes" class="on" onclick="setMetric('bytes')">容量</button>
+              <button data-v="rows" onclick="setMetric('rows')">件数</button>
+            </div>
           </div>
           <div>
-            <div class="big" id="tblCount" style="font-size:1.4rem;">—</div>
-            <div class="sub">テーブル数</div>
+            <label>施設</label>
+            <select id="facility" onchange="render()" style="width:auto;">
+              <option value="">（全施設）</option>
+            </select>
           </div>
           <div class="spacer"></div>
           <div><button class="secondary" onclick="load()">更新</button></div>
         </div>
+        <div class="kpi">
+          <div><div class="big" id="kpiTotal">—</div><div class="sub" id="kpiTotalLabel">合計</div></div>
+          <div><div class="big" id="kpiTables" style="font-size:1.4rem;">—</div><div class="sub">テーブル数</div></div>
+        </div>
+        <div class="note" id="note" style="display:none;"></div>
         <p class="msg" id="msg"></p>
       </div>
 
       <div class="card">
-        <h2>テーブル別サイズ（大きい順）</h2>
-        <p style="font-size:0.85rem; color:#667; margin-top:0;">バーは最大テーブルを100%とした相対サイズです。（ ）内はDB全体に占める割合。</p>
+        <h2 id="chartTitle">テーブル別（大きい順）</h2>
+        <p style="font-size:0.85rem; color:#667; margin-top:0;">バーは最大テーブルを100%とした相対値です。（ ）内は全体に占める割合。</p>
         <div id="chart"></div>
-      </div>
-
-      <div class="card">
-        <h2>明細</h2>
-        <table class="usage">
-          <thead><tr><th>テーブル</th><th>サイズ</th><th>割合</th><th>行数(概算)</th></tr></thead>
-          <tbody id="tbl"></tbody>
-        </table>
       </div>
     </div>
   </main>
 
   <script src="/common.js"></script>
   <script>
+    let DATA = null;
+    let metric = 'bytes'; // 'bytes' | 'rows'
+
     async function boot() {
       const user = await initPage('dbusage');
       if (!user) return;
@@ -76,43 +84,87 @@
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
     function fmtBytes(b) {
-      if (!b || b < 1024) return (b || 0) + ' B';
+      if (!b || b < 1024) return Math.round(b || 0) + ' B';
       const u = ['KB', 'MB', 'GB', 'TB'];
       let n = b / 1024, i = 0;
       while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
       return n.toFixed(n >= 10 ? 0 : 1) + ' ' + u[i];
     }
+    function fmtVal(v) { return metric === 'bytes' ? fmtBytes(v) : Number(v).toLocaleString() + ' 件'; }
     function pct(part, whole) { return whole > 0 ? (part / whole * 100) : 0; }
+
+    function setMetric(m) {
+      metric = m;
+      document.querySelectorAll('#segMetric button').forEach((b) => b.classList.toggle('on', b.dataset.v === m));
+      render();
+    }
 
     async function load() {
       const { ok, data } = await api('/api/db-usage');
       if (!ok) { setMsg(document.getElementById('msg'), (data && data.error) || '取得に失敗しました', 'error'); return; }
       setMsg(document.getElementById('msg'), '', '');
-      const tables = data.tables || [];
-      const total = data.dbBytes || 0;
-      const max = tables.reduce((m, t) => Math.max(m, t.bytes), 0) || 1;
-
-      document.getElementById('dbTotal').textContent = fmtBytes(total);
-      document.getElementById('tblCount').textContent = tables.length + ' 個';
+      DATA = data;
+      // 施設セレクタ構築
+      const sel = document.getElementById('facility');
+      sel.innerHTML = '<option value="">（全施設）</option>' +
+        (data.facilities || []).map((f) => `<option value="${f.id}">${esc(f.name)}</option>`).join('');
       document.getElementById('genAt').textContent = data.generatedAt
         ? '（' + new Date(data.generatedAt).toLocaleString('ja-JP') + ' 時点）' : '';
+      render();
+    }
 
-      // グラフ(横棒)
-      document.getElementById('chart').innerHTML = tables.map((t) => {
-        const w = pct(t.bytes, max);
-        const share = pct(t.bytes, total).toFixed(1);
+    // 選択中の施設・数値種別に応じた各テーブルの値を返す。null=対象外(施設別に集計できない)
+    function valueOf(t, fid) {
+      if (!fid) return metric === 'bytes' ? t.bytes : t.rows; // 全施設
+      const fr = t.facilityRows ? (t.facilityRows[String(fid)] || 0) : null;
+      if (fr == null) return null;                 // 施設別集計対象外(施設共通テーブル)
+      if (metric === 'rows') return fr;            // 件数は正確
+      return t.rows > 0 ? Math.round(t.bytes * fr / t.rows) : 0; // 容量は概算(レコード数比)
+    }
+
+    function render() {
+      if (!DATA) return;
+      const fid = document.getElementById('facility').value;
+      const rows = (DATA.tables || [])
+        .map((t) => ({ t, v: valueOf(t, fid) }))
+        .filter((x) => x.v != null && x.v > 0)
+        .sort((a, b) => b.v - a.v);
+
+      const total = fid
+        ? rows.reduce((s, x) => s + x.v, 0)
+        : (metric === 'bytes' ? DATA.dbBytes : (DATA.tables || []).reduce((s, t) => s + t.rows, 0));
+      const max = rows.reduce((m, x) => Math.max(m, x.v), 0) || 1;
+
+      // KPI
+      document.getElementById('kpiTotal').textContent = fmtVal(total);
+      document.getElementById('kpiTotalLabel').textContent =
+        (fid ? '選択施設の' : 'DB全体の') + (metric === 'bytes' ? '容量' : 'レコード件数') + (fid && metric === 'bytes' ? '（概算）' : '');
+      document.getElementById('kpiTables').textContent = rows.length + ' 個';
+      document.getElementById('chartTitle').textContent =
+        (metric === 'bytes' ? '容量' : '件数') + ' テーブル別（大きい順）';
+
+      // 注意書き
+      const note = document.getElementById('note');
+      if (fid && metric === 'bytes') {
+        note.style.display = 'block';
+        note.textContent = '※ 施設別の容量はレコード数の比率による概算です（物理サイズはテーブル単位のためDB全体でのみ正確です）。正確に比較したい場合は「件数」でご覧ください。';
+      } else if (fid && metric === 'rows') {
+        note.style.display = 'block';
+        note.textContent = '※ 施設に紐づけられないテーブル（施設マスタ・マイグレーション履歴・発注/入庫予定など）は施設別集計の対象外のため表示されません。';
+      } else {
+        note.style.display = 'none';
+      }
+
+      // グラフ
+      document.getElementById('chart').innerHTML = rows.map(({ t, v }) => {
+        const w = pct(v, max);
+        const share = pct(v, total).toFixed(1);
         return `<div class="barrow">
-          <div class="nm" title="${esc(t.name)}">${esc(t.name)}</div>
+          <div class="nm" title="${esc(t.label)}（${esc(t.name)}）">${esc(t.label)}</div>
           <div class="bartrack"><div class="barfill" style="width:${w.toFixed(1)}%;"></div></div>
-          <div class="barval">${fmtBytes(t.bytes)}（${share}%）</div>
+          <div class="barval">${fmtVal(v)}（${share}%）</div>
         </div>`;
-      }).join('') || '<p>テーブルがありません。</p>';
-
-      // 明細テーブル
-      document.getElementById('tbl').innerHTML = tables.map((t) =>
-        `<tr><td>${esc(t.name)}</td><td>${fmtBytes(t.bytes)}</td>` +
-        `<td>${pct(t.bytes, total).toFixed(1)}%</td><td>${Number(t.rows).toLocaleString()}</td></tr>`
-      ).join('') || '<tr><td colspan="4">データがありません。</td></tr>';
+      }).join('') || '<p>表示できるデータがありません。</p>';
     }
 
     boot();
