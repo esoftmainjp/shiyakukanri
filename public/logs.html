@@ -53,7 +53,7 @@
         <thead><tr>
           <th style="width:150px;">日時</th><th style="width:130px;">ユーザー</th>
           <th style="width:90px;">操作</th><th style="width:110px;">対象</th>
-          <th style="width:150px;">対象名</th><th>内容</th>
+          <th>対象名</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -164,99 +164,19 @@
       const p = (n) => String(n).padStart(2, '0');
       return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
     }
-    function jsonBlock(label, obj) {
-      if (obj == null) return '';
-      let text;
-      try { text = JSON.stringify(obj, null, 2); } catch (e) { text = String(obj); }
-      return `<div>${label}<pre>${esc(text)}</pre></div>`;
-    }
-
-    // ===== 内容の日本語整形(一般ユーザー向け表示) =====
-    const KEY_LABELS = {
-      name: '名称', kana: 'カナ', note: '備考', is_active: '有効', login_id: 'ログインID', user_type: 'タイプ',
-      department_id: '部門', category_id: '分類', management_code: '管理コード', qc_target_flag: '試薬管理対象',
-      product_id: '商品ID', supplier_id: '問屋ID', maker_id: 'メーカーID', product_detail_id: '商品詳細ID',
-      lot_number: 'ロット', expiry_date: '使用期限', unit_price: '単価', pack_size: '梱包数',
-      quantity_unit: '数量単位', pack_unit: '梱包単位', spec: '規格', jan_code: 'JANコード',
-      test_count: 'テスト数', min_quantity: '最低個数', order_quantity: '発注数',
-      stock_quantity: '在庫数', movementType: '区分', reason: '理由',
-      receipt_date: '入庫日', issue_date: '出庫日', order_date: '発注日', order_status: '状態',
-      receiptDate: '入庫日', issueDate: '出庫日', detailCount: '明細件数',
-      canceled_flag: 'キャンセル', held_flag: '保留', barcode_issue_flag: 'バーコード発行',
-      file: 'ファイル', count: '件数', detail: '内容', via: '経由',
-      password_changed: 'パスワード変更', apply_start_date: '適用開始日', apply_end_date: '適用終了日',
-    };
-    const MOVE_LABEL = { adjust: '在庫調整', disposal: '廃棄', return: '返品', receipt: '入庫', issue: '出庫' };
-    const OSTATUS_LABEL = { unordered: '未発注', ordered: '発注済み', received: '入庫済み', canceled: 'キャンセル' };
-    const USER_TYPE_LABEL2 = { superadmin: '全体管理者', admin: '管理者', general: '一般', supplier: '問屋' };
-
-    function fmtLogVal(k, v) {
-      if (v == null || v === '') return '(なし)';
-      if (k === 'is_active') return v ? '有効' : '無効';
-      if (['qc_target_flag', 'barcode_issue_flag', 'canceled_flag', 'held_flag', 'password_changed', 'orderPlanCreated'].includes(k)) return v ? 'はい' : 'いいえ';
-      if (k === 'movementType') return MOVE_LABEL[v] || v;
-      if (k === 'order_status') return OSTATUS_LABEL[v] || v;
-      if (k === 'user_type') return USER_TYPE_LABEL2[v] || v;
-      if (Array.isArray(v)) return v.length ? (v.slice(0, 5).join(', ') + (v.length > 5 ? ' 他' : '')) : '(なし)';
-      if (typeof v === 'object') { try { return JSON.stringify(v); } catch (e) { return String(v); } }
-      return String(v);
-    }
-    function logPairs(obj, skip) {
-      if (!obj || typeof obj !== 'object') return [];
-      return Object.entries(obj)
-        .filter(([k]) => !(skip || []).includes(k))
-        .map(([k, v]) => `${KEY_LABELS[k] || k}: ${fmtLogVal(k, v)}`);
-    }
-    // ログ1件を一般ユーザー向けの文章にする
-    function describeLog(r) {
-      const op = r.operation_type;
-      const a = r.after_data, b = r.before_data;
-      if (op === 'ログイン') return 'ログインしました';
-      if (op === 'CSV出力') return `${a && a.file ? '「' + a.file + '」' : 'データ'}を出力しました${a && a.count != null ? `（${a.count}件）` : ''}`;
-      if (op === 'バーコード印刷') return `バーコードを印刷しました${a && a.count != null ? `（${a.count}件）` : ''}`;
-      if (op === '印刷') return `印刷しました${a && a.file ? `（${a.file}）` : (a && a.count != null ? `（${a.count}件）` : '')}`;
-      if (op === '在庫調整') {
-        const bq = b && b.stock_quantity != null ? b.stock_quantity : '';
-        const aq = a && a.stock_quantity != null ? a.stock_quantity : '';
-        const mv = a && a.movementType ? (MOVE_LABEL[a.movementType] || a.movementType) : '調整';
-        const rs = a && a.reason ? `（理由: ${a.reason}）` : '';
-        const lot = a && a.lotNumber ? ` / ロット: ${a.lotNumber}` : '';
-        return `${mv}: 在庫 ${bq} → ${aq}${lot}${rs}`;
-      }
-      if (a && a.password_changed) return 'パスワードを変更しました';
-      // 汎用: 変更後(主)。無ければ変更前。登録/削除でデータが無ければ定型文。
-      let ps = logPairs(a, ['password_changed']);
-      if (!ps.length) ps = logPairs(b, ['password_changed']);
-      if (!ps.length) {
-        if (op === '登録') return '登録しました';
-        if (op === '削除') return '削除しました';
-        if (op === '更新') return '更新しました';
-        return '-';
-      }
-      return ps.join(' / ');
-    }
 
     function render() {
       const tbody = document.querySelector('#logTbl tbody');
       if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6">該当するログがありません。</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5">該当するログがありません。</td></tr>';
       } else {
-        tbody.innerHTML = rows.map((r, i) => {
-          const hasDetail = r.before_data != null || r.after_data != null;
-          // 内容は日本語の要約を既定表示。生データ(JSON)は「詳細」で任意表示。
-          const summary = `<span>${esc(describeLog(r))}</span>`;
-          const detailBtn = hasDetail
-            ? ` <button class="secondary" style="padding:1px 7px; font-size:0.75rem;" onclick="toggleDetail(${i})">詳細</button>`
-            : '';
+        tbody.innerHTML = rows.map((r) => {
           return `<tr>
             <td>${fmtDate(r.created_at)}</td>
             <td>${esc(r.user_name || '(不明)')}</td>
             <td><span class="oppill op-${esc(r.operation_type)}">${esc(r.operation_type) || '-'}</span></td>
             <td>${esc(r.target_table_label || '')}</td>
             <td>${r.target_name ? esc(r.target_name) : (r.target_id == null ? '' : esc(r.target_id))}</td>
-            <td>${summary}${detailBtn}<div class="logdetail" id="detail_${i}" style="display:none;">
-              ${jsonBlock('変更前', r.before_data)}${jsonBlock('変更後', r.after_data)}
-            </div></td>
           </tr>`;
         }).join('');
       }
@@ -266,11 +186,6 @@
       document.getElementById('pageInfo').textContent = `${start}〜${end} / 全${total}件`;
       document.getElementById('prevBtn').disabled = offset <= 0;
       document.getElementById('nextBtn').disabled = end >= total;
-    }
-
-    function toggleDetail(i) {
-      const el = document.getElementById('detail_' + i);
-      if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
     }
 
     function pageMove(dir) {
