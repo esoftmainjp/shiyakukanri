@@ -171,7 +171,14 @@
         } else if (def.type === 'checkbox') {
           inner += `<input type="checkbox" id="fld_${def.key}" />`;
         } else {
-          inner += `<input type="${def.type}" id="fld_${def.key}" />`;
+          // ブラウザの自動入力(オートフィル)抑止。特にログインID・パスワードは
+          // フォーカスするまで readonly にして自動入力されないようにする。
+          let attrs = ' autocomplete="off"';
+          if (def.key === 'password' || def.key === 'login_id') {
+            const ac = def.key === 'password' ? 'new-password' : 'off';
+            attrs = ` autocomplete="${ac}" readonly onfocus="this.removeAttribute('readonly')"`;
+          }
+          inner += `<input type="${def.type}" id="fld_${def.key}"${attrs} />`;
         }
         div.innerHTML = inner;
         area.appendChild(div);

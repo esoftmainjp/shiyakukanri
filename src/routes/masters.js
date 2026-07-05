@@ -112,6 +112,9 @@ router.post('/:type', async (req, res) => {
     if (t.table === 'users') {
       if (!body.password) return res.status(400).json({ error: 'パスワードは必須です' });
       if (!isEmail(body.login_id)) return res.status(400).json({ error: 'ログインIDはメールアドレス形式で入力してください' });
+      // ログインIDは全施設で重複不可。事前チェックで分かりやすく案内。
+      const dup = await pool.query('SELECT 1 FROM users WHERE login_id = $1', [body.login_id]);
+      if (dup.rowCount) return res.status(400).json({ error: 'このログインID(メール)は既に使用されています' });
       cols.push('password_hash');
       vals.push(bcrypt.hashSync(String(body.password), 10));
       cols.push('password_updated_at');
@@ -132,6 +135,10 @@ router.post('/:type', async (req, res) => {
     res.status(201).json({ id: rows[0].id });
   } catch (err) {
     console.error('マスター登録エラー:', err.message);
+    if (err.code === '23505') {
+      const msg = /login_id/.test(err.constraint || '') ? 'このログインID(メール)は既に使用されています' : '同じ値が既に登録されています（重複）';
+      return res.status(400).json({ error: msg });
+    }
     res.status(400).json({ error: err.message });
   }
 });
@@ -142,8 +149,12 @@ router.put('/:type/:id', async (req, res) => {
   const scope = facilityScope(req);
   const body = req.body || {};
   try {
-    if (t.table === 'users' && body.login_id !== undefined && !isEmail(body.login_id)) {
-      return res.status(400).json({ error: 'ログインIDはメールアドレス形式で入力してください' });
+    if (t.table === 'users' && body.login_id !== undefined) {
+      if (!isEmail(body.login_id)) {
+        return res.status(400).json({ error: 'ログインIDはメールアドレス形式で入力してください' });
+      }
+      const dup = await pool.query('SELECT 1 FROM users WHERE login_id = $1 AND id <> $2', [body.login_id, req.params.id]);
+      if (dup.rowCount) return res.status(400).json({ error: 'このログインID(メール)は既に使用されています' });
     }
     const sets = [];
     const vals = [];
@@ -190,6 +201,10 @@ router.put('/:type/:id', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('マスター更新エラー:', err.message);
+    if (err.code === '23505') {
+      const msg = /login_id/.test(err.constraint || '') ? 'このログインID(メール)は既に使用されています' : '同じ値が既に登録されています（重複）';
+      return res.status(400).json({ error: msg });
+    }
     res.status(400).json({ error: err.message });
   }
 });
