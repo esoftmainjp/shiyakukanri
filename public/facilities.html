@@ -5,6 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>施設管理 | 試薬在庫管理システム</title>
   <link rel="stylesheet" href="/app.css" />
+  <style>
+    .statusbadge {
+      display: inline-block; padding: 2px 14px; border-radius: 12px;
+      font-size: 0.85rem; font-weight: 700;
+    }
+    .statusbadge.on  { background: #e9f6ec; color: #2b7a3b; border: 1px solid #b9e2c4; }
+    .statusbadge.off { background: #fdecea; color: #b23b3b; border: 1px solid #f2c2bd; }
+    /* 無効施設の行は薄く表示 */
+    #tbl tr.facinactive td { background: #f7f7f8; color: #98a0aa; }
+    #tbl tr.facinactive input { color: #98a0aa; }
+  </style>
 </head>
 <body>
   <header></header>
@@ -58,12 +69,14 @@
       const tbody = document.querySelector('#tbl tbody');
       if (!ok) { setMsg(document.getElementById('msg'), data.error || '取得失敗', 'error'); return; }
       const rows = data.facilities || [];
-      tbody.innerHTML = rows.map((f) => `<tr>
+      tbody.innerHTML = rows.map((f) => `<tr class="${f.is_active ? '' : 'facinactive'}">
         <td>${f.id}</td>
         <td><input value="${esc(f.name)}" id="nm_${f.id}" style="width:220px;" /></td>
         <td><input value="${esc(f.kana)}" id="kn_${f.id}" style="width:140px;" /></td>
         <td style="text-align:right;">${f.user_count}</td>
-        <td>${f.is_active ? '有効' : '無効'}</td>
+        <td>${f.is_active
+          ? '<span class="statusbadge on">有効</span>'
+          : '<span class="statusbadge off">無効</span>'}</td>
         <td style="white-space:nowrap;">
           <button class="secondary" style="padding:4px 10px; font-size:0.82rem;" onclick="saveFacility(${f.id})">保存</button>
           <button class="secondary" style="padding:4px 10px; font-size:0.82rem;" onclick="toggleFacility(${f.id}, ${f.is_active ? 'false' : 'true'})">${f.is_active ? '無効化' : '有効化'}</button>
