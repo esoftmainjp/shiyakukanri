@@ -82,52 +82,77 @@ function escHeader(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// ナビ要素の生成ヘルパー
+function mkLink(k, href, label) { return { type: 'link', k, href, label }; }
+function mkGroup(label, items) { return { type: 'group', label, items }; }
+function renderNavLink(m, activeKey) {
+  const ext = /\.pdf(\?|$)/.test(m.href) ? ' target="_blank" rel="noopener"' : '';
+  return `<a href="${m.href}"${ext} class="${m.k === activeKey ? 'active' : ''}">${escHeader(m.label)}</a>`;
+}
+function renderNavGroup(g, activeKey) {
+  const active = g.items.some(([k]) => k === activeKey);
+  const links = g.items.map(([k, href, label]) => renderNavLink({ k, href, label }, activeKey)).join('');
+  return `<div class="navgroup">` +
+    `<button type="button" class="navtrigger${active ? ' active' : ''}" onclick="toggleNav(event)">${escHeader(g.label)} <span class="caret">▾</span></button>` +
+    `<div class="navmenu">${links}</div></div>`;
+}
+// メニュー開閉(クリックで開き、他は閉じる)
+function toggleNav(ev) {
+  ev.stopPropagation();
+  const grp = ev.currentTarget.closest('.navgroup');
+  const wasOpen = grp.classList.contains('open');
+  document.querySelectorAll('.navgroup.open').forEach((g) => g.classList.remove('open'));
+  if (!wasOpen) grp.classList.add('open');
+}
+document.addEventListener('click', () => {
+  document.querySelectorAll('.navgroup.open').forEach((g) => g.classList.remove('open'));
+});
+
 function renderHeader(user, activeKey) {
   const header = document.querySelector('header');
   if (!header) return;
-  // 権限別のメニュー
-  let nav;
+
+  // 権限別のメインメニュー(直リンク or グループ)
+  const main = [];
   if (user.userType === 'superadmin') {
-    // 全体管理者: 施設管理が中心。施設を選択中はその施設のマスターを編集できる
-    // (在庫・入出庫など運用画面へのアクセスは後続ステップで対応)。
     const facSelected = currentMe && currentMe.activeFacilityId != null;
-    nav = [['facilities', '/facilities.html', '施設管理']];
-    if (facSelected) nav.push(['masters', '/masters.html', 'マスター編集']);
-    nav.push(['device', '/device-settings.html', '端末設定']);
-    nav.push(['password', '/password.html', 'パスワード変更']);
-    nav.push(['manual', '/manual.pdf', '取扱説明書']);
+    main.push(mkLink('facilities', '/facilities.html', '施設管理'));
+    if (facSelected) main.push(mkLink('masters', '/masters.html', 'マスター編集'));
   } else if (user.userType === 'supplier') {
-    nav = [
-      ['dashboard', '/', 'ホーム'],
-      ['receipts', '/receipts.html', '入庫'],
-      ['orders', '/orders.html', '発注'],
-      ['device', '/device-settings.html', '端末設定'],
-      ['password', '/password.html', 'パスワード変更'],
-      ['manual', '/manual.pdf', '取扱説明書'],
-    ];
+    main.push(mkLink('dashboard', '/', 'ホーム'));
+    main.push(mkLink('receipts', '/receipts.html', '入庫'));
+    main.push(mkLink('orders', '/orders.html', '発注'));
   } else {
-    nav = [
-      ['dashboard', '/', 'ホーム'],
-      ['receipts', '/receipts.html', '入庫'],
-      ['issues', '/issues.html', '出庫'],
-      ['orders', '/orders.html', '発注'],
+    main.push(mkLink('dashboard', '/', 'ホーム'));
+    main.push(mkLink('receipts', '/receipts.html', '入庫'));
+    main.push(mkLink('issues', '/issues.html', '出庫'));
+    main.push(mkLink('orders', '/orders.html', '発注'));
+    main.push(mkGroup('在庫', [
       ['inventory', '/inventory.html', '在庫管理'],
       ['expiry', '/expiry.html', '使用期限'],
       ['useend', '/use-end.html', '使用終了日'],
       ['labels', '/labels.html', 'バーコード印刷'],
+    ]));
+    main.push(mkGroup('履歴・集計', [
       ['history', '/history.html', '履歴'],
       ['reports', '/reports.html', '集計'],
       ['ledger', '/ledger.html', '試薬台帳'],
-    ];
+    ]));
     if (user.userType === 'admin') {
-      nav.push(['masters', '/masters.html', 'マスター編集']);
-      nav.push(['logs', '/logs.html', '操作ログ']);
-      nav.push(['settings', '/settings.html', '施設設定']);
+      main.push(mkGroup('管理', [
+        ['masters', '/masters.html', 'マスター編集'],
+        ['logs', '/logs.html', '操作ログ'],
+        ['settings', '/settings.html', '施設設定'],
+      ]));
     }
-    nav.push(['device', '/device-settings.html', '端末設定']);
-    nav.push(['password', '/password.html', 'パスワード変更']);
-    nav.push(['manual', '/manual.pdf', '取扱説明書']);
   }
+
+  // アカウントメニュー(ユーザー名の下に集約)
+  const accountItems = [
+    ['device', '/device-settings.html', '端末設定'],
+    ['password', '/password.html', 'パスワード変更'],
+    ['manual', '/manual.pdf', '取扱説明書'],
+  ];
 
   // 施設表示(全体管理者はセレクタ、それ以外は所属施設名)
   const me = currentMe || {};
@@ -137,21 +162,24 @@ function renderHeader(user, activeKey) {
       (me.facilities || []).map((f) =>
         `<option value="${f.id}"${String(me.activeFacilityId) === String(f.id) ? ' selected' : ''}>${escHeader(f.name)}</option>`)
     ).join('');
-    facilityHtml = `<span class="facility" style="margin-right:10px;">施設:<select onchange="activateFacility(this.value)" style="margin-left:4px; width:auto;">${opts}</select></span>`;
+    facilityHtml = `<span class="facility">施設:<select onchange="activateFacility(this.value)" style="margin-left:4px; width:auto;">${opts}</select></span>`;
   } else if (me.facilityName) {
-    facilityHtml = `<span class="facility" style="margin-right:10px; color:#375;">施設: <strong>${escHeader(me.facilityName)}</strong></span>`;
+    facilityHtml = `<span class="facility">施設: <strong>${escHeader(me.facilityName)}</strong></span>`;
   }
+
+  const mainHtml = main.map((m) => (m.type === 'group' ? renderNavGroup(m, activeKey) : renderNavLink(m, activeKey))).join('');
+  const accLinks = accountItems.map(([k, href, label]) => renderNavLink({ k, href, label }, activeKey)).join('') +
+    `<button type="button" class="navitem-btn" onclick="logout()">ログアウト</button>`;
+  const accountHtml = `<div class="navgroup accountgroup">` +
+    `<button type="button" class="navtrigger usertrigger" onclick="toggleNav(event)">${escHeader(user.name)}（${roleLabel(user.userType)}）<span class="caret">▾</span></button>` +
+    `<div class="navmenu navmenu-right">${accLinks}</div></div>`;
 
   header.innerHTML =
     '<h1>試薬在庫管理システム</h1>' +
-    '<nav>' + nav.map(([k, href, label]) => {
-      const ext = /\.pdf(\?|$)/.test(href) ? ' target="_blank" rel="noopener"' : '';
-      return `<a href="${href}"${ext} class="${k === activeKey ? 'active' : ''}">${label}</a>`;
-    }).join('') + '</nav>' +
+    '<nav>' + mainHtml + '</nav>' +
     '<span class="spacer"></span>' +
     facilityHtml +
-    `<span class="user">${escHeader(user.name)}（${roleLabel(user.userType)}）</span>` +
-    '<button class="secondary" onclick="logout()">ログアウト</button>';
+    accountHtml;
 }
 
 // 全体管理者: 操作対象の施設を切り替える

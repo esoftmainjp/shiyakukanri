@@ -91,6 +91,34 @@ header nav a.active {
 }
 header .spacer { flex: 1; }
 header .user { font-size: 0.9rem; color: #45506d; font-weight: 600; }
+header .facility { font-size: 0.9rem; color: #375; margin-right: 6px; }
+
+/* ===== ヘッダーのドロップダウンメニュー ===== */
+.navgroup { position: relative; }
+.navtrigger {
+  color: #45506d; background: transparent; border: none; cursor: pointer;
+  font-size: 0.92rem; padding: 6px 11px; border-radius: 9px; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 4px;
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.navtrigger:hover { background: rgba(255, 255, 255, 0.55); }
+.navtrigger.active { background: #fff; color: #2f4a68; font-weight: 700; box-shadow: 0 2px 6px rgba(80, 105, 150, 0.22); }
+.navtrigger .caret { font-size: 0.68rem; opacity: 0.75; }
+.navtrigger.usertrigger { font-weight: 600; }
+.navmenu {
+  display: none; position: absolute; top: 100%; left: 0; margin-top: 5px; z-index: 60;
+  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(80, 105, 150, 0.28); padding: 5px; min-width: 172px;
+}
+.navmenu-right { left: auto; right: 0; }
+.navgroup.open .navmenu { display: block; }
+.navmenu a, .navmenu .navitem-btn {
+  display: block; width: 100%; text-align: left; box-sizing: border-box;
+  color: #45506d; text-decoration: none; font-size: 0.9rem; font-family: inherit;
+  padding: 8px 12px; border-radius: 7px; background: transparent; border: none; cursor: pointer;
+}
+.navmenu a:hover, .navmenu .navitem-btn:hover { background: var(--th-bg); }
+.navmenu a.active { background: var(--th-bg); font-weight: 700; color: #2f4a68; }
 
 main { max-width: 980px; margin: 24px auto; padding: 0 18px; }
 
