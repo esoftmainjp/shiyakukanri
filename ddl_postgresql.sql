@@ -533,6 +533,7 @@ CREATE INDEX idx_stock_movements_created ON stock_movements(created_at);
 CREATE TABLE operation_logs (
     id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id        BIGINT      REFERENCES users(id),
+    facility_id    BIGINT      REFERENCES facilities(id),  -- 操作が行われた施設(全体管理者の全施設操作はNULL)
     target_table   VARCHAR(64) NOT NULL DEFAULT '',
     target_id      BIGINT,
     operation_type VARCHAR(32) NOT NULL DEFAULT '',  -- 登録/更新/削除/在庫調整/ログイン等
@@ -542,14 +543,16 @@ CREATE TABLE operation_logs (
 );
 COMMENT ON TABLE  operation_logs                IS '操作ログ';
 COMMENT ON COLUMN operation_logs.user_id        IS 'ユーザーID';
+COMMENT ON COLUMN operation_logs.facility_id    IS '操作施設ID(全体管理者の全施設操作はNULL)';
 COMMENT ON COLUMN operation_logs.target_table   IS '対象テーブル';
 COMMENT ON COLUMN operation_logs.target_id      IS '対象ID';
 COMMENT ON COLUMN operation_logs.operation_type IS '操作区分(登録/更新/削除/在庫調整/ログイン等)';
 COMMENT ON COLUMN operation_logs.before_data    IS '変更前データ(JSON)';
 COMMENT ON COLUMN operation_logs.after_data     IS '変更後データ(JSON)';
 
-CREATE INDEX idx_operation_logs_user    ON operation_logs(user_id);
-CREATE INDEX idx_operation_logs_created ON operation_logs(created_at);
+CREATE INDEX idx_operation_logs_user     ON operation_logs(user_id);
+CREATE INDEX idx_operation_logs_facility ON operation_logs(facility_id);
+CREATE INDEX idx_operation_logs_created  ON operation_logs(created_at);
 
 -- 使用記録 (バーコード発行OFFの試薬管理対象品の使用開始/終了を管理)
 -- 独自バーコードを発行しない商品は、GS1-128(JAN)で識別し、出庫時に本記録を作成する。

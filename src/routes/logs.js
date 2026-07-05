@@ -9,12 +9,12 @@ const { facilityScope } = require('../services/facility');
 const router = express.Router();
 
 // 絞り込み条件(WHERE)を構築。GET / と /csv で共用。
-// 施設スコープ: ログを記録したユーザーの所属施設で限定する。
+// 施設スコープ: ログに記録された「操作施設」で限定する(全体管理者の操作も含む)。
 function buildLogFilter(q, scope) {
   const conds = [];
   const params = [];
   const add = (frag, val) => { params.push(val); conds.push(frag.replace('$', '$' + params.length)); };
-  if (scope && !scope.all) add('u.facility_id = $', scope.facilityId);
+  if (scope && !scope.all) add('l.facility_id = $', scope.facilityId);
   if (q.from) add('l.created_at >= $', q.from);
   if (q.to) add("l.created_at < ($::date + INTERVAL '1 day')", q.to);
   if (q.userId) add('l.user_id = $', q.userId);

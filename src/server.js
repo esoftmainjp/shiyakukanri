@@ -9,6 +9,7 @@ const { pool } = require('./db');
 const { writeLog } = require('./services/log');
 const { getSetting } = require('./routes/settings');
 const { facilityScope } = require('./services/facility');
+const { als } = require('./services/context');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,6 +34,14 @@ app.use(
     },
   })
 );
+
+// リクエスト単位の操作施設をコンテキストに保持(操作ログの施設付与に使用)。
+// ここでは現在のセッションの操作施設を格納する(未ログインや未選択はNULL)。
+app.use((req, res, next) => {
+  let facilityId = null;
+  try { facilityId = facilityScope(req).facilityId; } catch (e) { facilityId = null; }
+  als.run({ facilityId }, () => next());
+});
 
 // ------------------------------------------------------------
 // 認証ミドルウェア
@@ -88,6 +97,13 @@ app.post('/api/login', async (req, res) => {
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
       return res.status(401).json({ error: 'ログインIDまたはパスワードが違います' });
     }
+    // 所属施設が無効化されている利用者はログイン不可(全体管理者=施設なしは対象外)
+    if (user.facility_id != null) {
+      const f = await pool.query('SELECT is_active FROM facilities WHERE id = $1', [user.facility_id]);
+      if (f.rowCount === 0 || f.rows[0].is_active === false) {
+        return res.status(403).json({ error: 'この施設は現在利用できません（無効化されています）。管理者にお問い合わせください。' });
+      }
+    }
 
     req.session.user = {
       id: user.id,
@@ -99,7 +115,8 @@ app.post('/api/login', async (req, res) => {
     };
     // 全体管理者は施設を選択して操作(既定は未選択=全施設)。一般ユーザーは所属施設に固定。
     req.session.activeFacilityId = (user.user_type === 'superadmin') ? null : user.facility_id;
-    await writeLog(pool, { userId: user.id, targetTable: 'users', targetId: user.id, operationType: 'ログイン' });
+    // ログインのログはその利用者の施設に記録(コンテキストは未ログイン時のためNULLになるため明示)
+    await writeLog(pool, { userId: user.id, facilityId: user.facility_id, targetTable: 'users', targetId: user.id, operationType: 'ログイン' });
     res.json({ user: req.session.user });
   } catch (err) {
     console.error('ログイン処理エラー:', err);
