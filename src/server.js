@@ -78,7 +78,7 @@ app.post('/api/login', async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT id, user_type, name, login_id, password_hash, must_change_password
+      `SELECT id, user_type, name, login_id, password_hash, must_change_password, facility_id
          FROM users
         WHERE login_id = $1 AND is_active = TRUE`,
       [loginId]
@@ -93,8 +93,11 @@ app.post('/api/login', async (req, res) => {
       userType: user.user_type,
       name: user.name,
       loginId: user.login_id,
+      facilityId: user.facility_id,
       mustChangePassword: user.must_change_password === true,
     };
+    // 全体管理者は施設を選択して操作(既定は未選択=全施設)。一般ユーザーは所属施設に固定。
+    req.session.activeFacilityId = (user.user_type === 'superadmin') ? null : user.facility_id;
     await writeLog(pool, { userId: user.id, targetTable: 'users', targetId: user.id, operationType: 'ログイン' });
     res.json({ user: req.session.user });
   } catch (err) {
@@ -124,7 +127,33 @@ app.get('/api/me', requireLogin, async (req, res) => {
   } catch (err) {
     console.error('パスワード期限判定エラー:', err.message);
   }
-  res.json({ user: req.session.user, passwordExpired, passwordExpiryDays, daysSinceChange });
+
+  // 施設コンテキスト
+  const isSuper = req.session.user.userType === 'superadmin';
+  let facilities = [];
+  let activeFacilityId = req.session.activeFacilityId != null ? req.session.activeFacilityId : null;
+  let facilityName = null;
+  try {
+    if (isSuper) {
+      const { rows } = await pool.query('SELECT id, name FROM facilities WHERE is_active = TRUE ORDER BY name');
+      facilities = rows;
+      if (activeFacilityId != null) {
+        const f = rows.find((r) => String(r.id) === String(activeFacilityId));
+        facilityName = f ? f.name : null;
+      }
+    } else if (req.session.user.facilityId != null) {
+      activeFacilityId = req.session.user.facilityId;
+      const { rows } = await pool.query('SELECT name FROM facilities WHERE id = $1', [activeFacilityId]);
+      facilityName = rows.length ? rows[0].name : null;
+    }
+  } catch (err) {
+    console.error('施設情報取得エラー:', err.message);
+  }
+
+  res.json({
+    user: req.session.user, passwordExpired, passwordExpiryDays, daysSinceChange,
+    isSuperadmin: isSuper, facilities, activeFacilityId, facilityName,
+  });
 });
 
 // 本人のパスワード情報(最終変更日時)を取得
@@ -235,6 +264,7 @@ app.use('/api/inventory', requireLogin, requireRole('admin', 'general'), require
 app.use('/api/barcodes',  requireLogin, requireRole('admin', 'general'), require('./routes/barcodes'));
 app.use('/api/ledger',    requireLogin, requireRole('admin', 'general'), require('./routes/ledger'));
 app.use('/api/reports',   requireLogin, requireRole('admin', 'general'), require('./routes/reports'));
+app.use('/api/facilities', requireLogin, requireRole('superadmin'), require('./routes/facilities'));
 app.use('/api/masters',   requireLogin, requireRole('admin'), require('./routes/masters'));
 app.use('/api/import',    requireLogin, requireRole('admin'), require('./routes/import'));
 app.use('/api/logs',      requireLogin, requireRole('admin'), require('./routes/logs'));

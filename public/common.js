@@ -30,6 +30,9 @@ async function api(path, options = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
+// /api/me の直近レスポンス(施設コンテキスト等)を保持
+let currentMe = null;
+
 // ログイン確認 → 未ログインなら index へ。ヘッダーにユーザー名とナビを描画。
 async function initPage(activeKey) {
   const { ok, data } = await api('/api/me');
@@ -39,6 +42,7 @@ async function initPage(activeKey) {
     }
     return null;
   }
+  currentMe = data;
   // 初回ログイン(パスワード変更要求)時は、変更画面へ誘導する
   if (data.user.mustChangePassword && activeKey !== 'password') {
     location.href = '/password.html';
@@ -63,12 +67,24 @@ function showPasswordExpiryBanner() {
   else document.body.appendChild(bar);
 }
 
+function escHeader(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function renderHeader(user, activeKey) {
   const header = document.querySelector('header');
   if (!header) return;
   // 権限別のメニュー
   let nav;
-  if (user.userType === 'supplier') {
+  if (user.userType === 'superadmin') {
+    // 全体管理者: 施設管理が中心(施設データへのアクセスは順次対応)
+    nav = [
+      ['facilities', '/facilities.html', '施設管理'],
+      ['password', '/password.html', 'パスワード変更'],
+      ['manual', '/manual.pdf', '取扱説明書'],
+    ];
+  } else if (user.userType === 'supplier') {
     nav = [
       ['dashboard', '/', 'ホーム'],
       ['receipts', '/receipts.html', '入庫'],
@@ -98,6 +114,20 @@ function renderHeader(user, activeKey) {
     nav.push(['password', '/password.html', 'パスワード変更']);
     nav.push(['manual', '/manual.pdf', '取扱説明書']);
   }
+
+  // 施設表示(全体管理者はセレクタ、それ以外は所属施設名)
+  const me = currentMe || {};
+  let facilityHtml = '';
+  if (user.userType === 'superadmin') {
+    const opts = ['<option value="">（全施設）</option>'].concat(
+      (me.facilities || []).map((f) =>
+        `<option value="${f.id}"${String(me.activeFacilityId) === String(f.id) ? ' selected' : ''}>${escHeader(f.name)}</option>`)
+    ).join('');
+    facilityHtml = `<span class="facility" style="margin-right:10px;">施設:<select onchange="activateFacility(this.value)" style="margin-left:4px; width:auto;">${opts}</select></span>`;
+  } else if (me.facilityName) {
+    facilityHtml = `<span class="facility" style="margin-right:10px; color:#375;">施設: <strong>${escHeader(me.facilityName)}</strong></span>`;
+  }
+
   header.innerHTML =
     '<h1>試薬在庫管理システム</h1>' +
     '<nav>' + nav.map(([k, href, label]) => {
@@ -105,12 +135,19 @@ function renderHeader(user, activeKey) {
       return `<a href="${href}"${ext} class="${k === activeKey ? 'active' : ''}">${label}</a>`;
     }).join('') + '</nav>' +
     '<span class="spacer"></span>' +
-    `<span class="user">${user.name}（${roleLabel(user.userType)}）</span>` +
+    facilityHtml +
+    `<span class="user">${escHeader(user.name)}（${roleLabel(user.userType)}）</span>` +
     '<button class="secondary" onclick="logout()">ログアウト</button>';
 }
 
+// 全体管理者: 操作対象の施設を切り替える
+async function activateFacility(id) {
+  await api('/api/facilities/activate', { method: 'POST', body: JSON.stringify({ facilityId: id || null }) });
+  location.reload();
+}
+
 function roleLabel(t) {
-  return { admin: '管理者', general: '一般', supplier: '問屋' }[t] || t;
+  return { superadmin: '全体管理者', admin: '管理者', general: '一般', supplier: '問屋' }[t] || t;
 }
 
 async function logout() {

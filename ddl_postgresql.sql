@@ -81,14 +81,26 @@ COMMENT ON COLUMN categories.kana IS 'カナ名称';
 COMMENT ON COLUMN categories.note IS '備考';
 COMMENT ON COLUMN categories.is_active IS '有効フラグ';
 
+-- 10b. 施設マスタ (マルチテナント)
+CREATE TABLE facilities (
+    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name       VARCHAR(255) NOT NULL,
+    kana       VARCHAR(255) NOT NULL DEFAULT '',
+    is_active  BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE  facilities      IS '施設マスタ';
+COMMENT ON COLUMN facilities.name IS '施設名';
+
 -- 11. ユーザーマスタ
 CREATE TABLE users (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_type       VARCHAR(16)  NOT NULL
-                    CHECK (user_type IN ('admin', 'general', 'supplier')),
+                    CHECK (user_type IN ('superadmin', 'admin', 'general', 'supplier')),
+    facility_id     BIGINT       REFERENCES facilities(id),
     name            VARCHAR(255) NOT NULL,
     kana            VARCHAR(255) NOT NULL DEFAULT '',
-    login_id        VARCHAR(64)  NOT NULL,
+    login_id        VARCHAR(255) NOT NULL,
     password_hash   VARCHAR(255) NOT NULL,
     password_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     must_change_password BOOLEAN    NOT NULL DEFAULT FALSE,
@@ -98,8 +110,10 @@ CREATE TABLE users (
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CONSTRAINT uq_users_login_id UNIQUE (login_id)
 );
+CREATE INDEX idx_users_facility ON users(facility_id);
 COMMENT ON TABLE  users                IS 'ユーザーマスタ';
-COMMENT ON COLUMN users.user_type      IS 'タイプ(admin=管理者/general=一般/supplier=問屋)';
+COMMENT ON COLUMN users.user_type      IS 'タイプ(superadmin=全体管理者/admin=管理者/general=一般/supplier=問屋)';
+COMMENT ON COLUMN users.facility_id    IS '所属施設(全体管理者はNULL=全施設)';
 COMMENT ON COLUMN users.name           IS '氏名';
 COMMENT ON COLUMN users.kana           IS 'カナ';
 COMMENT ON COLUMN users.login_id       IS 'ログインID';

@@ -4,6 +4,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
 const { writeLog } = require('../services/log');
+const { isEmail } = require('../services/validate');
 
 const router = express.Router();
 
@@ -59,6 +60,7 @@ router.post('/:type', async (req, res) => {
     // ユーザーはパスワードをハッシュ化して追加
     if (t.table === 'users') {
       if (!body.password) return res.status(400).json({ error: 'パスワードは必須です' });
+      if (!isEmail(body.login_id)) return res.status(400).json({ error: 'ログインIDはメールアドレス形式で入力してください' });
       cols.push('password_hash');
       vals.push(bcrypt.hashSync(String(body.password), 10));
       cols.push('password_updated_at');
@@ -89,6 +91,9 @@ router.put('/:type/:id', async (req, res) => {
   const t = getType(req, res); if (!t) return;
   const body = req.body || {};
   try {
+    if (t.table === 'users' && body.login_id !== undefined && !isEmail(body.login_id)) {
+      return res.status(400).json({ error: 'ログインIDはメールアドレス形式で入力してください' });
+    }
     const sets = [];
     const vals = [];
     for (const c of t.cols) {

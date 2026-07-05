@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>施設管理 | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header></header>
+  <main>
+    <div id="denied" class="card" style="display:none;"><p>この画面は全体管理者のみ利用できます。</p></div>
+
+    <div id="area" style="display:none;">
+      <div class="card">
+        <h2>施設を新規作成</h2>
+        <p style="font-size:0.85rem; color:#555;">施設名と、その施設の初期管理者（ログインID＝メールアドレス）・パスワードを登録します。ログインIDは全施設で重複しないメールアドレスにしてください。作成した管理者は初回ログイン時にパスワード変更が必要です。</p>
+        <div class="row">
+          <div style="flex:2;"><label>施設名 <span style="color:#c0392b;">*</span></label><input id="name" placeholder="例：〇〇病院 中央検査室" /></div>
+          <div style="flex:1;"><label>カナ</label><input id="kana" placeholder="任意" /></div>
+        </div>
+        <div class="row">
+          <div style="flex:2;"><label>初期管理者ログインID（メール） <span style="color:#c0392b;">*</span></label><input id="adminLoginId" placeholder="例：admin@example.com" /></div>
+          <div style="flex:1;"><label>初期パスワード（8文字以上） <span style="color:#c0392b;">*</span></label><input id="adminPassword" type="text" placeholder="8文字以上" /></div>
+        </div>
+        <p class="msg" id="createMsg"></p>
+        <div style="margin-top:6px;"><button onclick="createFacility()">施設を作成</button></div>
+      </div>
+
+      <div class="card">
+        <h2>施設一覧</h2>
+        <p class="msg" id="msg"></p>
+        <table id="tbl">
+          <thead><tr><th>ID</th><th>施設名</th><th>カナ</th><th>ユーザー数</th><th>状態</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    async function boot() {
+      const user = await initPage('facilities');
+      if (!user) return;
+      if (user.userType !== 'superadmin') { document.getElementById('denied').style.display = 'block'; return; }
+      document.getElementById('area').style.display = 'block';
+      load();
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function load() {
+      const { ok, data } = await api('/api/facilities');
+      const tbody = document.querySelector('#tbl tbody');
+      if (!ok) { setMsg(document.getElementById('msg'), data.error || '取得失敗', 'error'); return; }
+      const rows = data.facilities || [];
+      tbody.innerHTML = rows.map((f) => `<tr>
+        <td>${f.id}</td>
+        <td><input value="${esc(f.name)}" id="nm_${f.id}" style="width:220px;" /></td>
+        <td><input value="${esc(f.kana)}" id="kn_${f.id}" style="width:140px;" /></td>
+        <td style="text-align:right;">${f.user_count}</td>
+        <td>${f.is_active ? '有効' : '無効'}</td>
+        <td style="white-space:nowrap;">
+          <button class="secondary" style="padding:4px 10px; font-size:0.82rem;" onclick="saveFacility(${f.id})">保存</button>
+          <button class="secondary" style="padding:4px 10px; font-size:0.82rem;" onclick="toggleFacility(${f.id}, ${f.is_active ? 'false' : 'true'})">${f.is_active ? '無効化' : '有効化'}</button>
+        </td></tr>`).join('') || '<tr><td colspan="6">施設がありません。</td></tr>';
+    }
+
+    async function createFacility() {
+      const msg = document.getElementById('createMsg');
+      const body = {
+        name: document.getElementById('name').value.trim(),
+        kana: document.getElementById('kana').value.trim(),
+        adminLoginId: document.getElementById('adminLoginId').value.trim(),
+        adminPassword: document.getElementById('adminPassword').value,
+      };
+      if (!body.name || !body.adminLoginId || !body.adminPassword) { setMsg(msg, '施設名・管理者ログインID・パスワードは必須です', 'error'); return; }
+      const { ok, data } = await api('/api/facilities', { method: 'POST', body: JSON.stringify(body) });
+      if (!ok) { setMsg(msg, data.error || '作成に失敗しました', 'error'); return; }
+      setMsg(msg, `施設を作成しました。初期管理者：${esc(body.adminLoginId)}（初回ログイン時にパスワード変更が必要です）`, 'ok');
+      ['name', 'kana', 'adminLoginId', 'adminPassword'].forEach((id) => { document.getElementById(id).value = ''; });
+      load();
+    }
+
+    async function saveFacility(id) {
+      const name = document.getElementById('nm_' + id).value.trim();
+      const kana = document.getElementById('kn_' + id).value.trim();
+      const { ok, data } = await api('/api/facilities/' + id, { method: 'PUT', body: JSON.stringify({ name, kana }) });
+      setMsg(document.getElementById('msg'), ok ? '保存しました' : (data.error || '保存失敗'), ok ? 'ok' : 'error');
+      load();
+    }
+
+    async function toggleFacility(id, active) {
+      const { ok, data } = await api('/api/facilities/' + id, { method: 'PUT', body: JSON.stringify({ isActive: active }) });
+      setMsg(document.getElementById('msg'), ok ? '更新しました' : (data.error || '更新失敗'), ok ? 'ok' : 'error');
+      load();
+    }
+
+    boot();
+  </script>
+</body>
+</html>

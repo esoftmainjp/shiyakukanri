@@ -49,10 +49,14 @@ INSERT INTO makers (name, kana, jan_maker_code) VALUES
 --   general  / General@123
 --   supplier / Supplier@123
 -- ------------------------------------------------------------
--- 初期ユーザーは管理者のみ。以降のユーザーは管理者が「マスター編集」から追加する。
+-- 施設マスタ(既定施設)
+INSERT INTO facilities (name) VALUES ('テスト施設');
+
+-- 初期ユーザー: 全体管理者(施設に属さない) + 既定施設の管理者。
 -- 初期パスワードは既知の共通値のため、初回ログイン時に変更を必須とする(must_change_password=TRUE)。
-INSERT INTO users (user_type, name, kana, login_id, password_hash, must_change_password) VALUES
-    ('admin', '管理者', 'カンリシャ', 'admin', crypt('Admin@12345', gen_salt('bf', 10)), TRUE);
+INSERT INTO users (user_type, name, kana, login_id, password_hash, must_change_password, facility_id) VALUES
+    ('superadmin', '全体管理者', 'ゼンタイカンリシャ', 'admin@e-soft.main.jp', crypt('super12345', gen_salt('bf', 10)), TRUE, NULL),
+    ('admin', '管理者', 'カンリシャ', 'admin', crypt('Admin@12345', gen_salt('bf', 10)), TRUE, (SELECT id FROM facilities ORDER BY id LIMIT 1));
 
 -- ------------------------------------------------------------
 -- 商品マスター

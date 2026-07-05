@@ -72,6 +72,12 @@
     async function boot() {
       const user = await api('/api/me');
       if (user.ok) {
+        currentMe = user.data;
+        // 全体管理者はホームではなく施設管理へ(パスワード変更が必要な場合は変更画面へ)
+        if (user.data.user.userType === 'superadmin' && !user.data.user.mustChangePassword) {
+          location.href = '/facilities.html';
+          return;
+        }
         showApp(user.data.user);
         if (user.data.passwordExpired && !user.data.user.mustChangePassword) showPasswordExpiryBanner();
       } else { document.getElementById('loginCard').style.display = 'block'; }

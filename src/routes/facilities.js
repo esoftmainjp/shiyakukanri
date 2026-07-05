@@ -1,0 +1,118 @@
+'use strict';
+
+// 施設マスタ管理API (全体管理者=superadmin のみ。server.js で requireRole('superadmin'))
+// 施設作成時に、その施設の初期管理者(メール+パスワード)も同時に作成する。
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const { pool, getClient } = require('../db');
+const { writeLog } = require('../services/log');
+const { isEmail } = require('../services/validate');
+
+const router = express.Router();
+
+// 施設一覧(管理者数付き)
+router.get('/', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT f.id, f.name, f.kana, f.is_active, f.created_at,
+              (SELECT COUNT(*) FROM users u WHERE u.facility_id = f.id AND u.is_active = TRUE) AS user_count
+         FROM facilities f
+        ORDER BY f.id`
+    );
+    res.json({ facilities: rows });
+  } catch (err) {
+    console.error('施設一覧エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 施設の新規作成 + 初期管理者の作成
+// POST /  body: { name, kana?, adminLoginId(email), adminPassword }
+router.post('/', async (req, res) => {
+  const { name, kana, adminLoginId, adminPassword } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: '施設名は必須です' });
+  if (!adminLoginId || !adminPassword) return res.status(400).json({ error: '管理者のログインID(メール)とパスワードは必須です' });
+  if (!isEmail(adminLoginId)) return res.status(400).json({ error: 'ログインIDはメールアドレス形式で入力してください' });
+  if (String(adminPassword).length < 8) return res.status(400).json({ error: 'パスワードは8文字以上にしてください' });
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    // ログインID(メール)の重複チェック
+    const dup = await client.query('SELECT 1 FROM users WHERE login_id = $1', [adminLoginId]);
+    if (dup.rowCount > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'このログインID(メール)は既に使用されています' });
+    }
+    const f = await client.query(
+      `INSERT INTO facilities (name, kana) VALUES ($1, $2) RETURNING id, name`,
+      [String(name).trim(), kana ? String(kana) : '']
+    );
+    const facilityId = f.rows[0].id;
+    // 初期管理者(初回ログイン時にパスワード変更必須)
+    const hash = bcrypt.hashSync(String(adminPassword), 10);
+    const u = await client.query(
+      `INSERT INTO users (user_type, facility_id, name, kana, login_id, password_hash, must_change_password)
+       VALUES ('admin', $1, $2, '', $3, $4, TRUE) RETURNING id`,
+      [facilityId, name + ' 管理者', adminLoginId, hash]
+    );
+    await writeLog(client, {
+      userId: req.session.user.id, targetTable: 'facilities', targetId: facilityId, operationType: '登録',
+      after: { name: f.rows[0].name, admin_login_id: adminLoginId },
+    });
+    await client.query('COMMIT');
+    res.status(201).json({ ok: true, facilityId, adminUserId: u.rows[0].id });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('施設作成エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  } finally {
+    client.release();
+  }
+});
+
+// 施設の更新(名称・カナ・有効フラグ)
+// PUT /:id  body: { name?, kana?, isActive? }
+router.put('/:id', async (req, res) => {
+  const { name, kana, isActive } = req.body || {};
+  const sets = [];
+  const params = [];
+  if (name !== undefined) { params.push(String(name)); sets.push(`name = $${params.length}`); }
+  if (kana !== undefined) { params.push(String(kana)); sets.push(`kana = $${params.length}`); }
+  if (isActive !== undefined) { params.push(!!isActive); sets.push(`is_active = $${params.length}`); }
+  if (sets.length === 0) return res.status(400).json({ error: '変更項目がありません' });
+  try {
+    params.push(req.params.id);
+    const r = await pool.query(`UPDATE facilities SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id`, params);
+    if (r.rowCount === 0) return res.status(404).json({ error: '施設が見つかりません' });
+    await writeLog(pool, {
+      userId: req.session.user.id, targetTable: 'facilities', targetId: req.params.id, operationType: '更新',
+      after: { name, kana, is_active: isActive },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('施設更新エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 全体管理者の操作対象施設を切り替え(セッションに保持)。null=全施設
+// POST /activate  body: { facilityId }
+router.post('/activate', async (req, res) => {
+  const fid = req.body && req.body.facilityId;
+  try {
+    if (fid == null || fid === '') {
+      req.session.activeFacilityId = null;
+      return res.json({ ok: true, activeFacilityId: null });
+    }
+    const r = await pool.query('SELECT id FROM facilities WHERE id = $1 AND is_active = TRUE', [fid]);
+    if (r.rowCount === 0) return res.status(404).json({ error: '施設が見つかりません' });
+    req.session.activeFacilityId = Number(fid);
+    res.json({ ok: true, activeFacilityId: Number(fid) });
+  } catch (err) {
+    console.error('施設切替エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+module.exports = router;
