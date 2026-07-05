@@ -216,6 +216,7 @@ router.post('/add-product', async (req, res) => {
   const qty = Math.max(1, Number(req.body && req.body.orderQuantity) || 1);
   if (!productDetailId) return res.status(400).json({ error: '商品詳細IDは必須です' });
   const scope = facilityScope(req);
+  if (scope.all) return res.status(400).json({ error: '対象施設を選択してください' });
   const client = await getClient();
   try {
     await client.query('BEGIN');
@@ -469,6 +470,7 @@ router.post('/:id/details', async (req, res) => {
   }
 
   const scope = facilityScope(req);
+  if (scope.all) return res.status(400).json({ error: '対象施設を選択してください' });
   const client = await getClient();
   try {
     await client.query('BEGIN');

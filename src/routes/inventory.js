@@ -240,6 +240,7 @@ router.post('/movement', async (req, res) => {
   }
 
   const scope = facilityScope(req);
+  if (scope.all) return res.status(400).json({ error: '対象施設を選択してください' });
   const client = await getClient();
   try {
     await client.query('BEGIN');

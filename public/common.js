@@ -108,6 +108,35 @@ document.addEventListener('click', () => {
   document.querySelectorAll('.navgroup.open').forEach((g) => g.classList.remove('open'));
 });
 
+// 施設の運用メニュー(管理者・一般・施設選択中の全体管理者で共通)
+function operationalMenu(includeAdmin) {
+  const m = [
+    mkLink('dashboard', '/', 'ホーム'),
+    mkLink('receipts', '/receipts.html', '入庫'),
+    mkLink('issues', '/issues.html', '出庫'),
+    mkLink('orders', '/orders.html', '発注'),
+    mkGroup('在庫', [
+      ['inventory', '/inventory.html', '在庫管理'],
+      ['expiry', '/expiry.html', '使用期限'],
+      ['useend', '/use-end.html', '使用終了日'],
+      ['labels', '/labels.html', 'バーコード印刷'],
+    ]),
+    mkGroup('履歴・集計', [
+      ['history', '/history.html', '履歴'],
+      ['reports', '/reports.html', '集計'],
+      ['ledger', '/ledger.html', '試薬台帳'],
+    ]),
+  ];
+  if (includeAdmin) {
+    m.push(mkGroup('管理', [
+      ['masters', '/masters.html', 'マスター編集'],
+      ['logs', '/logs.html', '操作ログ'],
+      ['settings', '/settings.html', '施設設定'],
+    ]));
+  }
+  return m;
+}
+
 function renderHeader(user, activeKey) {
   const header = document.querySelector('header');
   if (!header) return;
@@ -117,34 +146,14 @@ function renderHeader(user, activeKey) {
   if (user.userType === 'superadmin') {
     const facSelected = currentMe && currentMe.activeFacilityId != null;
     main.push(mkLink('facilities', '/facilities.html', '施設管理'));
-    if (facSelected) main.push(mkLink('masters', '/masters.html', 'マスター編集'));
+    // 施設を選択中は、その施設の管理者と同等のメニューを表示
+    if (facSelected) operationalMenu(true).forEach((m) => main.push(m));
   } else if (user.userType === 'supplier') {
     main.push(mkLink('dashboard', '/', 'ホーム'));
     main.push(mkLink('receipts', '/receipts.html', '入庫'));
     main.push(mkLink('orders', '/orders.html', '発注'));
   } else {
-    main.push(mkLink('dashboard', '/', 'ホーム'));
-    main.push(mkLink('receipts', '/receipts.html', '入庫'));
-    main.push(mkLink('issues', '/issues.html', '出庫'));
-    main.push(mkLink('orders', '/orders.html', '発注'));
-    main.push(mkGroup('在庫', [
-      ['inventory', '/inventory.html', '在庫管理'],
-      ['expiry', '/expiry.html', '使用期限'],
-      ['useend', '/use-end.html', '使用終了日'],
-      ['labels', '/labels.html', 'バーコード印刷'],
-    ]));
-    main.push(mkGroup('履歴・集計', [
-      ['history', '/history.html', '履歴'],
-      ['reports', '/reports.html', '集計'],
-      ['ledger', '/ledger.html', '試薬台帳'],
-    ]));
-    if (user.userType === 'admin') {
-      main.push(mkGroup('管理', [
-        ['masters', '/masters.html', 'マスター編集'],
-        ['logs', '/logs.html', '操作ログ'],
-        ['settings', '/settings.html', '施設設定'],
-      ]));
-    }
+    operationalMenu(user.userType === 'admin').forEach((m) => main.push(m));
   }
 
   // アカウントメニュー(ユーザー名の下に集約)

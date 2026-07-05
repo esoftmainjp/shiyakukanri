@@ -79,7 +79,7 @@
     async function boot() {
       const user = await initPage('logs');
       if (!user) return;
-      if (user.userType !== 'admin') { location.href = '/'; return; }
+      if (user.userType !== 'admin' && user.userType !== 'superadmin') { location.href = '/'; return; }
       // 既定期間: 直近1ヶ月
       const today = new Date();
       const from = new Date(); from.setMonth(from.getMonth() - 1);

@@ -27,12 +27,13 @@ router.get('/', async (req, res) => {
 
 // 設定を更新 (管理者のみ)。操作施設の設定として保存する。
 router.put('/', async (req, res) => {
-  if (!req.session.user || req.session.user.userType !== 'admin') {
+  const ut = req.session.user && req.session.user.userType;
+  if (ut !== 'admin' && ut !== 'superadmin') {
     return res.status(403).json({ error: 'この操作の権限がありません' });
   }
   const scope = facilityScope(req);
   const fid = scope.facilityId;
-  if (fid == null) return res.status(400).json({ error: '対象施設が特定できません' });
+  if (fid == null) return res.status(400).json({ error: '対象施設を選択してください' });
   const body = req.body || {};
   try {
     for (const [key, value] of Object.entries(body)) {

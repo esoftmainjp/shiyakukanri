@@ -79,7 +79,13 @@
     async function boot() {
       const user = await initPage('settings');
       if (!user) return;
-      if (user.userType !== 'admin') { document.getElementById('denied').style.display = 'block'; return; }
+      const allowed = user.userType === 'admin' || user.userType === 'superadmin';
+      if (!allowed) { document.getElementById('denied').style.display = 'block'; return; }
+      // 全体管理者は対象施設を選択していないと施設設定を編集できない
+      if (user.userType === 'superadmin' && !(currentMe && currentMe.activeFacilityId != null)) {
+        document.querySelector('main').innerHTML = '<div class="card">全体管理者は、画面上部の施設セレクタで対象施設を選択してから施設設定を編集してください。</div>';
+        return;
+      }
       document.getElementById('area').style.display = 'block';
       const { data } = await api('/api/settings');
       const s = data.settings || {};

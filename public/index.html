@@ -73,8 +73,10 @@
       const user = await api('/api/me');
       if (user.ok) {
         currentMe = user.data;
-        // 全体管理者はホームではなく施設管理へ(パスワード変更が必要な場合は変更画面へ)
-        if (user.data.user.userType === 'superadmin' && !user.data.user.mustChangePassword) {
+        // 全体管理者は、施設未選択のときだけ施設管理へ。施設選択中はその施設の
+        // ホーム(ダッシュボード)を表示する。パスワード変更が必要な場合は変更画面へ。
+        if (user.data.user.userType === 'superadmin' && !user.data.user.mustChangePassword
+            && user.data.activeFacilityId == null) {
           location.href = '/facilities.html';
           return;
         }
@@ -93,8 +95,10 @@
     function showApp(user) {
       // 初回ログイン(パスワード変更要求)時は変更画面へ誘導
       if (user && user.mustChangePassword) { location.href = '/password.html'; return; }
-      // 全体管理者はホーム(ダッシュボード)ではなく施設管理へ誘導
-      if (user && user.userType === 'superadmin') { location.href = '/facilities.html'; return; }
+      // 全体管理者は施設未選択のときだけ施設管理へ誘導(施設選択中はダッシュボード)
+      if (user && user.userType === 'superadmin' && !(currentMe && currentMe.activeFacilityId != null)) {
+        location.href = '/facilities.html'; return;
+      }
       document.getElementById('loginCard').style.display = 'none';
       document.getElementById('appArea').style.display = 'block';
       renderHeader(user, 'dashboard');

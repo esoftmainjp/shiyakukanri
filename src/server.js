@@ -264,17 +264,18 @@ app.get('/api/stocks', requireLogin, async (req, res) => {
 //   supplier : 入庫・発注のみ
 app.use('/api/lookup',    requireLogin, require('./routes/lookup'));
 app.use('/api/settings',  requireLogin, require('./routes/settings'));
-app.use('/api/receipts',  requireLogin, requireRole('admin', 'general', 'supplier'), require('./routes/receipts'));
-app.use('/api/orders',    requireLogin, requireRole('admin', 'general', 'supplier'), require('./routes/orders'));
-app.use('/api/issues',    requireLogin, requireRole('admin', 'general'), require('./routes/issues'));
-app.use('/api/inventory', requireLogin, requireRole('admin', 'general'), require('./routes/inventory'));
-app.use('/api/barcodes',  requireLogin, requireRole('admin', 'general'), require('./routes/barcodes'));
-app.use('/api/ledger',    requireLogin, requireRole('admin', 'general'), require('./routes/ledger'));
-app.use('/api/reports',   requireLogin, requireRole('admin', 'general'), require('./routes/reports'));
+// 全体管理者(superadmin)は施設を選択している間、その施設の管理者と同等に操作できる。
+app.use('/api/receipts',  requireLogin, requireRole('admin', 'general', 'supplier', 'superadmin'), require('./routes/receipts'));
+app.use('/api/orders',    requireLogin, requireRole('admin', 'general', 'supplier', 'superadmin'), require('./routes/orders'));
+app.use('/api/issues',    requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/issues'));
+app.use('/api/inventory', requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/inventory'));
+app.use('/api/barcodes',  requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/barcodes'));
+app.use('/api/ledger',    requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/ledger'));
+app.use('/api/reports',   requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/reports'));
 app.use('/api/facilities', requireLogin, requireRole('superadmin'), require('./routes/facilities'));
 app.use('/api/masters',   requireLogin, requireRole('admin', 'superadmin'), require('./routes/masters'));
 app.use('/api/import',    requireLogin, requireRole('admin', 'superadmin'), require('./routes/import'));
-app.use('/api/logs',      requireLogin, requireRole('admin'), require('./routes/logs'));
+app.use('/api/logs',      requireLogin, requireRole('admin', 'superadmin'), require('./routes/logs'));
 
 // ------------------------------------------------------------
 // 取扱説明書(PDF)。ログインユーザーが閲覧可能。
