@@ -4,11 +4,14 @@
 //   node scripts/migrate.js          … DDLのみ実行
 //   node scripts/migrate.js --seed   … seedのみ実行
 //   node scripts/migrate.js --all    … DDL → seed の順で実行
+//   node scripts/migrate.js --file <path> … 任意SQLを1本実行
+//   node scripts/migrate.js --sync   … migrations/ の未適用分を追跡適用(冪等)
 
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const { pool } = require('../src/db');
+const { syncMigrations } = require('./migrate-runner');
 
 const ROOT = path.join(__dirname, '..');
 const DDL_FILE = path.join(ROOT, 'ddl_postgresql.sql');
@@ -26,6 +29,20 @@ async function runSqlFile(label, file) {
 
 async function main() {
   const args = process.argv.slice(2);
+
+  // 未適用マイグレーションの追跡適用: node scripts/migrate.js --sync
+  if (args.includes('--sync')) {
+    try {
+      const { applied } = await syncMigrations(pool, (m) => console.log(m));
+      console.log(applied.length ? `適用: ${applied.length}件` : '未適用のマイグレーションはありません(最新)。');
+    } catch (err) {
+      console.error('マイグレーション失敗:', err.message);
+      process.exitCode = 1;
+    } finally {
+      await pool.end();
+    }
+    return;
+  }
 
   // 任意SQLファイルの実行: node scripts/migrate.js --file path/to.sql
   const fileIdx = args.indexOf('--file');
