@@ -36,6 +36,10 @@ const TABLE_LABELS = {
   products: '商品',
   product_details: '商品詳細',
   suppliers: '問屋',
+  makers: 'メーカー',
+  departments: '部門',
+  categories: '分類',
+  facilities: '施設',
   receipts: '入庫',
   receipt_details: '入庫明細',
   issues: '出庫',
@@ -99,13 +103,19 @@ async function attachTargetNames(items) {
 // GET /api/logs/meta
 router.get('/meta', async (req, res) => {
   try {
+    // 施設スコープ: 絞り込み候補(操作種別・対象種別・ユーザー)もその施設のログ/利用者に限定する。
+    const scope = facilityScope(req);
+    const p = [];
+    let facCond = '';
+    if (!scope.all) { p.push(scope.facilityId); facCond = ' AND facility_id = $1'; }
     const ops = await pool.query(
-      `SELECT DISTINCT operation_type FROM operation_logs WHERE operation_type <> '' ORDER BY operation_type`
+      `SELECT DISTINCT operation_type FROM operation_logs WHERE operation_type <> ''${facCond} ORDER BY operation_type`,
+      p
     );
     const tables = await pool.query(
-      `SELECT DISTINCT target_table FROM operation_logs WHERE target_table <> '' ORDER BY target_table`
+      `SELECT DISTINCT target_table FROM operation_logs WHERE target_table <> ''${facCond} ORDER BY target_table`,
+      p
     );
-    const scope = facilityScope(req);
     const uParams = [];
     let uWhere = '';
     if (!scope.all) { uParams.push(scope.facilityId); uWhere = 'WHERE facility_id = $1'; }
@@ -124,24 +134,18 @@ router.get('/meta', async (req, res) => {
   }
 });
 
-// 操作ログのおおよそのデータ容量と件数
+// 操作ログの件数(施設スコープ)。全体管理者が施設未選択なら全施設合計。
 // GET /api/logs/storage
 router.get('/storage', async (req, res) => {
   try {
-    const r = await pool.query(
-      `SELECT COUNT(*) AS c,
-              pg_total_relation_size('operation_logs') AS total_bytes,
-              pg_table_size('operation_logs') AS table_bytes
-         FROM operation_logs`
-    );
-    const row = r.rows[0] || {};
-    res.json({
-      count: Number(row.c || 0),
-      bytes: Number(row.total_bytes || 0),
-      tableBytes: Number(row.table_bytes || 0),
-    });
+    const scope = facilityScope(req);
+    const params = [];
+    let where = '';
+    if (!scope.all) { params.push(scope.facilityId); where = 'WHERE facility_id = $1'; }
+    const r = await pool.query(`SELECT COUNT(*) AS c FROM operation_logs ${where}`, params);
+    res.json({ count: Number((r.rows[0] || {}).c || 0) });
   } catch (err) {
-    console.error('操作ログ容量エラー:', err.message);
+    console.error('操作ログ件数エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
   }
 });
