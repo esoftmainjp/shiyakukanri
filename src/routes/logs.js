@@ -55,6 +55,46 @@ const TABLE_LABELS = {
   usage_report: '使用量集計', monthly_report: '月次推移',
 };
 
+// 対象テーブル→(id配列から)名称を引くSQL。ここに無いテーブルはID表示のまま。
+const NAME_SQL = {
+  suppliers:   'SELECT id, name FROM suppliers   WHERE id = ANY($1::bigint[])',
+  makers:      'SELECT id, name FROM makers       WHERE id = ANY($1::bigint[])',
+  departments: 'SELECT id, name FROM departments  WHERE id = ANY($1::bigint[])',
+  categories:  'SELECT id, name FROM categories   WHERE id = ANY($1::bigint[])',
+  products:    'SELECT id, name FROM products      WHERE id = ANY($1::bigint[])',
+  users:       'SELECT id, name FROM users         WHERE id = ANY($1::bigint[])',
+  facilities:  'SELECT id, name FROM facilities    WHERE id = ANY($1::bigint[])',
+  product_details:
+    "SELECT pd.id, (p.name || CASE WHEN pd.spec <> '' THEN ' ' || pd.spec ELSE '' END) AS name " +
+    'FROM product_details pd JOIN products p ON p.id = pd.product_id WHERE pd.id = ANY($1::bigint[])',
+  order_details:
+    'SELECT od.id, p.name AS name FROM order_details od JOIN products p ON p.id = od.product_id WHERE od.id = ANY($1::bigint[])',
+  barcodes:    'SELECT id, barcode_value AS name FROM barcodes WHERE id = ANY($1::bigint[])',
+  receipts:    "SELECT id, ('入庫 ' || receipt_date) AS name FROM receipts WHERE id = ANY($1::bigint[])",
+  issues:      "SELECT id, ('出庫 ' || issue_date)   AS name FROM issues   WHERE id = ANY($1::bigint[])",
+  orders:      "SELECT id, ('発注 ' || COALESCE(order_date::text, '(未発注)')) AS name FROM orders WHERE id = ANY($1::bigint[])",
+};
+
+// ログ配列に、対象レコードの名称(target_name)を付与する。
+async function attachTargetNames(items) {
+  const byTable = {};
+  for (const r of items) {
+    if (r.target_id == null || !NAME_SQL[r.target_table]) continue;
+    (byTable[r.target_table] ||= new Set()).add(String(r.target_id));
+  }
+  const nameMap = {};
+  for (const [table, idSet] of Object.entries(byTable)) {
+    try {
+      const { rows } = await pool.query(NAME_SQL[table], [[...idSet]]);
+      for (const row of rows) nameMap[`${table}:${row.id}`] = row.name;
+    } catch (e) { /* 名称引き失敗時はID表示にフォールバック */ }
+  }
+  for (const r of items) {
+    r.target_name = (r.target_id != null) ? (nameMap[`${r.target_table}:${r.target_id}`] || null) : null;
+  }
+  return items;
+}
+
 // フィルタ用の候補(操作区分・対象テーブル・ユーザー)
 // GET /api/logs/meta
 router.get('/meta', async (req, res) => {
@@ -138,6 +178,7 @@ router.get('/', async (req, res) => {
       ...r,
       target_table_label: TABLE_LABELS[r.target_table] || r.target_table,
     }));
+    await attachTargetNames(items);
     res.json({ items, total, limit, offset });
   } catch (err) {
     console.error('操作ログ一覧エラー:', err.message);
@@ -162,6 +203,7 @@ router.get('/csv', async (req, res) => {
         LIMIT $${p.length}`,
       p
     );
+    await attachTargetNames(rows);
     const toStr = (v) => (v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : String(v)));
     const data = rows.map((r) => ({
       created_at: r.created_at ? new Date(r.created_at).toISOString().replace('T', ' ').slice(0, 19) : '',
@@ -169,7 +211,7 @@ router.get('/csv', async (req, res) => {
       login_id: r.login_id || '',
       operation_type: r.operation_type || '',
       target_table: TABLE_LABELS[r.target_table] || r.target_table || '',
-      target_id: r.target_id == null ? '' : r.target_id,
+      target_name: r.target_name || (r.target_id == null ? '' : r.target_id),
       before_data: toStr(r.before_data),
       after_data: toStr(r.after_data),
     }));
@@ -179,7 +221,7 @@ router.get('/csv', async (req, res) => {
       { key: 'login_id', label: 'ログインID' },
       { key: 'operation_type', label: '操作' },
       { key: 'target_table', label: '対象' },
-      { key: 'target_id', label: '対象ID' },
+      { key: 'target_name', label: '対象名' },
       { key: 'before_data', label: '変更前' },
       { key: 'after_data', label: '変更後' },
     ];
