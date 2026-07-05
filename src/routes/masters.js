@@ -32,6 +32,47 @@ function getType(req, res) {
   return t;
 }
 
+// 物理削除時の参照チェック定義(このマスタを参照する側のテーブル・カラム・表示名)。
+// 1件でも参照があれば削除をブロックする。
+const REFERENCES = {
+  suppliers: [
+    { table: 'product_details', col: 'supplier_id', label: '商品詳細' },
+    { table: 'orders', col: 'supplier_id', label: '発注' },
+    { table: 'receipts', col: 'supplier_id', label: '入庫' },
+  ],
+  makers: [
+    { table: 'product_details', col: 'maker_id', label: '商品詳細' },
+  ],
+  departments: [
+    { table: 'products', col: 'department_id', label: '商品' },
+  ],
+  categories: [
+    { table: 'products', col: 'category_id', label: '商品' },
+  ],
+  products: [
+    { table: 'product_details', col: 'product_id', label: '商品詳細' },
+    { table: 'product_stocks', col: 'product_id', label: '在庫' },
+    { table: 'receipt_details', col: 'product_id', label: '入庫明細' },
+    { table: 'issue_details', col: 'product_id', label: '出庫明細' },
+    { table: 'order_details', col: 'product_id', label: '発注明細' },
+    { table: 'barcodes', col: 'product_id', label: 'バーコード' },
+    { table: 'stock_movements', col: 'product_id', label: '在庫移動' },
+    { table: 'usage_records', col: 'product_id', label: '使用記録' },
+  ],
+  'product-details': [
+    { table: 'receipt_details', col: 'product_detail_id', label: '入庫明細' },
+    { table: 'issue_details', col: 'product_detail_id', label: '出庫明細' },
+    { table: 'order_details', col: 'product_detail_id', label: '発注明細' },
+  ],
+  users: [
+    { table: 'receipts', col: 'user_id', label: '入庫' },
+    { table: 'issues', col: 'user_id', label: '出庫' },
+    { table: 'orders', col: 'user_id', label: '発注' },
+    { table: 'stock_movements', col: 'user_id', label: '在庫移動' },
+    { table: 'operation_logs', col: 'user_id', label: '操作ログ' },
+  ],
+};
+
 // 一覧 (施設スコープ。全体管理者が施設未選択なら全施設横断)
 router.get('/:type', async (req, res) => {
   const t = getType(req, res); if (!t) return;
@@ -161,6 +202,48 @@ router.post('/:type/:id/toggle', async (req, res) => {
   } catch (err) {
     console.error('マスター切替エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 物理削除。既存データから参照されている場合はブロックして理由を返す。
+// DELETE /:type/:id
+router.delete('/:type/:id', async (req, res) => {
+  const t = getType(req, res); if (!t) return;
+  const scope = facilityScope(req);
+  const id = req.params.id;
+  try {
+    // 対象の存在・施設スコープ確認
+    const chkVals = [id];
+    let chkWhere = 'id = $1';
+    if (!scope.all) { chkVals.push(scope.facilityId); chkWhere += ' AND facility_id = $2'; }
+    const exist = await pool.query(`SELECT id FROM ${t.table} WHERE ${chkWhere}`, chkVals);
+    if (exist.rowCount === 0) return res.status(404).json({ error: '対象が見つかりません' });
+
+    // 参照チェック(1件でもあれば削除不可)
+    const used = [];
+    for (const ref of (REFERENCES[req.params.type] || [])) {
+      const c = await pool.query(`SELECT COUNT(*) AS c FROM ${ref.table} WHERE ${ref.col} = $1`, [id]);
+      const n = Number(c.rows[0].c);
+      if (n > 0) used.push(`${ref.label}${n}件`);
+    }
+    if (used.length) {
+      return res.status(409).json({
+        error: `既存データで使用中のため削除できません（${used.join('・')}）。不要な場合は「無効化」してください。`,
+      });
+    }
+
+    const delVals = [id];
+    let delWhere = 'id = $1';
+    if (!scope.all) { delVals.push(scope.facilityId); delWhere += ' AND facility_id = $2'; }
+    const r = await pool.query(`DELETE FROM ${t.table} WHERE ${delWhere} RETURNING id`, delVals);
+    if (r.rowCount === 0) return res.status(404).json({ error: '対象が見つかりません' });
+    await writeLog(pool, {
+      userId: req.session.user.id, targetTable: t.table, targetId: id, operationType: '削除',
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('マスター削除エラー:', err.message);
+    res.status(500).json({ error: err.message || 'サーバーエラー' });
   }
 });
 

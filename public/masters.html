@@ -237,6 +237,16 @@
       loadList();
     }
 
+    // 物理削除。既存データで使用中の場合はサーバーが理由を返しブロックする。
+    async function del(id) {
+      if (!confirm('この行を削除します。よろしいですか？\n（既存データで使用中の場合は削除できません）')) return;
+      const { ok, data } = await api(`/api/masters/${curType()}/${id}`, { method: 'DELETE' });
+      if (!ok) { alert(data.error || '削除できませんでした'); return; }
+      refCache = {};
+      resetForm();
+      loadList();
+    }
+
     let listRows = [];
     let listKeys = [];
     let listRefMaps = {};
@@ -299,7 +309,8 @@
         const editData = JSON.stringify(r).replace(/'/g, '&#39;');
         // 商品一覧には「詳細」ボタン(その商品の商品詳細へ)
         const detailBtn = (t === 'products') ? `<button onclick="showDetails('${r.id}')">詳細</button> ` : '';
-        return `<tr>${tds}<td>${detailBtn}<button class="secondary" onclick='edit(${editData})'>編集</button> ${toggleBtn}</td></tr>`;
+        const delBtn = `<button class="danger" style="padding:4px 10px; font-size:0.82rem;" onclick="del('${r.id}')">削除</button>`;
+        return `<tr>${tds}<td style="white-space:nowrap;">${detailBtn}<button class="secondary" onclick='edit(${editData})'>編集</button> ${toggleBtn} ${delBtn}</td></tr>`;
       }).join('');
     }
     // 商品一覧の「詳細」: 商品詳細に切り替えてその商品で絞り込む
