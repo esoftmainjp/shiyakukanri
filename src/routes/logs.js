@@ -211,7 +211,7 @@ router.get('/csv', async (req, res) => {
       login_id: r.login_id || '',
       operation_type: r.operation_type || '',
       target_table: TABLE_LABELS[r.target_table] || r.target_table || '',
-      target_name: r.target_name || (r.target_id == null ? '' : r.target_id),
+      target_name: (r.target_name && r.target_name !== r.user_name) ? r.target_name : '',
       before_data: toStr(r.before_data),
       after_data: toStr(r.after_data),
     }));
@@ -221,7 +221,7 @@ router.get('/csv', async (req, res) => {
       { key: 'login_id', label: 'ログインID' },
       { key: 'operation_type', label: '操作' },
       { key: 'target_table', label: '対象' },
-      { key: 'target_name', label: '対象名' },
+      { key: 'target_name', label: '内容' },
       { key: 'before_data', label: '変更前' },
       { key: 'after_data', label: '変更後' },
     ];
