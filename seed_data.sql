@@ -130,6 +130,7 @@ INSERT INTO app_settings (key, value) VALUES
     ('expiry_warn_days', '30'),
     ('allow_expired_issue', 'false'),
     ('low_stock_threshold', '0'),
+    ('password_expiry_days', '0'),
     ('company_name', ''),
     ('company_address', ''),
     ('company_tel', ''),

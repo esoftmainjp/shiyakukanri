@@ -45,8 +45,22 @@ async function initPage(activeKey) {
     return null;
   }
   renderHeader(data.user, activeKey);
+  // パスワード有効期限切れ(0=無効)ならメッセージを表示
+  if (data.passwordExpired && activeKey !== 'password') showPasswordExpiryBanner();
   syncTheme();
   return data.user;
+}
+
+// パスワード有効期限切れの案内バー
+function showPasswordExpiryBanner() {
+  if (document.getElementById('pwExpireBanner')) return;
+  const bar = document.createElement('div');
+  bar.id = 'pwExpireBanner';
+  bar.style.cssText = 'background:#fdecea; color:#b23b3b; border:1px solid #f0b6b6; padding:10px 16px; margin:0 0 12px; border-radius:8px; font-weight:700;';
+  bar.innerHTML = 'パスワードの有効期限が過ぎています。<a href="/password.html" style="color:#b23b3b; text-decoration:underline;">パスワードを変更</a>してください。';
+  const main = document.querySelector('main');
+  if (main) main.insertBefore(bar, main.firstChild);
+  else document.body.appendChild(bar);
 }
 
 function renderHeader(user, activeKey) {

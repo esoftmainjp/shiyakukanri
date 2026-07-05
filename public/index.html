@@ -71,8 +71,10 @@
   <script>
     async function boot() {
       const user = await api('/api/me');
-      if (user.ok) { showApp(user.data.user); }
-      else { document.getElementById('loginCard').style.display = 'block'; }
+      if (user.ok) {
+        showApp(user.data.user);
+        if (user.data.passwordExpired && !user.data.user.mustChangePassword) showPasswordExpiryBanner();
+      } else { document.getElementById('loginCard').style.display = 'block'; }
     }
     async function login() {
       const loginId = document.getElementById('loginId').value;

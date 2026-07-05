@@ -7,6 +7,7 @@ const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const { pool } = require('./db');
 const { writeLog } = require('./services/log');
+const { getSetting } = require('./routes/settings');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -106,8 +107,24 @@ app.post('/api/logout', (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 });
 
-app.get('/api/me', requireLogin, (req, res) => {
-  res.json({ user: req.session.user });
+app.get('/api/me', requireLogin, async (req, res) => {
+  // パスワード有効期限(日)の設定に基づき、期限切れを判定(0=無効)
+  let passwordExpired = false;
+  let passwordExpiryDays = 0;
+  let daysSinceChange = null;
+  try {
+    passwordExpiryDays = Number(await getSetting('password_expiry_days', '0')) || 0;
+    if (passwordExpiryDays > 0) {
+      const { rows } = await pool.query('SELECT password_updated_at FROM users WHERE id = $1', [req.session.user.id]);
+      if (rows.length && rows[0].password_updated_at) {
+        daysSinceChange = Math.floor((Date.now() - new Date(rows[0].password_updated_at).getTime()) / 86400000);
+        passwordExpired = daysSinceChange >= passwordExpiryDays;
+      }
+    }
+  } catch (err) {
+    console.error('パスワード期限判定エラー:', err.message);
+  }
+  res.json({ user: req.session.user, passwordExpired, passwordExpiryDays, daysSinceChange });
 });
 
 // 本人のパスワード情報(最終変更日時)を取得
