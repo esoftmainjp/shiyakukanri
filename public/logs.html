@@ -90,11 +90,25 @@
       search();
     }
 
+    function fmtBytes(b) {
+      if (!b || b < 1024) return (b || 0) + ' B';
+      const u = ['KB', 'MB', 'GB', 'TB'];
+      let n = b / 1024, i = 0;
+      while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+      return n.toFixed(n >= 10 ? 0 : 1) + ' ' + u[i];
+    }
+
     async function loadStorage() {
       const el = document.getElementById('storageInfo');
       const { ok, data } = await api('/api/logs/storage');
       if (!ok) { el.textContent = ''; return; }
-      el.textContent = `（${Number(data.count).toLocaleString()} 件）`;
+      let t = `（${Number(data.count).toLocaleString()} 件`;
+      // DB使用量は全体管理者のときのみサーバーから返る
+      if (data.dbBytes != null) {
+        t += ` ／ DB使用量: 約 ${fmtBytes(data.dbBytes)}（うちログ: 約 ${fmtBytes(data.logsBytes)}）`;
+      }
+      t += '）';
+      el.textContent = t;
     }
 
     async function loadMeta() {
