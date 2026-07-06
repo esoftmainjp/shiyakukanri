@@ -703,7 +703,7 @@
     var form = document.getElementById('cform');
     if (!form) return;
     var msg = document.getElementById('fmsg');
-    var CONTACT_ENDPOINT = '';  // 試薬アプリの /api/contact 絶対URL（例: https://xxx.onrender.com/api/contact）
+    var CONTACT_ENDPOINT = 'https://reagent-inventory-1wu2.onrender.com/api/contact';  // 試薬アプリの /api/contact 絶対URL（例: https://xxx.onrender.com/api/contact）
     var isPreview = /claude\.ai|artifact|anthropic/.test(location.hostname);
     function showMsg(kind, text) { msg.className = 'form-msg ' + kind; msg.textContent = text; }
     function thanks() {
