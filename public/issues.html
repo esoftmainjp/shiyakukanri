@@ -25,13 +25,20 @@
       <p class="msg" id="bcMsg"></p>
 
       <h3 style="margin-top:20px;">② 数量で出庫</h3>
+      <p style="font-size:0.85rem; color:#555;">「梱包」＝入力数×梱包数のバラを出庫。「バラ」＝入力した数をそのままバラで出庫（梱包管理していない商品や端数の出庫に）。</p>
       <div class="row">
         <div style="flex:2;"><label>商品</label><select id="product" onchange="onProductChange()"></select></div>
         <div style="flex:2;"><label>ロット / 在庫</label><select id="stock"></select></div>
       </div>
       <div class="row">
-        <div><label>出庫個数</label><input type="number" id="qty" value="1" min="1" /></div>
-        <div><label>梱包数（商品マスター）</label><input type="number" id="pack" value="1" min="1" readonly style="background:#eef2f5;" title="梱包数は商品詳細マスターで管理します" /></div>
+        <div><label>出庫単位</label>
+          <select id="unit" onchange="onUnitChange()">
+            <option value="pack">梱包（×梱包数）</option>
+            <option value="bara">バラ（個別）</option>
+          </select>
+        </div>
+        <div><label id="qtyLabel">出庫個数（梱包）</label><input type="number" id="qty" value="1" min="1" /></div>
+        <div id="packDiv"><label>梱包数（商品マスター）</label><input type="number" id="pack" value="1" min="1" readonly style="background:#eef2f5;" title="梱包数は商品詳細マスターで管理します" /></div>
         <div style="flex:0;"><label>&nbsp;</label><button onclick="addQty()">追加</button></div>
       </div>
       <p class="msg" id="qtyMsg"></p>
@@ -137,19 +144,36 @@
       renderLines();
     }
 
+    // 出庫単位の切替(梱包/バラ)。バラ時は梱包数を使わずバラ数をそのまま出庫。
+    function onUnitChange() {
+      const unit = document.getElementById('unit').value;
+      document.getElementById('qtyLabel').textContent = unit === 'bara' ? '出庫バラ数' : '出庫個数（梱包）';
+      document.getElementById('packDiv').style.display = unit === 'bara' ? 'none' : '';
+    }
+
     function addQty() {
       const msg = document.getElementById('qtyMsg');
       const cur = currentDetail();
       const stockVal = document.getElementById('stock').value;
       if (!cur || !cur.detail || !stockVal) { setMsg(msg, '商品・在庫を選択してください', 'error'); return; }
       const st = JSON.parse(stockVal);
+      const unit = document.getElementById('unit').value;
       const qty = Number(document.getElementById('qty').value);
-      const pack = Number(document.getElementById('pack').value);
-      if (qty < 1 || pack < 1) { setMsg(msg, '個数・梱包数は1以上', 'error'); return; }
+      if (qty < 1) { setMsg(msg, '数量は1以上', 'error'); return; }
+
+      // バラ: 入力数=バラ数(梱包数1で送信)。梱包: 入力数×梱包数=バラ数。
+      let issueQuantity, packSize, bara;
+      if (unit === 'bara') {
+        issueQuantity = qty; packSize = 1; bara = qty;
+      } else {
+        packSize = Number(document.getElementById('pack').value);
+        if (packSize < 1) { setMsg(msg, '梱包数は1以上', 'error'); return; }
+        issueQuantity = qty; bara = qty * packSize;
+      }
       lines.push({
         kind: 'qty', productId: cur.product.productId, productDetailId: cur.detail.productDetailId,
         label: cur.product.productName, lot: st.lot, expiryDate: st.exp,
-        issueQuantity: qty, packSize: pack, bara: qty * pack,
+        issueQuantity, packSize, bara,
       });
       setMsg(msg, '', '');
       renderLines();

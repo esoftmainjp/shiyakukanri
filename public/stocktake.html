@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>棚卸し | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+  <style>
+    .scroll-x { overflow-x: auto; margin-top: 12px; }
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .badge.open { background: #e8f0fe; color: #2456c9; }
+    .badge.counting { background: #fff4d6; color: #9a6b00; }
+    .badge.confirmed { background: #e2f6e9; color: #1c7a41; }
+    .badge.canceled { background: #f0f0f0; color: #777; }
+    .diff-plus { color: #1c7a41; font-weight: 600; }
+    .diff-minus { color: #c62d42; font-weight: 600; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    #scanInput { font-size: 18px; letter-spacing: 1px; }
+    .scanbox { background: #f4f9ff; border: 1px solid #d3e4fb; border-radius: 10px; padding: 12px 14px; margin-top: 8px; }
+    .toast { margin-left: 10px; font-weight: 600; }
+    .rowline td { vertical-align: middle; }
+    input.cinput { width: 90px; }
+    .muted { color: #888; }
+  </style>
+</head>
+<body>
+  <header></header>
+  <main>
+    <!-- ================= 一覧 ================= -->
+    <div class="card" id="viewList">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <h2 style="margin:0;">棚卸し</h2>
+        <button onclick="showNew()">＋ 新規棚卸しを開始</button>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <div style="flex:0;"><label>状態</label>
+          <select id="fStatus" onchange="loadList()">
+            <option value="">すべて</option>
+            <option value="open">作成</option>
+            <option value="counting">カウント中</option>
+            <option value="confirmed">確定</option>
+            <option value="canceled">キャンセル</option>
+          </select>
+        </div>
+      </div>
+      <p class="msg" id="listMsg"></p>
+      <div class="scroll-x">
+        <table id="listTbl">
+          <thead><tr>
+            <th>ID</th><th>棚卸し名</th><th>施設</th><th>状態</th>
+            <th>進捗</th><th>開始者</th><th>開始日時</th><th>操作</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ================= 新規開始 ================= -->
+    <div class="card" id="viewNew" style="display:none;">
+      <h2>新規棚卸しの開始</h2>
+      <p class="muted">開始時点の在庫を「理論在庫」として記録し、棚卸し表を作成します。</p>
+      <div class="row">
+        <div><label>棚卸し名</label><input id="nTitle" placeholder="例）2026年7月 定期棚卸し" /></div>
+        <div><label>分類</label><select id="nCategory"><option value="">すべて</option></select></div>
+        <div><label>部門</label><select id="nDepartment"><option value="">すべて</option></select></div>
+      </div>
+      <div class="row">
+        <div style="flex:0;"><label>&nbsp;</label>
+          <label style="display:inline-flex; align-items:center; gap:6px; margin:0; font-weight:normal; white-space:nowrap; height:37px;">
+            <input type="checkbox" id="nQcOnly" style="width:auto;" />試薬管理対象のみ
+          </label>
+        </div>
+        <div style="flex:0;"><label>&nbsp;</label>
+          <label style="display:inline-flex; align-items:center; gap:6px; margin:0; font-weight:normal; white-space:nowrap; height:37px;">
+            <input type="checkbox" id="nIncludeZero" style="width:auto;" />在庫0も含める
+          </label>
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <button onclick="startStocktake()">棚卸しを開始</button>
+        <button class="secondary" onclick="showList()">戻る</button>
+      </div>
+      <p class="msg" id="newMsg"></p>
+    </div>
+
+    <!-- ================= 詳細(カウント/差異/確定) ================= -->
+    <div class="card" id="viewDetail" style="display:none;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <h2 style="margin:0;" id="dTitle">棚卸し</h2>
+        <button class="secondary" onclick="showList()">一覧へ戻る</button>
+      </div>
+      <p id="dMeta" class="muted" style="margin:6px 0;"></p>
+
+      <!-- バーコードスキャン -->
+      <div class="scanbox" id="scanArea">
+        <label style="font-weight:600;">バーコードスキャン</label>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <input id="scanInput" placeholder="バーコードを読み取り(Enterで登録)" onkeydown="onScanKey(event)" style="flex:1; min-width:220px;" />
+          <span class="toast" id="scanToast"></span>
+        </div>
+        <p class="muted" style="margin:6px 0 0;">読み取った個体を実数に加算します。読み取られなかった有効個体は確定時に「紛失」として無効化されます。</p>
+      </div>
+
+      <div style="margin:12px 0; display:flex; gap:8px; flex-wrap:wrap;">
+        <button onclick="loadDiff()">差異を確認</button>
+        <button id="btnConfirm" onclick="confirmStocktake()">棚卸しを確定</button>
+        <button class="secondary" id="btnCsv" onclick="downloadCsv()">CSV出力</button>
+        <button class="secondary" id="btnCancel" onclick="cancelStocktake()">この棚卸しを取消</button>
+      </div>
+      <p class="msg" id="detailMsg"></p>
+
+      <!-- 差異サマリ(差異確認で表示) -->
+      <div id="diffPanel" style="display:none; background:#fbfcfd; border:1px solid #eee; border-radius:10px; padding:12px; margin-bottom:12px;"></div>
+
+      <div class="scroll-x">
+        <table id="lineTbl">
+          <thead><tr>
+            <th>商品名</th><th>ロット</th><th>使用期限</th><th>区分</th>
+            <th class="num">理論在庫</th><th class="num">実数</th><th class="num">差異</th><th>カウント者</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    let currentUser = null;
+    let currentId = null;
+    let currentStatus = null;
+
+    const STATUS_LABEL = { open: '作成', counting: 'カウント中', confirmed: '確定', canceled: 'キャンセル' };
+
+    function esc(v) {
+      return String(v == null ? '' : v).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function boot() {
+      currentUser = await initPage('stocktake');
+      if (!currentUser) return;
+      const [cat, dep] = await Promise.all([
+        api('/api/lookup/categories'), api('/api/lookup/departments'),
+      ]);
+      const opt = (arr) => '<option value="">すべて</option>' + (arr || []).map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+      document.getElementById('nCategory').innerHTML = opt(cat.data && cat.data.categories);
+      document.getElementById('nDepartment').innerHTML = opt(dep.data && dep.data.departments);
+      loadList();
+    }
+
+    function show(view) {
+      ['viewList', 'viewNew', 'viewDetail'].forEach((v) => {
+        document.getElementById(v).style.display = (v === view) ? 'block' : 'none';
+      });
+    }
+    function showList() { show('viewList'); loadList(); }
+    function showNew() {
+      document.getElementById('nTitle').value = '';
+      document.getElementById('nQcOnly').checked = false;
+      document.getElementById('nIncludeZero').checked = false;
+      setMsg(document.getElementById('newMsg'), '', '');
+      show('viewNew');
+    }
+
+    // ---------------- 一覧 ----------------
+    async function loadList() {
+      const status = document.getElementById('fStatus').value;
+      const { ok, data } = await api('/api/stocktake' + (status ? '?status=' + status : ''));
+      const tbody = document.querySelector('#listTbl tbody');
+      tbody.innerHTML = '';
+      if (!ok) { setMsg(document.getElementById('listMsg'), (data && data.error) || '取得に失敗しました', 'error'); return; }
+      const rows = data.stocktakes || [];
+      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="8" class="muted">棚卸しはありません</td></tr>'; return; }
+      rows.forEach((s) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          `<td>${s.id}</td>` +
+          `<td>${esc(s.title) || '(無題)'}</td>` +
+          `<td>${esc(s.facility_name)}</td>` +
+          `<td><span class="badge ${s.status}">${STATUS_LABEL[s.status] || s.status}</span></td>` +
+          `<td class="num">${s.counted_count}/${s.line_count}</td>` +
+          `<td>${esc(s.started_by_name)}</td>` +
+          `<td>${(s.started_at || '').replace('T', ' ').slice(0, 16)}</td>` +
+          `<td><button class="secondary" onclick="openDetail(${s.id})">開く</button></td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ---------------- 新規開始 ----------------
+    async function startStocktake() {
+      const body = {
+        title: document.getElementById('nTitle').value,
+        categoryId: document.getElementById('nCategory').value || null,
+        departmentId: document.getElementById('nDepartment').value || null,
+        qcOnly: document.getElementById('nQcOnly').checked,
+        includeZero: document.getElementById('nIncludeZero').checked,
+      };
+      const { ok, data } = await api('/api/stocktake', { method: 'POST', body: JSON.stringify(body) });
+      const msg = document.getElementById('newMsg');
+      if (!ok) { setMsg(msg, (data && data.error) || '開始に失敗しました', 'error'); return; }
+      if (data.lineCount === 0) { setMsg(msg, '対象の在庫がありませんでした。条件を見直してください。', 'error'); return; }
+      openDetail(data.id);
+    }
+
+    // ---------------- 詳細 ----------------
+    async function openDetail(id) {
+      currentId = id;
+      document.getElementById('diffPanel').style.display = 'none';
+      setMsg(document.getElementById('detailMsg'), '', '');
+      document.getElementById('scanToast').textContent = '';
+      const { ok, data } = await api('/api/stocktake/' + id);
+      if (!ok) { alert((data && data.error) || '取得に失敗しました'); return; }
+      const st = data.stocktake;
+      currentStatus = st.status;
+      const locked = (st.status === 'confirmed' || st.status === 'canceled');
+
+      document.getElementById('dTitle').innerHTML =
+        `${esc(st.title) || '(無題)'} <span class="badge ${st.status}">${STATUS_LABEL[st.status] || st.status}</span>`;
+      document.getElementById('dMeta').textContent =
+        `ID:${st.id} / 明細${data.lines.length}件 / 開始:${(st.started_at || '').replace('T', ' ').slice(0, 16)}`;
+
+      // ロック状態でスキャン・操作ボタンを制御
+      document.getElementById('scanArea').style.display = locked ? 'none' : 'block';
+      document.getElementById('btnConfirm').style.display = locked ? 'none' : 'inline-block';
+      document.getElementById('btnCancel').style.display = locked ? 'none' : 'inline-block';
+
+      renderLines(data.lines, locked);
+      show('viewDetail');
+      if (!locked) setTimeout(() => document.getElementById('scanInput').focus(), 50);
+    }
+
+    function renderLines(lines, locked) {
+      const tbody = document.querySelector('#lineTbl tbody');
+      tbody.innerHTML = '';
+      if (lines.length === 0) { tbody.innerHTML = '<tr><td colspan="8" class="muted">明細がありません</td></tr>'; return; }
+      lines.forEach((l) => {
+        const counted = l.counted_qty == null ? null : Number(l.counted_qty);
+        const theo = Number(l.theoretical_qty);
+        const diff = counted == null ? null : counted - theo;
+        let diffHtml = '<span class="muted">-</span>';
+        if (diff != null) diffHtml = diff === 0 ? '0' : `<span class="${diff > 0 ? 'diff-plus' : 'diff-minus'}">${diff > 0 ? '+' : ''}${diff}</span>`;
+
+        let countCell;
+        if (l.is_barcode) {
+          countCell = `<span class="num">${counted == null ? '<span class="muted">0(未)</span>' : counted}</span>`;
+        } else if (locked) {
+          countCell = `<span class="num">${counted == null ? '<span class="muted">未</span>' : counted}</span>`;
+        } else {
+          countCell = `<input type="number" min="0" class="cinput num" value="${counted == null ? '' : counted}" ` +
+            `onchange="saveCount(${l.id}, this.value)" placeholder="未" />`;
+        }
+
+        const tr = document.createElement('tr');
+        tr.className = 'rowline';
+        tr.innerHTML =
+          `<td>${esc(l.product_name)}</td>` +
+          `<td>${esc(l.lot_number) || '(なし)'}</td>` +
+          `<td>${l.expiry_date || '(なし)'}</td>` +
+          `<td>${l.is_barcode ? 'バーコード' : '数量'}</td>` +
+          `<td class="num">${theo}</td>` +
+          `<td>${countCell}</td>` +
+          `<td class="num">${diffHtml}</td>` +
+          `<td>${esc(l.counted_by_name) || ''}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function saveCount(lineId, value) {
+      const { ok, data } = await api(`/api/stocktake/${currentId}/lines/${lineId}`,
+        { method: 'PATCH', body: JSON.stringify({ countedQty: value }) });
+      const msg = document.getElementById('detailMsg');
+      if (!ok) { setMsg(msg, (data && data.error) || '保存に失敗しました', 'error'); return; }
+      setMsg(msg, '保存しました', 'ok');
+      await refreshLines();
+    }
+
+    async function refreshLines() {
+      const { ok, data } = await api('/api/stocktake/' + currentId);
+      if (!ok) return;
+      currentStatus = data.stocktake.status;
+      const locked = (currentStatus === 'confirmed' || currentStatus === 'canceled');
+      renderLines(data.lines, locked);
+    }
+
+    // ---------------- スキャン ----------------
+    function onScanKey(ev) {
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      const val = ev.target.value.trim();
+      if (val) doScan(val);
+      ev.target.value = '';
+    }
+    const SCAN_MSG = {
+      ok: ['✓ 読取OK', '#1c7a41'], duplicate: ['重複(読取済み)', '#9a6b00'],
+      used: ['使用済みの個体', '#c62d42'], voided: ['無効な個体', '#c62d42'],
+      unknown: ['未登録のバーコード', '#c62d42'], other_facility: ['別施設の個体', '#c62d42'],
+      other_lot: ['棚卸し対象外の商品/ロット', '#9a6b00'], need_barcode: ['個別バーコードを読み取ってください', '#9a6b00'],
+    };
+    async function doScan(barcodeValue) {
+      const { ok, data } = await api(`/api/stocktake/${currentId}/scan`,
+        { method: 'POST', body: JSON.stringify({ barcodeValue }) });
+      const toast = document.getElementById('scanToast');
+      if (!ok) { toast.textContent = (data && data.error) || 'スキャン失敗'; toast.style.color = '#c62d42'; return; }
+      const m = SCAN_MSG[data.result] || [data.result, '#333'];
+      const label = (data && data.added && data.result === 'ok') ? '✓ 追加して計上' : ((data && data.message) || m[0]);
+      toast.textContent = label + `（${barcodeValue}）`;
+      toast.style.color = m[1];
+      await refreshLines();
+    }
+
+    // ---------------- 差異確認 ----------------
+    async function loadDiff() {
+      const { ok, data } = await api('/api/stocktake/' + currentId + '/diff');
+      const panel = document.getElementById('diffPanel');
+      if (!ok) { setMsg(document.getElementById('detailMsg'), (data && data.error) || '取得失敗', 'error'); return; }
+      const diffs = data.lines.filter((l) => l.difference != null && l.difference !== 0);
+      const uncounted = data.lines.filter((l) => l.counted_qty == null).length;
+      const drift = data.lines.filter((l) => l.drift).length;
+      let html = `<strong>差異サマリ</strong><br>` +
+        `差異のある明細: <b>${diffs.length}</b> 件 ／ 未カウント: <b>${uncounted}</b> 件` +
+        (drift ? ` ／ <span class="diff-minus">棚卸し中に在庫が変動した明細: ${drift} 件</span>` : '') + '<br>';
+      if (data.missingBarcodes.length) {
+        html += `<br><span class="diff-minus">紛失候補(未スキャンの有効個体): ${data.missingBarcodes.length} 本</span><br>` +
+          '<div class="scroll-x"><table><thead><tr><th>商品名</th><th>ロット</th><th>使用期限</th><th>バーコード</th></tr></thead><tbody>' +
+          data.missingBarcodes.slice(0, 200).map((b) =>
+            `<tr><td>${esc(b.product_name)}</td><td>${esc(b.lot_number) || '(なし)'}</td><td>${b.expiry_date || '(なし)'}</td><td>${esc(b.barcode_value)}</td></tr>`).join('') +
+          '</tbody></table></div>';
+      }
+      panel.innerHTML = html;
+      panel.style.display = 'block';
+    }
+
+    // ---------------- 確定/取消 ----------------
+    async function confirmStocktake() {
+      if (!confirm('棚卸しを確定します。実数を在庫へ反映し、未スキャンの有効バーコード個体は無効化されます。よろしいですか？')) return;
+      const { ok, data } = await api('/api/stocktake/' + currentId + '/confirm', { method: 'POST' });
+      const msg = document.getElementById('detailMsg');
+      if (!ok) { setMsg(msg, (data && data.error) || '確定に失敗しました', 'error'); return; }
+      let t = `確定しました。反映${data.confirmedLines}件 / 差異合計${data.totalDiff} / 紛失無効化${data.voidedBarcodes}本`;
+      if (data.uncounted) t += ` / 未カウント${data.uncounted}件(据置)`;
+      setMsg(msg, t, 'ok');
+      await openDetail(currentId);
+    }
+
+    async function cancelStocktake() {
+      if (!confirm('この棚卸しを取消します（在庫は変更されません）。よろしいですか？')) return;
+      const { ok, data } = await api('/api/stocktake/' + currentId + '/cancel', { method: 'POST' });
+      const msg = document.getElementById('detailMsg');
+      if (!ok) { setMsg(msg, (data && data.error) || '取消に失敗しました', 'error'); return; }
+      setMsg(msg, '取消しました', 'ok');
+      await openDetail(currentId);
+    }
+
+    function downloadCsv() { window.location = '/api/stocktake/' + currentId + '/csv'; }
+
+    boot();
+  </script>
+</body>
+</html>

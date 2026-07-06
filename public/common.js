@@ -117,6 +117,7 @@ function operationalMenu(includeAdmin) {
     mkLink('orders', '/orders.html', '発注'),
     mkGroup('在庫', [
       ['inventory', '/inventory.html', '在庫管理'],
+      ['stocktake', '/stocktake.html', '棚卸し'],
       ['expiry', '/expiry.html', '使用期限'],
       ['useend', '/use-end.html', '使用終了日'],
       ['labels', '/labels.html', 'バーコード印刷'],

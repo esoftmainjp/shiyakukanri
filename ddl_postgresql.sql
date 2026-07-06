@@ -504,7 +504,7 @@ CREATE TABLE stock_movements (
     lot_number       VARCHAR(64) NOT NULL DEFAULT '',
     expiry_date      DATE,
     movement_type    VARCHAR(16) NOT NULL
-                     CHECK (movement_type IN ('receipt', 'issue', 'adjust', 'disposal', 'return')),
+                     CHECK (movement_type IN ('receipt', 'issue', 'adjust', 'disposal', 'return', 'stocktake')),
     quantity_change  INTEGER     NOT NULL,   -- バラ個数(増加は正、減少は負)
     quantity_before  INTEGER     NOT NULL,   -- バラ個数
     quantity_after   INTEGER     NOT NULL,   -- バラ個数
@@ -517,7 +517,7 @@ COMMENT ON TABLE  stock_movements                 IS '在庫移動履歴';
 COMMENT ON COLUMN stock_movements.product_id      IS '商品ID';
 COMMENT ON COLUMN stock_movements.lot_number      IS 'ロット番号';
 COMMENT ON COLUMN stock_movements.expiry_date     IS '使用期限';
-COMMENT ON COLUMN stock_movements.movement_type   IS '移動区分(receipt=入庫/issue=出庫/adjust=調整/disposal=廃棄/return=返品)';
+COMMENT ON COLUMN stock_movements.movement_type   IS '移動区分(receipt=入庫/issue=出庫/adjust=調整/disposal=廃棄/return=返品/stocktake=棚卸し差異)';
 COMMENT ON COLUMN stock_movements.quantity_change IS '増減数(バラ個数。増加は正/減少は負)';
 COMMENT ON COLUMN stock_movements.quantity_before IS '処理前在庫数(バラ個数)';
 COMMENT ON COLUMN stock_movements.quantity_after  IS '処理後在庫数(バラ個数)';
@@ -596,6 +596,80 @@ CREATE INDEX idx_app_settings_facility ON app_settings(facility_id);
 CREATE TRIGGER trg_app_settings_updated_at
     BEFORE UPDATE ON app_settings
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ============================================================
+-- 棚卸し系 (実地棚卸・在庫実数照合)
+-- ============================================================
+
+-- 棚卸しヘッダ
+CREATE TABLE stocktakes (
+    id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    facility_id  BIGINT       NOT NULL REFERENCES facilities(id),  -- 棚卸し対象施設(自前保持)
+    title        VARCHAR(255) NOT NULL DEFAULT '',
+    status       VARCHAR(16)  NOT NULL DEFAULT 'open'
+                 CHECK (status IN ('open', 'counting', 'confirmed', 'canceled')),
+    blind_flag   BOOLEAN      NOT NULL DEFAULT FALSE,   -- 将来用(理論在庫を隠すブラインド棚卸し)
+    scope_note   TEXT         NOT NULL DEFAULT '',       -- 絞り込み条件(JSON文字列)
+    started_by   BIGINT       REFERENCES users(id),
+    confirmed_by BIGINT       REFERENCES users(id),
+    started_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    confirmed_at TIMESTAMPTZ,
+    canceled_at  TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE  stocktakes              IS '棚卸しヘッダ';
+COMMENT ON COLUMN stocktakes.facility_id  IS '棚卸し対象施設ID';
+COMMENT ON COLUMN stocktakes.status       IS '状態(open=作成/counting=カウント中/confirmed=確定/canceled=キャンセル)';
+COMMENT ON COLUMN stocktakes.blind_flag   IS 'ブラインド棚卸し(理論在庫非表示。将来用)';
+COMMENT ON COLUMN stocktakes.scope_note   IS '絞り込み条件(JSON文字列)';
+CREATE INDEX idx_stocktakes_facility ON stocktakes(facility_id);
+
+CREATE TRIGGER trg_stocktakes_updated_at
+    BEFORE UPDATE ON stocktakes
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- 棚卸し明細 (粒度=商品×ロット×使用期限)
+CREATE TABLE stocktake_lines (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    stocktake_id    BIGINT      NOT NULL REFERENCES stocktakes(id) ON DELETE CASCADE,
+    product_id      BIGINT      NOT NULL REFERENCES products(id),
+    lot_number      VARCHAR(64) NOT NULL DEFAULT '',
+    expiry_date     DATE,
+    is_barcode      BOOLEAN     NOT NULL DEFAULT FALSE,   -- 開始時に active barcode 有無で凍結
+    theoretical_qty INTEGER     NOT NULL DEFAULT 0,       -- 開始時の理論在庫を凍結(バラ個数)
+    counted_qty     INTEGER,                              -- 実数(NULL=未カウント)
+    counted_by      BIGINT      REFERENCES users(id),
+    counted_at      TIMESTAMPTZ,
+    status          VARCHAR(16) NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'counted', 'confirmed')),
+    note            TEXT        NOT NULL DEFAULT '',
+    -- product_stocks と同じ一意方針(使用期限NULLでも重複しない)
+    CONSTRAINT uq_stocktake_lines UNIQUE NULLS NOT DISTINCT (stocktake_id, product_id, lot_number, expiry_date)
+);
+COMMENT ON TABLE  stocktake_lines                 IS '棚卸し明細(商品×ロット×使用期限)';
+COMMENT ON COLUMN stocktake_lines.is_barcode      IS 'バーコード品(開始時にactive barcode有無で凍結)';
+COMMENT ON COLUMN stocktake_lines.theoretical_qty IS '理論在庫(開始時に凍結。バラ個数)';
+COMMENT ON COLUMN stocktake_lines.counted_qty     IS '実数(NULL=未カウント)';
+CREATE INDEX idx_stocktake_lines_take ON stocktake_lines(stocktake_id);
+
+-- バーコード個体スキャン記録
+CREATE TABLE stocktake_scans (
+    id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    stocktake_id  BIGINT      NOT NULL REFERENCES stocktakes(id) ON DELETE CASCADE,
+    line_id       BIGINT      REFERENCES stocktake_lines(id) ON DELETE SET NULL,
+    barcode_id    BIGINT      REFERENCES barcodes(id),
+    barcode_value VARCHAR(64) NOT NULL,     -- 生のスキャン値(未登録でも残す)
+    result        VARCHAR(24) NOT NULL
+                  CHECK (result IN ('ok', 'used', 'voided', 'unknown', 'other_facility', 'other_lot', 'duplicate')),
+    scanned_by    BIGINT      REFERENCES users(id),
+    scanned_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE  stocktake_scans        IS 'バーコード個体スキャン記録';
+COMMENT ON COLUMN stocktake_scans.result IS '突合結果(ok/used/voided/unknown/other_facility/other_lot/duplicate)';
+CREATE INDEX idx_stocktake_scans_take ON stocktake_scans(stocktake_id);
+CREATE UNIQUE INDEX uq_stocktake_scans_barcode
+    ON stocktake_scans(stocktake_id, barcode_id) WHERE barcode_id IS NOT NULL;
 
 -- ============================================================
 -- 以上

@@ -382,6 +382,7 @@ app.use('/api/receipts',  requireLogin, requireRole('admin', 'general', 'supplie
 app.use('/api/orders',    requireLogin, requireRole('admin', 'general', 'supplier', 'superadmin'), require('./routes/orders'));
 app.use('/api/issues',    requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/issues'));
 app.use('/api/inventory', requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/inventory'));
+app.use('/api/stocktake', requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/stocktake'));
 app.use('/api/barcodes',  requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/barcodes'));
 app.use('/api/ledger',    requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/ledger'));
 app.use('/api/reports',   requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/reports'));

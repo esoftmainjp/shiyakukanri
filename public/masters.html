@@ -324,12 +324,16 @@
         return `<tr>${tds}<td style="white-space:nowrap;">${detailBtn}<button class="secondary" onclick='edit(${editData})'>編集</button> ${toggleBtn} ${delBtn}</td></tr>`;
       }).join('');
     }
-    // 商品一覧の「詳細」: 商品詳細に切り替えてその商品で絞り込む
+    // 商品一覧の「詳細」: 商品詳細に切り替えてその商品で絞り込み、入力フォームの商品も選択済みにする
     async function showDetails(productId) {
       document.getElementById('type').value = 'product-details';
       await switchType();
+      // 一覧をその商品で絞り込み
       const sel = document.getElementById('listFilterProduct');
       if (sel) { sel.value = String(productId); applyListFilter(); }
+      // 入力フォームの「商品」も選択済みにする(そのまま新規詳細を追加できる)
+      const fld = document.getElementById('fld_product_id');
+      if (fld) fld.value = String(productId);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
