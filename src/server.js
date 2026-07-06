@@ -167,7 +167,9 @@ app.post('/api/contact', contactCors, contactLimiter, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('お問い合わせメール送信エラー:', err.status || '', err.message);
-    res.status(500).json({ error: '送信に失敗しました。時間をおいて再度お試しください。' });
+    // 診断用: ?debug=1 のときだけ詳細を返す（原因特定後に撤去する）
+    const detail = (req.query.debug === '1') ? { status: err.status, message: err.message } : undefined;
+    res.status(500).json({ error: '送信に失敗しました。時間をおいて再度お試しください。', detail });
   }
 });
 
