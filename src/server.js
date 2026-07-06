@@ -109,6 +109,69 @@ app.get('/api/health', async (req, res) => {
 });
 
 // ------------------------------------------------------------
+// 広告LP(別ホストの静的サイト)からのお問い合わせ受付（公開・要ログインなし）
+//   Resend(HTTPS API)でメール送信。RenderはSMTPを遮断するためHTTP APIを使う。
+//   許可オリジンは CONTACT_ORIGINS(カンマ区切り)で限定。未設定なら全許可
+//   （レート制限＋ハニーポットで防御）。
+// ------------------------------------------------------------
+const CONTACT_ORIGINS = (process.env.CONTACT_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+function contactCors(req, res, next) {
+  const origin = req.headers.origin;
+  if (origin && (CONTACT_ORIGINS.length === 0 || CONTACT_ORIGINS.includes(origin))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'); // helmetの既定(same-origin)を上書き
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+}
+const contactLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false,
+  message: { error: '送信が多すぎます。しばらくしてから再度お試しください。' },
+});
+const contactOneLine = (s) => String(s == null ? '' : s).replace(/[\r\n]+/g, ' ').trim();
+async function sendContactMail({ from, to, replyTo, subject, text }) {
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to, reply_to: replyTo, subject, text }),
+  });
+  if (!r.ok) { const b = await r.text().catch(() => ''); const e = new Error(`Resend ${r.status}: ${b}`); e.status = r.status; throw e; }
+  return r.json();
+}
+app.options('/api/contact', contactCors);
+app.post('/api/contact', contactCors, contactLimiter, async (req, res) => {
+  const b = req.body || {};
+  if (b.website) return res.json({ ok: true }); // ハニーポット
+  const org = contactOneLine(b.org), name = contactOneLine(b.name), email = contactOneLine(b.email);
+  const tel = contactOneLine(b.tel), type = contactOneLine(b.type);
+  const body = String(b.body == null ? '' : b.body).trim();
+  if (!org || !name || !email || !body) return res.status(400).json({ error: '必須項目が未入力です。' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'メールアドレスの形式が正しくありません。' });
+  if (body.length > 5000) return res.status(400).json({ error: 'お問い合わせ内容が長すぎます。' });
+  if (!process.env.RESEND_API_KEY) { console.error('RESEND_API_KEY 未設定'); return res.status(500).json({ error: '送信設定が未構成です。お手数ですがお電話ください。' }); }
+  const to = process.env.MAIL_TO || 'info@e-soft.jp';
+  const from = process.env.MAIL_FROM || 'onboarding@resend.dev';
+  try {
+    await sendContactMail({
+      from: from, to: to, replyTo: email,
+      subject: `【試薬在庫管理システム】お問い合わせ（${type || '—'}）: ${org}`,
+      text:
+        `試薬在庫管理システムのLPからお問い合わせがありました。\n\n` +
+        `種別　　　: ${type || '（未選択）'}\n会社/施設名: ${org}\nお名前　　: ${name}\n` +
+        `メール　　: ${email}\n電話　　　: ${tel || '（未入力）'}\n` +
+        `----------------------------------------\n${body}\n`,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('お問い合わせメール送信エラー:', err.status || '', err.message);
+    res.status(500).json({ error: '送信に失敗しました。時間をおいて再度お試しください。' });
+  }
+});
+
+// ------------------------------------------------------------
 // ログイン / ログアウト / 現在ユーザー
 // ------------------------------------------------------------
 app.post('/api/login', loginLimiter, async (req, res) => {
