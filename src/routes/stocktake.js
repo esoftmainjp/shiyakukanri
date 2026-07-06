@@ -268,6 +268,48 @@ router.get('/:id/csv', async (req, res) => {
 });
 
 // ------------------------------------------------------------
+// バーコード明細の個体一覧(スキャン済み/未スキャンの内訳)
+//   バーコード品のどの個体を読み終えたかを確認するための展開用。
+// ------------------------------------------------------------
+router.get('/:id/lines/:lineId/barcodes', async (req, res) => {
+  try {
+    const scope = facilityScope(req);
+    const { st, error } = await loadStocktake(pool, req.params.id, scope);
+    if (error) return res.status(error.status).json({ error: error.msg });
+    const lr = await pool.query(
+      `SELECT * FROM stocktake_lines WHERE id = $1 AND stocktake_id = $2`,
+      [req.params.lineId, st.id]
+    );
+    if (lr.rowCount === 0) return res.status(404).json({ error: '明細が見つかりません' });
+    const line = lr.rows[0];
+    // 有効個体を content_code 順で、スキャン済み(ok)かどうかを付けて返す
+    const bc = await pool.query(
+      `SELECT b.id, b.barcode_value, b.content_code,
+              EXISTS (SELECT 1 FROM stocktake_scans s
+                       WHERE s.stocktake_id = $1 AND s.line_id = $2
+                         AND s.result = 'ok' AND s.barcode_id = b.id) AS scanned
+         FROM barcodes b
+         JOIN receipt_details rd ON rd.id = b.receipt_detail_id
+        WHERE b.product_id = $3 AND rd.lot_number = $4
+          AND rd.expiry_date IS NOT DISTINCT FROM $5
+          AND b.voided_flag = FALSE AND b.used_flag = FALSE
+        ORDER BY b.content_code`,
+      [st.id, line.id, line.product_id, line.lot_number || '', line.expiry_date]
+    );
+    const barcodes = bc.rows;
+    const scannedCount = barcodes.filter((x) => x.scanned).length;
+    res.json({
+      lineId: line.id, isBarcode: line.is_barcode,
+      total: barcodes.length, scanned: scannedCount, remaining: barcodes.length - scannedCount,
+      barcodes,
+    });
+  } catch (err) {
+    console.error('棚卸しバーコード内訳エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// ------------------------------------------------------------
 // 開始(理論在庫スナップショット生成)
 //   body: { title?, categoryId?, departmentId?, qcOnly?, includeZero? }
 // ------------------------------------------------------------

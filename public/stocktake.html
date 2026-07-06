@@ -27,6 +27,14 @@
     @media (prefers-reduced-motion: reduce) { .rowline.flash td { animation: none; } }
     input.cinput { width: 90px; }
     .muted { color: #888; }
+    /* バーコード個体の内訳(行展開) */
+    .bclink { font-size: 12px; margin-left: 8px; white-space: nowrap; }
+    #lineTbl .detail-row > td { background: #f7fbff; padding: 8px 12px; }
+    .bc-table { width: auto; margin: 2px 0; border-collapse: collapse; }
+    .bc-table th, .bc-table td { padding: 3px 12px; text-align: left; }
+    .bc-ok { color: #1c7a41; font-weight: 600; }
+    .bc-no { color: #c62d42; font-weight: 600; }
+    #lineTbl tr.bc-todo td { background: #fff6e0; }
   </style>
 </head>
 <body>
@@ -137,6 +145,7 @@
     let currentStatus = null;
     let scannedLineIds = [];   // スキャンで計上した明細ID(新しい順)。最上部へ移動＋強調に使う
     let justScannedId = null;   // 直近にスキャンした明細ID(フラッシュ表示)
+    let expandedBc = new Set(); // バーコード内訳を展開中の明細ID
 
     const STATUS_LABEL = { open: '作成', counting: 'カウント中', confirmed: '確定', canceled: 'キャンセル' };
 
@@ -216,6 +225,7 @@
       currentId = id;
       scannedLineIds = [];
       justScannedId = null;
+      expandedBc = new Set();
       document.getElementById('diffPanel').style.display = 'none';
       setMsg(document.getElementById('detailMsg'), '', '');
       document.getElementById('scanToast').textContent = '';
@@ -259,7 +269,8 @@
 
         let countCell;
         if (l.is_barcode) {
-          countCell = `<span class="num">${counted == null ? '<span class="muted">0(未)</span>' : counted}</span>`;
+          countCell = `<span class="num">${counted == null ? '<span class="muted">0(未)</span>' : counted}</span>` +
+            ` <a href="#" class="bclink" onclick="toggleBc(${l.id}, this); return false;">詳細</a>`;
         } else if (locked) {
           countCell = `<span class="num">${counted == null ? '<span class="muted">未</span>' : counted}</span>`;
         } else {
@@ -269,6 +280,7 @@
 
         const tr = document.createElement('tr');
         const isScanned = scannedSet.has(String(l.id));
+        tr.dataset.lineId = l.id;
         tr.className = 'rowline' + (isScanned ? ' scanned' : '') + (String(l.id) === justScannedId ? ' flash' : '');
         tr.innerHTML =
           `<td>${esc(l.product_name)}</td>` +
@@ -299,6 +311,57 @@
       currentStatus = data.stocktake.status;
       const locked = (currentStatus === 'confirmed' || currentStatus === 'canceled');
       renderLines(data.lines, locked);
+      await reexpandBc();
+    }
+
+    // ---------------- バーコード個体の内訳(行展開) ----------------
+    async function toggleBc(lineId, link) {
+      const id = String(lineId);
+      const row = link.closest('tr');
+      const next = row.nextElementSibling;
+      if (expandedBc.has(id) && next && next.classList.contains('detail-row')) {
+        expandedBc.delete(id);
+        next.remove();
+        return;
+      }
+      expandedBc.add(id);
+      await insertBcDetail(id, row);
+    }
+
+    async function insertBcDetail(lineId, row) {
+      // 既存の展開があれば置き換え
+      const nx = row.nextElementSibling;
+      if (nx && nx.classList.contains('detail-row')) nx.remove();
+      const { ok, data } = await api(`/api/stocktake/${currentId}/lines/${lineId}/barcodes`);
+      if (!ok) return;
+      const dtr = document.createElement('tr');
+      dtr.className = 'detail-row';
+      const td = document.createElement('td');
+      td.colSpan = row.children.length;
+      td.innerHTML = bcDetailHtml(data);
+      dtr.appendChild(td);
+      row.after(dtr);
+    }
+
+    function bcDetailHtml(data) {
+      let h = `<div style="margin-bottom:6px;"><strong>バーコード内訳</strong> — 済 <b>${data.scanned}</b> / 全 ${data.total}` +
+        `（残 <b class="${data.remaining > 0 ? 'bc-no' : ''}">${data.remaining}</b>）</div>`;
+      if (data.total === 0) return h + '<span class="muted">有効なバーコード個体がありません</span>';
+      h += '<div class="scroll-x"><table class="bc-table"><thead><tr><th>状態</th><th>No.</th><th>バーコード</th></tr></thead><tbody>';
+      data.barcodes.forEach((b) => {
+        h += `<tr class="${b.scanned ? '' : 'bc-todo'}">` +
+          `<td>${b.scanned ? '<span class="bc-ok">✓ 済</span>' : '<span class="bc-no">未</span>'}</td>` +
+          `<td class="num">${b.content_code}</td><td>${esc(b.barcode_value)}</td></tr>`;
+      });
+      return h + '</tbody></table></div>';
+    }
+
+    // 再描画後、展開中の内訳を開き直す(スキャンで状態が変わるため再取得)
+    async function reexpandBc() {
+      for (const id of expandedBc) {
+        const row = document.querySelector(`#lineTbl tbody tr.rowline[data-line-id="${id}"]`);
+        if (row) await insertBcDetail(id, row);
+      }
     }
 
     // ---------------- スキャン ----------------
