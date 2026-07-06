@@ -95,7 +95,7 @@
         o.value = p.productId; o.textContent = p.productName; sel.appendChild(o);
       });
       // 既定期間: 今月1日〜今日
-      const t = new Date().toISOString().slice(0, 10);
+      const t = localDateStr();
       document.getElementById('from').value = t.slice(0, 8) + '01';
       document.getElementById('to').value = t;
       load();

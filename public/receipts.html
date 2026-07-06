@@ -115,7 +115,7 @@
     async function boot() {
       const user = await initPage('receipts');
       if (!user) return;
-      document.getElementById('receiptDate').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('receiptDate').value = localDateStr();
       products = await getProducts();
       // 問屋の選択肢
       const supSel = document.getElementById('supplier');

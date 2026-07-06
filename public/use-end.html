@@ -32,7 +32,7 @@
     async function boot() {
       const user = await initPage('useend');
       if (!user) return;
-      document.getElementById('endDate').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('endDate').value = localDateStr();
       document.getElementById('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
       load();
     }

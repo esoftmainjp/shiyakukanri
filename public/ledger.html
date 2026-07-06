@@ -35,9 +35,9 @@
     async function boot() {
       const user = await initPage('ledger');
       if (!user) return;
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localDateStr();
       const y = new Date(); y.setFullYear(y.getFullYear() - 1);
-      document.getElementById('from').value = y.toISOString().slice(0, 10);
+      document.getElementById('from').value = localDateStr(y);
       document.getElementById('to').value = today;
       load();
     }

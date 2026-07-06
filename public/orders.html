@@ -78,7 +78,7 @@
       if (!user) return;
       canEdit = (user.userType === 'admin' || user.userType === 'general');
       products = await getProducts();
-      document.getElementById('orderDate').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('orderDate').value = localDateStr();
       // 問屋コンボを構築(初期未選択)
       const supSel = document.getElementById('supplier');
       const sr = await api('/api/lookup/suppliers');

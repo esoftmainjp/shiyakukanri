@@ -406,20 +406,22 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // ------------------------------------------------------------
 // 起動処理
-//   ローカル(AUTO_MIGRATE=1 かつ 非本番)では、起動時に未適用の
-//   ローカルDBマイグレーションを自動適用する。本番(Render)は対象外
-//   (スキーマ変更は従来どおり手動マイグレーション運用)。
+//   AUTO_MIGRATE=1 のとき、起動時に未適用のマイグレーションを自動適用する。
+//   ローカルはもちろん、本番(Render)も環境変数 AUTO_MIGRATE=1 を設定すれば
+//   デプロイ(再起動)時に自動適用される。マイグレーションは追跡型(schema_migrations)・
+//   冪等・トランザクションのため、既適用分はスキップされ安全。
+//   万一失敗してもサーバー自体は起動する(ログに記録)。
 // ------------------------------------------------------------
 async function start() {
-  if (process.env.AUTO_MIGRATE === '1' && process.env.NODE_ENV !== 'production') {
+  if (process.env.AUTO_MIGRATE === '1') {
     try {
       const { syncMigrations } = require('../scripts/migrate-runner');
       const { applied } = await syncMigrations(pool, (m) => console.log(m));
       console.log(applied.length
-        ? `[migrate] ローカルDBを更新しました(${applied.length}件)`
-        : '[migrate] ローカルDBは最新です');
+        ? `[migrate] DBを更新しました(${applied.length}件): ${applied.join(', ')}`
+        : '[migrate] DBは最新です');
     } catch (err) {
-      // ローカル開発の利便性のため、失敗してもサーバー自体は起動する
+      // 失敗してもサーバー自体は起動する(ログで検知)
       console.error('[migrate] 自動マイグレーション失敗:', err.message);
     }
   }

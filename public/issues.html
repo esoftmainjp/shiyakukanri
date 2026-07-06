@@ -68,7 +68,7 @@
     async function boot() {
       const user = await initPage('issues');
       if (!user) return;
-      document.getElementById('issueDate').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('issueDate').value = localDateStr();
       products = await getProducts();
       document.getElementById('product').innerHTML =
         products.map((p) => `<option value="${p.productId}">${attr(p.productName)}</option>`).join('');

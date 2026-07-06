@@ -75,11 +75,11 @@
     }
 
     function setDefaultRange() {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localDateStr();
       const d = new Date();
       if (tab === 'monthly') d.setMonth(d.getMonth() - 11);
       else d.setMonth(0), d.setDate(1); // 今年1月1日
-      document.getElementById('from').value = d.toISOString().slice(0, 10);
+      document.getElementById('from').value = localDateStr(d);
       document.getElementById('to').value = today;
     }
 

@@ -112,7 +112,7 @@
     }
 
     function setToday() {
-      const t = new Date().toISOString().slice(0, 10);
+      const t = localDateStr();
       document.getElementById('from').value = t;
       document.getElementById('to').value = t;
       load();

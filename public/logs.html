@@ -83,8 +83,8 @@
       // 既定期間: 直近1ヶ月
       const today = new Date();
       const from = new Date(); from.setMonth(from.getMonth() - 1);
-      document.getElementById('to').value = today.toISOString().slice(0, 10);
-      document.getElementById('from').value = from.toISOString().slice(0, 10);
+      document.getElementById('to').value = localDateStr(today);
+      document.getElementById('from').value = localDateStr(from);
       await loadMeta();
       loadStorage();
       search();

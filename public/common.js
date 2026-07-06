@@ -31,6 +31,17 @@ function setDeviceSetting(key, value) {
   try { localStorage.setItem('dev_' + key, String(value)); } catch (e) { /* ignore */ }
 }
 
+// ローカル(端末=日本時間)の日付を 'YYYY-MM-DD' で返す。
+// new Date().toISOString() はUTCのため、JST早朝(0〜9時)に前日になってしまう。
+// 日付入力の既定値や相対日付の算出は必ずこれを使う。
+function localDateStr(d) {
+  d = d || new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 // 共通APIヘルパー
 async function api(path, options = {}) {
   const res = await fetch(path, Object.assign({

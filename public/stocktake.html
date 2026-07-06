@@ -19,6 +19,12 @@
     .scanbox { background: #f4f9ff; border: 1px solid #d3e4fb; border-radius: 10px; padding: 12px 14px; margin-top: 8px; }
     .toast { margin-left: 10px; font-weight: 600; }
     .rowline td { vertical-align: middle; }
+    /* スキャンして計上済みの行を強調(最上部へ移動) */
+    .rowline.scanned td { background: #e2f6e9; }
+    .rowline.scanned td:first-child { box-shadow: inset 4px 0 0 #1c7a41; font-weight: 600; }
+    @keyframes stkflash { from { background: #fff2b8; } to { background: #e2f6e9; } }
+    .rowline.flash td { animation: stkflash 1.2s ease-out; }
+    @media (prefers-reduced-motion: reduce) { .rowline.flash td { animation: none; } }
     input.cinput { width: 90px; }
     .muted { color: #888; }
   </style>
@@ -129,6 +135,8 @@
     let currentUser = null;
     let currentId = null;
     let currentStatus = null;
+    let scannedLineIds = [];   // スキャンで計上した明細ID(新しい順)。最上部へ移動＋強調に使う
+    let justScannedId = null;   // 直近にスキャンした明細ID(フラッシュ表示)
 
     const STATUS_LABEL = { open: '作成', counting: 'カウント中', confirmed: '確定', canceled: 'キャンセル' };
 
@@ -206,6 +214,8 @@
     // ---------------- 詳細 ----------------
     async function openDetail(id) {
       currentId = id;
+      scannedLineIds = [];
+      justScannedId = null;
       document.getElementById('diffPanel').style.display = 'none';
       setMsg(document.getElementById('detailMsg'), '', '');
       document.getElementById('scanToast').textContent = '';
@@ -234,7 +244,13 @@
       const tbody = document.querySelector('#lineTbl tbody');
       tbody.innerHTML = '';
       if (lines.length === 0) { tbody.innerHTML = '<tr><td colspan="8" class="muted">明細がありません</td></tr>'; return; }
-      lines.forEach((l) => {
+      // スキャン済みの行を、スキャンした新しい順で最上部へ。残りは元の順序。
+      const byId = new Map(lines.map((l) => [String(l.id), l]));
+      const scanned = scannedLineIds.map((id) => byId.get(id)).filter(Boolean);
+      const scannedSet = new Set(scanned.map((l) => String(l.id)));
+      const rest = lines.filter((l) => !scannedSet.has(String(l.id)));
+      const ordered = scanned.concat(rest);
+      ordered.forEach((l) => {
         const counted = l.counted_qty == null ? null : Number(l.counted_qty);
         const theo = Number(l.theoretical_qty);
         const diff = counted == null ? null : counted - theo;
@@ -252,7 +268,8 @@
         }
 
         const tr = document.createElement('tr');
-        tr.className = 'rowline';
+        const isScanned = scannedSet.has(String(l.id));
+        tr.className = 'rowline' + (isScanned ? ' scanned' : '') + (String(l.id) === justScannedId ? ' flash' : '');
         tr.innerHTML =
           `<td>${esc(l.product_name)}</td>` +
           `<td>${esc(l.lot_number) || '(なし)'}</td>` +
@@ -264,6 +281,7 @@
           `<td>${esc(l.counted_by_name) || ''}</td>`;
         tbody.appendChild(tr);
       });
+      justScannedId = null;   // フラッシュは1回だけ
     }
 
     async function saveCount(lineId, value) {
@@ -306,6 +324,13 @@
       const label = (data && data.added && data.result === 'ok') ? '✓ 追加して計上' : ((data && data.message) || m[0]);
       toast.textContent = label + `（${barcodeValue}）`;
       toast.style.color = m[1];
+      // 計上できた行を強調＋最上部へ
+      if (data.result === 'ok' && data.lineId != null) {
+        const id = String(data.lineId);
+        scannedLineIds = scannedLineIds.filter((x) => x !== id);
+        scannedLineIds.unshift(id);
+        justScannedId = id;
+      }
       await refreshLines();
     }
 
