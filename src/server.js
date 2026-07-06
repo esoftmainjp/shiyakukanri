@@ -368,22 +368,6 @@ app.get('/api/stocks', requireLogin, async (req, res) => {
   }
 });
 
-// 自動マイグレーション動作確認用(一時・検証後に削除)。
-// schema_migrations の件数/最新と、検証用テーブルの有無を返す(認証不要)。
-app.get('/api/migrate-status', async (req, res) => {
-  try {
-    const mig = await pool.query('SELECT filename FROM schema_migrations ORDER BY filename');
-    const tbl = await pool.query("SELECT to_regclass('public._automigrate_test') AS t");
-    res.json({
-      count: mig.rowCount,
-      latest: mig.rowCount ? mig.rows[mig.rowCount - 1].filename : null,
-      testTableExists: tbl.rows[0].t !== null,
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // ------------------------------------------------------------
 // 業務API (要ログイン)
 // ------------------------------------------------------------
