@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="試薬の在庫・使用期限・発注をロット単位で正確に管理するクラウド在庫管理システム。臨床検査室・病院向け。クラウド版/オフライン版。" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E🧪%3C/text%3E%3C/svg%3E" />
+<title>試薬在庫管理システム｜ロット単位で正確な在庫・使用期限管理</title>
+<style>
+  :root {
+    --paper: #F3F6FE;
+    --surface: #FFFFFF;
+    --surface-2: #EAF0FC;
+    --ink: #16213A;
+    --muted: #5C6B88;
+    --line: #D3DEF5;
+    --line-soft: #E4EAF8;
+    --accent: #4E74DD;
+    --accent-deep: #2E4FB0;
+    --accent-soft: #AFC5F5;
+    --accent-tint: #E5ECFC;
+    --accent2: #8E7BE0;
+    --amber: #B07E12;
+    --amber-tint: #F6ECD2;
+    --danger: #C25A6A;
+    --shadow: 0 1px 2px rgba(22,33,58,.05), 0 16px 38px -20px rgba(46,79,176,.30);
+    --radius: 10px;
+    --maxw: 1120px;
+    --font-body: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "YuGothic", "Noto Sans JP", "Meiryo", system-ui, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0B1120;
+      --surface: #121B2F;
+      --surface-2: #18243C;
+      --ink: #E7EDFB;
+      --muted: #94A2C1;
+      --line: #26344F;
+      --line-soft: #1B2740;
+      --accent: #7EA0F2;
+      --accent-deep: #A9C2F9;
+      --accent-soft: #35486E;
+      --accent-tint: #17233E;
+      --accent2: #B0A2F0;
+      --amber: #DCA850;
+      --amber-tint: #2C2616;
+      --danger: #E58097;
+      --shadow: 0 1px 2px rgba(0,0,0,.35), 0 22px 46px -24px rgba(0,0,0,.75);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper: #F3F6FE; --surface: #FFFFFF; --surface-2: #EAF0FC; --ink: #16213A; --muted: #5C6B88;
+    --line: #D3DEF5; --line-soft: #E4EAF8; --accent: #4E74DD; --accent-deep: #2E4FB0; --accent-soft: #AFC5F5;
+    --accent-tint: #E5ECFC; --accent2: #8E7BE0; --amber: #B07E12; --amber-tint: #F6ECD2; --danger: #C25A6A;
+    --shadow: 0 1px 2px rgba(22,33,58,.05), 0 16px 38px -20px rgba(46,79,176,.30);
+  }
+  :root[data-theme="dark"] {
+    --paper: #0B1120; --surface: #121B2F; --surface-2: #18243C; --ink: #E7EDFB; --muted: #94A2C1;
+    --line: #26344F; --line-soft: #1B2740; --accent: #7EA0F2; --accent-deep: #A9C2F9; --accent-soft: #35486E;
+    --accent-tint: #17233E; --accent2: #B0A2F0; --amber: #DCA850; --amber-tint: #2C2616; --danger: #E58097;
+    --shadow: 0 1px 2px rgba(0,0,0,.35), 0 22px 46px -24px rgba(0,0,0,.75);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; background: var(--paper); }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0; background: transparent; color: var(--ink);
+    font-family: var(--font-body); line-height: 1.75;
+    -webkit-font-smoothing: antialiased; font-feature-settings: "palt";
+  }
+  /* flowing graphical background */
+  #flow { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -2; display: block; }
+  .veil { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: radial-gradient(120% 80% at 50% -10%, transparent 40%, color-mix(in srgb, var(--paper) 55%, transparent) 100%); }
+
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+  a { color: inherit; }
+  h1, h2, h3 { text-wrap: balance; letter-spacing: -0.01em; line-height: 1.28; margin: 0; }
+  p { margin: 0; }
+
+  .eyebrow {
+    font-family: var(--font-mono); font-size: .72rem; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--accent-deep); display: inline-flex;
+    align-items: center; gap: .55em; font-weight: 600;
+  }
+  .eyebrow::before { content: ""; width: 26px; height: 1px; background: var(--accent); display: inline-block; }
+
+  header.top {
+    position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--paper) 78%, transparent);
+    backdrop-filter: saturate(1.4) blur(12px); border-bottom: 1px solid var(--line-soft);
+  }
+  .nav { display: flex; align-items: center; gap: 24px; height: 62px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -0.02em; }
+  .brand .mark {
+    width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: grid; place-items: center; color: #fff; font-size: 15px; flex: 0 0 auto;
+  }
+  .nav .links { display: flex; gap: 22px; margin-left: 8px; }
+  .nav .links a { text-decoration: none; color: var(--muted); font-size: .92rem; }
+  .nav .links a:hover { color: var(--ink); }
+  .nav .spacer { flex: 1; }
+  .btn {
+    font-family: var(--font-body); font-size: .92rem; font-weight: 700; cursor: pointer;
+    border-radius: 9px; padding: 10px 18px; border: 1px solid transparent; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 8px; transition: transform .12s ease, box-shadow .2s, background .2s, border-color .2s;
+  }
+  .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; box-shadow: 0 8px 20px -10px color-mix(in srgb, var(--accent) 80%, transparent); }
+  .btn-primary:hover { box-shadow: 0 12px 26px -10px color-mix(in srgb, var(--accent) 85%, transparent); }
+  .btn-ghost { border-color: var(--line); color: var(--ink); background: color-mix(in srgb, var(--surface) 70%, transparent); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent-deep); }
+  .btn:active { transform: translateY(1px); }
+  .nav .btn { padding: 8px 15px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  @media (max-width: 760px) { .nav .links { display: none; } }
+
+  .hero { position: relative; }
+  .hero-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 52px; align-items: center; padding: 78px 0 84px; }
+  @media (max-width: 900px) { .hero-grid { grid-template-columns: 1fr; gap: 36px; padding: 48px 0 56px; } }
+  h1.head { font-size: clamp(2.1rem, 4.6vw, 3.4rem); font-weight: 800; letter-spacing: -0.03em; }
+  h1.head .hl { background: linear-gradient(120deg, var(--accent-deep), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lede { margin-top: 22px; font-size: 1.08rem; color: var(--muted); max-width: 34em; }
+  .hero-cta { display: flex; gap: 12px; margin-top: 30px; flex-wrap: wrap; }
+  .trust { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: .84rem; color: var(--muted); }
+  .trust span { display: inline-flex; align-items: center; gap: 7px; }
+  .trust .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  .panel { background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 18px; backdrop-filter: blur(4px); }
+  .panel .phead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .panel .ptitle { font-family: var(--font-mono); font-size: .72rem; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; }
+  .panel .live { font-family: var(--font-mono); font-size: .68rem; color: var(--accent-deep); display: inline-flex; align-items: center; gap: 6px; }
+  .panel .live::before { content:""; width:7px; height:7px; border-radius:50%; background: var(--accent); animation: pulse 2.4s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%, transparent);} 70%{box-shadow:0 0 0 8px transparent;} 100%{box-shadow:0 0 0 0 transparent;} }
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .kpi { background: var(--surface-2); border: 1px solid var(--line-soft); border-radius: 10px; padding: 11px 13px; }
+  .kpi .n { font-family: var(--font-mono); font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .kpi .k { font-size: .72rem; color: var(--muted); margin-top: 1px; }
+  .kpi.warn .n { color: var(--amber); }
+  .meter-row { display:flex; align-items:center; justify-content:space-between; font-family: var(--font-mono); font-size:.72rem; color: var(--muted); margin: 12px 2px 6px; }
+  .meter { height: 9px; border-radius: 6px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--line-soft); }
+  .meter > i { display:block; height:100%; width:0; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 6px; transition: width 1.4s cubic-bezier(.2,.7,.2,1); }
+  .lotlist { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 10px; display: grid; gap: 7px; }
+  .lot { display:grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items:center; font-size: .8rem; }
+  .lot .code { font-family: var(--font-mono); color: var(--muted); }
+  .chip { font-family: var(--font-mono); font-size: .68rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+  .chip.ok { color: var(--accent-deep); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--accent-tint); }
+  .chip.soon { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, var(--line)); background: var(--amber-tint); }
+
+  section { padding: 78px 0; }
+  section + section { border-top: 1px solid var(--line-soft); }
+  .sec-head { max-width: 40em; margin-bottom: 40px; }
+  .sec-head h2 { font-size: clamp(1.5rem, 2.8vw, 2.05rem); font-weight: 800; margin-top: 14px; }
+  .sec-head p { margin-top: 14px; color: var(--muted); }
+
+  .pains { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; }
+  @media (max-width: 820px){ .pains { grid-template-columns: 1fr; } }
+  .pain { background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; backdrop-filter: blur(3px); }
+  .pain .q { font-family: var(--font-mono); font-size: .78rem; color: var(--danger); }
+  .pain h3 { font-size: 1.05rem; margin: 8px 0 6px; }
+  .pain p { font-size: .92rem; color: var(--muted); }
+
+  .features { display: grid; grid-template-columns: repeat(3,1fr); gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); border-radius: 16px; overflow: hidden; }
+  @media (max-width: 900px){ .features { grid-template-columns: repeat(2,1fr); } }
+  @media (max-width: 560px){ .features { grid-template-columns: 1fr; } }
+  .feat { background: var(--surface); padding: 26px 24px; transition: background .2s; }
+  .feat:hover { background: var(--surface-2); }
+  .feat .ix { font-family: var(--font-mono); font-size: .72rem; color: var(--accent-deep); letter-spacing: .1em; }
+  .feat h3 { font-size: 1.08rem; margin: 12px 0 8px; display: flex; align-items: center; gap: 9px; }
+  .feat h3 .g { width: 9px; height: 9px; border-radius: 2px; background: linear-gradient(135deg, var(--accent), var(--accent2)); flex: 0 0 auto; transform: rotate(45deg); }
+  .feat p { font-size: .92rem; color: var(--muted); }
+
+  .spot { display: grid; grid-template-columns: 1fr 1fr; gap: 44px; align-items: center; }
+  .spot + .spot { margin-top: 56px; }
+  .spot.rev .art { order: -1; }
+  @media (max-width: 860px){ .spot, .spot.rev { grid-template-columns: 1fr; gap: 24px; } .spot.rev .art { order: 0; } }
+  .spot h3 { font-size: 1.35rem; font-weight: 800; margin-bottom: 12px; }
+  .spot ul { margin: 16px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+  .spot li { position: relative; padding-left: 26px; color: var(--muted); font-size: .95rem; }
+  .spot li::before { content: ""; position: absolute; left: 0; top: .62em; width: 12px; height: 2px; background: var(--accent); }
+
+  .mock { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+  .mock .bar { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line-soft); background: var(--surface-2); }
+  .mock .bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); display: inline-block; }
+  .mock .bar .u { margin-left: 10px; font-family: var(--font-mono); font-size: .72rem; color: var(--muted); }
+  .mock .body { padding: 14px 16px; }
+  .mrow { display: grid; grid-template-columns: 1.4fr .8fr .8fr auto; gap: 10px; padding: 9px 4px; border-bottom: 1px dashed var(--line-soft); font-size: .82rem; align-items: center; }
+  .mrow.h { font-family: var(--font-mono); font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; border-bottom: 1px solid var(--line); }
+  .mrow .code { font-family: var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .barmini { height: 8px; border-radius: 5px; background: var(--surface-2); border: 1px solid var(--line-soft); overflow: hidden; }
+  .barmini > i { display:block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+
+  /* delivery modes */
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 760px){ .modes { grid-template-columns: 1fr; } }
+  .mode { background: color-mix(in srgb, var(--surface) 90%, transparent); border: 1px solid var(--line); border-radius: 14px; padding: 26px; backdrop-filter: blur(3px); position: relative; }
+  .mode.base { border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); }
+  .mode .badge { font-family: var(--font-mono); font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent2)); padding: 3px 9px; border-radius: 6px; display: inline-block; }
+  .mode .badge.alt { background: transparent; color: var(--accent-deep); border: 1px solid var(--accent-soft); }
+  .mode h3 { font-size: 1.2rem; margin: 14px 0 8px; }
+  .mode p { color: var(--muted); font-size: .93rem; }
+  .mode ul { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; }
+  .mode li { padding-left: 22px; position: relative; font-size: .9rem; color: var(--muted); }
+  .mode li::before { content: ""; position: absolute; left: 0; top: .6em; width: 10px; height: 2px; background: var(--accent); }
+
+  .steps { counter-reset: s; display: grid; grid-template-columns: repeat(5,1fr); gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); border-radius: 16px; overflow: hidden; }
+  @media (max-width: 900px){ .steps { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 520px){ .steps { grid-template-columns: 1fr; } }
+  .step { background: var(--surface); padding: 24px 20px; counter-increment: s; }
+  .step .no { font-family: var(--font-mono); font-size: .9rem; color: var(--accent-deep); font-weight: 700; }
+  .step .no::before { content: counter(s, decimal-leading-zero); }
+  .step h3 { font-size: 1rem; margin: 10px 0 6px; }
+  .step p { font-size: .88rem; color: var(--muted); }
+
+  .price { display: grid; grid-template-columns: 1.1fr .9fr; gap: 22px; align-items: stretch; }
+  @media (max-width: 820px){ .price { grid-template-columns: 1fr; } }
+  .plan { background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid var(--line); border-radius: 16px; padding: 30px; backdrop-filter: blur(3px); }
+  .plan.feature { border-color: var(--accent); box-shadow: var(--shadow); }
+  .plan .tag { font-family: var(--font-mono); font-size: .72rem; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
+  .plan .amount { font-family: var(--font-mono); font-size: 2.1rem; font-weight: 600; margin: 12px 0 2px; letter-spacing: -0.02em; }
+  .plan ul { list-style: none; padding: 0; margin: 18px 0 24px; display: grid; gap: 9px; }
+  .plan li { padding-left: 24px; position: relative; font-size: .92rem; color: var(--muted); }
+  .plan li::before { content: "✓"; position: absolute; left: 0; color: var(--accent); font-weight: 700; }
+  .ph { display: inline-block; background: var(--amber-tint); color: var(--amber); font-family: var(--font-mono); font-size: .68rem; padding: 1px 7px; border-radius: 5px; border: 1px solid color-mix(in srgb,var(--amber) 35%, var(--line)); }
+
+  .faq { display: grid; gap: 10px; max-width: 780px; }
+  details { background: color-mix(in srgb, var(--surface) 90%, transparent); border: 1px solid var(--line); border-radius: 12px; padding: 4px 20px; backdrop-filter: blur(3px); }
+  details[open] { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+  summary { cursor: pointer; font-weight: 700; padding: 16px 0; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; font-family: var(--font-mono); color: var(--accent-deep); font-size: 1.2rem; }
+  details[open] summary::after { content: "−"; }
+  details p { padding: 0 0 18px; color: var(--muted); font-size: .93rem; }
+
+  .cta-band { background: linear-gradient(135deg, #263c74, #3a3568); color: #EAF0FE; border-radius: 20px; padding: 52px; position: relative; overflow: hidden; }
+  .cta-band::after { content:""; position:absolute; right:-70px; top:-70px; width: 260px; height: 260px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--accent2) 70%, transparent), transparent 70%); }
+  .cta-band::before { content:""; position:absolute; left:-40px; bottom:-90px; width: 240px; height: 240px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 60%, transparent), transparent 70%); }
+  .cta-band h2 { font-size: clamp(1.5rem,3vw,2.1rem); font-weight: 800; position: relative; }
+  .cta-band p { margin-top: 12px; opacity: .86; position: relative; max-width: 40em; }
+  .cta-actions { margin-top: 26px; display: flex; gap: 14px; flex-wrap: wrap; position: relative; }
+  .cta-band .contact { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 8px 26px; font-family: var(--font-mono); font-size: .86rem; opacity: .92; position: relative; }
+  .btn-onink { background: #fff; color: #22346b; }
+  .btn-onink:hover { background: #eef2ff; }
+  .btn-lineink { border: 1px solid rgba(255,255,255,.4); color: #fff; }
+
+  .plan .amount .u { font-family: var(--font-body); font-size: .85rem; color: var(--muted); font-weight: 400; }
+
+  .contact-grid { display: grid; grid-template-columns: .92fr 1.08fr; gap: 26px; align-items: stretch; }
+  @media (max-width: 880px){ .contact-grid { grid-template-columns: 1fr; } }
+  .info-band { background: linear-gradient(140deg, #263c74, #3a3568); color: #EAF0FE; border-radius: 18px; padding: 32px; position: relative; overflow: hidden; }
+  .info-band::after { content:""; position:absolute; right:-60px; bottom:-70px; width: 220px; height: 220px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--accent2) 65%, transparent), transparent 70%); }
+  .info-band h3 { font-size: 1.2rem; position: relative; }
+  .info-band .lead { opacity: .85; margin-top: 10px; font-size: .93rem; position: relative; }
+  .info-band .big-tel { font-family: var(--font-mono); font-size: 1.6rem; font-weight: 600; margin-top: 22px; letter-spacing: -0.01em; position: relative; display: inline-block; color:#fff; text-decoration: none; }
+  .info-band .rows { margin-top: 22px; display: grid; gap: 9px; font-size: .88rem; position: relative; }
+  .info-band .rows div { display: grid; grid-template-columns: 88px 1fr; gap: 10px; }
+  .info-band .rows .lbl { font-family: var(--font-mono); font-size: .72rem; letter-spacing: .08em; opacity: .7; text-transform: uppercase; padding-top: 2px; }
+  .info-band a { color: #fff; }
+
+  .contact-form { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 28px; box-shadow: var(--shadow); }
+  .fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 480px){ .fgrid { grid-template-columns: 1fr; } }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: 6px; font-weight: 700; }
+  .field label .req { color: var(--danger); margin-left: 4px; }
+  .field input, .field select, .field textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); color: var(--ink); font-family: var(--font-body); font-size: .95rem; }
+  .field textarea { min-height: 110px; resize: vertical; }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+  .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .form-note { font-size: .78rem; color: var(--muted); margin-top: 4px; }
+  .form-msg { padding: 11px 13px; border-radius: 10px; font-size: .9rem; margin-bottom: 14px; display: none; }
+  .form-msg.ok { display: block; background: var(--accent-tint); color: var(--accent-deep); border: 1px solid var(--accent-soft); }
+  .form-msg.err { display: block; background: color-mix(in srgb, var(--danger) 14%, var(--surface)); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--line)); }
+  .thanks { text-align: center; padding: 28px 12px; }
+  .thanks .ico { width: 46px; height: 46px; border-radius: 50%; background: var(--accent-tint); color: var(--accent-deep); display: grid; place-items: center; margin: 0 auto 12px; font-size: 22px; }
+
+  footer { padding: 40px 0 60px; color: var(--muted); font-size: .85rem; }
+  .foot { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; align-items: center; }
+
+  .reveal { opacity: 0; transform: translateY(14px); transition: opacity .7s ease, transform .7s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
+  .note-flag { font-family: var(--font-mono); font-size:.72rem; color: var(--amber); background: var(--amber-tint); border:1px dashed color-mix(in srgb,var(--amber) 40%, var(--line)); border-radius: 8px; padding: 8px 12px; display:inline-block; }
+</style>
+</head>
+<body>
+<canvas id="flow" aria-hidden="true"></canvas>
+<div class="veil" aria-hidden="true"></div>
+
+<header class="top">
+  <div class="wrap nav">
+    <div class="brand"><span class="mark">🧪</span> 試薬在庫管理システム</div>
+    <nav class="links">
+      <a href="#features">機能</a>
+      <a href="#why">特長</a>
+      <a href="#modes">提供形態</a>
+      <a href="#flow-sec">導入の流れ</a>
+      <a href="#price">料金</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <span class="spacer"></span>
+    <a href="#contact" class="btn btn-primary">資料請求・お問い合わせ</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow">臨床検査室・病院のための在庫管理</span>
+        <h1 class="head" style="margin-top:18px;">試薬の在庫と使用期限を、<br><span class="hl">ロット単位で正確に。</span></h1>
+        <p class="lede">入庫・出庫・発注・使用期限までを一元管理。先入れ先出し（FEFO）で<b>期限切れ</b>を防ぎ、発注点の自動判定で<b>欠品</b>を防ぐ。棚卸しと転記の手間をなくす、試薬のための在庫管理システムです。</p>
+        <div class="hero-cta">
+          <a href="#contact" class="btn btn-primary">資料請求・お問い合わせ →</a>
+          <a href="#features" class="btn btn-ghost">機能を見る</a>
+        </div>
+        <div class="trust">
+          <span><i class="dot"></i>クラウド版・オフライン版に対応</span>
+          <span><i class="dot"></i>バーコード対応</span>
+          <span><i class="dot"></i>インストール不要（クラウド版）</span>
+        </div>
+      </div>
+
+      <div class="panel reveal" aria-hidden="true">
+        <div class="phead">
+          <span class="ptitle">在庫モニター</span>
+          <span class="live">LIVE</span>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><div class="n" data-count="1284">0</div><div class="k">管理中の試薬ロット</div></div>
+          <div class="kpi warn"><div class="n" data-count="7">0</div><div class="k">使用期限が近い</div></div>
+        </div>
+        <div class="meter-row"><span>使用期限の管理状況</span><span data-pct="92">0%</span></div>
+        <div class="meter"><i data-w="92"></i></div>
+        <div class="lotlist">
+          <div class="lot"><span>血糖 GLU 試薬</span><span class="code">LOT A24-118</span><span class="chip ok">期限 224日</span></div>
+          <div class="lot"><span>HbA1c キット</span><span class="code">LOT H24-072</span><span class="chip soon">期限 21日</span></div>
+          <div class="lot"><span>CRP ラテックス</span><span class="code">LOT C24-336</span><span class="chip ok">期限 168日</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="pains">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">こんな課題はありませんか</span>
+        <h2>Excelと手作業の在庫管理は、限界があります。</h2>
+      </div>
+      <div class="pains">
+        <div class="pain reveal"><div class="q">期限切れ</div><h3>気づいたら使用期限切れ</h3><p>ロットごとの期限を人が追いきれず、使えない試薬を廃棄。コストにも精度管理にも影響します。</p></div>
+        <div class="pain reveal"><div class="q">欠品・過剰在庫</div><h3>足りない／余りすぎる</h3><p>発注のタイミングが人の勘頼み。急な欠品で検査が止まる、逆に在庫を抱えすぎる。</p></div>
+        <div class="pain reveal"><div class="q">属人化</div><h3>担当者しか分からない</h3><p>棚卸しや発注が特定の人に依存。誰が・いつ・何を動かしたか、後から追えない。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">主な機能</span>
+        <h2>試薬管理に必要な一式を、ひとつの画面に。</h2>
+        <p>現場の運用に沿って、入庫から発注・棚卸し・履歴までを一気通貫でカバーします。</p>
+      </div>
+      <div class="features">
+        <div class="feat reveal"><div class="ix">01 / 入出庫</div><h3><span class="g"></span>入庫・出庫管理</h3><p>バーコードで読み取って入出庫。数量とロットを記録し、在庫にリアルタイム反映します。</p></div>
+        <div class="feat reveal"><div class="ix">02 / 発注</div><h3><span class="g"></span>発注管理</h3><p>最低個数・発注個数から発注点を自動判定。発注予定・入庫予定まで一元管理します。</p></div>
+        <div class="feat reveal"><div class="ix">03 / 期限</div><h3><span class="g"></span>使用期限管理（FEFO）</h3><p>期限の近いロットを自動で先に。期限切れ間近をひと目で把握できます。</p></div>
+        <div class="feat reveal"><div class="ix">04 / バーコード</div><h3><span class="g"></span>独自バーコード発行</h3><p>個体ごとのバーコードを発行・ラベル印刷。JANコードにも対応します。</p></div>
+        <div class="feat reveal"><div class="ix">05 / 台帳・集計</div><h3><span class="g"></span>台帳・履歴・集計</h3><p>試薬管理台帳、入出庫・発注履歴、使用量の月次推移までレポート化。</p></div>
+        <div class="feat reveal"><div class="ix">06 / ログ・権限</div><h3><span class="g"></span>操作ログ・権限管理</h3><p>誰がいつ何を操作したかを記録。管理者・一般などの権限で操作範囲を制御します。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="why">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">選ばれる理由</span>
+        <h2>「期限切れ」と「欠品」を、仕組みで防ぐ。</h2>
+      </div>
+
+      <div class="spot reveal">
+        <div>
+          <h3>使用期限を、ロット単位で見える化</h3>
+          <p style="color:var(--muted)">在庫を先入れ先出し（FEFO）で管理し、期限の近いものから使う運用を後押し。期限間近のロットは色で警告し、廃棄ロスを減らします。</p>
+          <ul>
+            <li>ロット・期限を記録し、期限の近い順に自動表示</li>
+            <li>期限間近・期限切れをひと目で把握</li>
+            <li>使用終了日の記録で使い切りを管理</li>
+          </ul>
+        </div>
+        <div class="art">
+          <div class="mock">
+            <div class="bar"><i></i><i></i><i></i><span class="u">/ 使用期限一覧</span></div>
+            <div class="body">
+              <div class="mrow h"><span>試薬</span><span>ロット</span><span>期限</span><span>状態</span></div>
+              <div class="mrow"><span>HbA1c キット</span><span class="code">H24-072</span><span class="code">残21日</span><span class="chip soon">要確認</span></div>
+              <div class="mrow"><span>CRP ラテックス</span><span class="code">C24-336</span><span class="code">残168日</span><span class="chip ok">良好</span></div>
+              <div class="mrow"><span>血糖 GLU 試薬</span><span class="code">A24-118</span><span class="code">残224日</span><span class="chip ok">良好</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="spot rev reveal">
+        <div>
+          <h3>発注点を自動判定し、欠品を防ぐ</h3>
+          <p style="color:var(--muted)">品目ごとに最低個数と発注個数を設定すれば、在庫が発注点を下回った品目を自動でピックアップ。発注から入庫までを予定として追跡できます。</p>
+          <ul>
+            <li>発注点を下回った品目を自動抽出</li>
+            <li>発注予定・入庫予定を一覧で管理</li>
+            <li>問屋（仕入先）ごとに発注をまとめて作成</li>
+          </ul>
+        </div>
+        <div class="art">
+          <div class="mock">
+            <div class="bar"><i></i><i></i><i></i><span class="u">/ 在庫と発注</span></div>
+            <div class="body">
+              <div class="mrow h"><span>品目</span><span>在庫</span><span>発注点</span><span></span></div>
+              <div class="mrow"><span>血糖 GLU 試薬</span><span class="code">3</span><span class="code">min 5</span><div class="barmini"><i style="width:30%"></i></div></div>
+              <div class="mrow"><span>CRP ラテックス</span><span class="code">12</span><span class="code">min 6</span><div class="barmini"><i style="width:88%"></i></div></div>
+              <div class="mrow"><span>凝固 PT 試薬</span><span class="code">2</span><span class="code">min 4</span><div class="barmini"><i style="width:20%"></i></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="modes">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">提供形態</span>
+        <h2>クラウド版が基本。オフライン版もご用意。</h2>
+        <p>ご施設のネットワーク環境やセキュリティ方針に合わせて選べます。</p>
+      </div>
+      <div class="modes">
+        <div class="mode base reveal">
+          <span class="badge">基本</span>
+          <h3>クラウド版</h3>
+          <p>インストール不要。ブラウザからどこでも利用でき、更新も自動。導入がスピーディです。</p>
+          <ul>
+            <li>PC・タブレットのブラウザで利用</li>
+            <li>面倒なサーバー管理・アップデート不要</li>
+            <li>バックアップもお任せ</li>
+          </ul>
+        </div>
+        <div class="mode reveal">
+          <span class="badge alt">院内・スタンドアロン</span>
+          <h3>オフライン版</h3>
+          <p>院内ネットワークやスタンドアロンPCで完結する形態。外部にデータを出さない運用が求められる環境に対応します。</p>
+          <ul>
+            <li>インターネット接続に依存せず稼働</li>
+            <li>データを院内に保持する運用が可能</li>
+            <li>ネットワーク制約の厳しい環境にも</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="flow-sec">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">導入の流れ</span>
+        <h2>お問い合わせから運用開始まで。</h2>
+      </div>
+      <div class="steps">
+        <div class="step reveal"><div class="no"></div><h3>お問い合わせ</h3><p>フォーム・メール・お電話でご連絡ください。</p></div>
+        <div class="step reveal"><div class="no"></div><h3>ヒアリング・デモ</h3><p>運用に合うかをデモでご確認いただきます。</p></div>
+        <div class="step reveal"><div class="no"></div><h3>初期設定</h3><p>商品・問屋などのマスタ登録を支援します。</p></div>
+        <div class="step reveal"><div class="no"></div><h3>運用開始</h3><p>入出庫・発注の日常運用をスタート。</p></div>
+        <div class="step reveal"><div class="no"></div><h3>サポート</h3><p>運用後もご不明点をサポートします。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="price">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">料金</span>
+        <h2>月額980円（税込）から。</h2>
+        <p>クラウド版・オフライン版をご用意しています。各種オプションは別途ご相談ください。</p>
+      </div>
+      <div class="price">
+        <div class="plan feature reveal">
+          <span class="tag">クラウド版（基本）</span>
+          <div class="amount">月額 980 <span class="u">円（税込）</span></div>
+          <p style="color:var(--muted); font-size:.92rem;">初期登録費用なし（自動登録）。インストール不要で、すぐに始められます。</p>
+          <ul>
+            <li>入出庫・発注・在庫・使用期限管理</li>
+            <li>バーコード発行・ラベル印刷</li>
+            <li>台帳・履歴・集計レポート</li>
+            <li>操作ログ・権限管理</li>
+          </ul>
+          <a href="#contact" class="btn btn-primary">申し込み・相談する</a>
+        </div>
+        <div class="plan reveal">
+          <span class="tag">オフライン版</span>
+          <div class="amount">月額 980 <span class="u">円（税込）</span></div>
+          <p style="color:var(--muted); font-size:.92rem;">＋ 初回登録費用 1,980円（税込）。院内・スタンドアロンで完結する形態です。</p>
+          <ul>
+            <li>クラウド版と同等の機能</li>
+            <li>外部にデータを出さない運用</li>
+            <li>初期設定・導入時のトレーニング</li>
+          </ul>
+          <a href="#contact" class="btn btn-ghost">相談する</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">よくあるご質問</span>
+        <h2>導入前のご不明点にお答えします。</h2>
+      </div>
+      <div class="faq">
+        <details class="reveal"><summary>インストールは必要ですか？</summary><p>クラウド版は不要です。Webブラウザからそのままお使いいただけます。院内で完結させたい場合は、オフライン版もご用意しています。</p></details>
+        <details class="reveal"><summary>オフラインでも使えますか？</summary><p>はい。インターネットに接続しない環境で動くオフライン版をご用意しています。外部にデータを出さない運用が求められる施設に適しています。詳細はお問い合わせください。</p></details>
+        <details class="reveal"><summary>バーコードは使えますか？</summary><p>市販のJANコードに加え、個体ごとの独自バーコードの発行・ラベル印刷に対応。入出庫はスキャンで行えます。</p></details>
+        <details class="reveal"><summary>既存のデータを取り込めますか？</summary><p>商品マスタなどはCSVでの取り込み・書き出しに対応しています。導入時の初期登録も支援します。</p></details>
+        <details class="reveal"><summary>誰がいつ操作したか記録されますか？</summary><p>はい。操作ログで入出庫・発注・マスタ編集などの操作履歴を記録します。権限（管理者・一般など）による制御も可能です。</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section id="contact">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">お問い合わせ</span>
+        <h2>資料請求・デモのご相談</h2>
+        <p>導入のご相談・お見積り・ご質問など、お気軽にお問い合わせください。担当者よりご連絡します。</p>
+      </div>
+      <div class="contact-grid">
+        <div class="info-band reveal">
+          <h3>お電話でのお問い合わせ</h3>
+          <p class="lead">受付時間内はお電話でもご相談いただけます。</p>
+          <a class="big-tel" href="tel:092-515-7923">092-515-7923</a>
+          <div class="rows">
+            <div><span class="lbl">会社</span><span>株式会社イーソフト</span></div>
+            <div><span class="lbl">所在地</span><span>福岡県福岡市西区石丸１丁目</span></div>
+            <div><span class="lbl">Mail</span><span><a href="mailto:info@e-soft.jp">info@e-soft.jp</a></span></div>
+            <div><span class="lbl">営業</span><span>平日 9:00〜18:00</span></div>
+          </div>
+        </div>
+
+        <form class="contact-form reveal" id="cform" novalidate>
+          <div class="form-msg" id="fmsg" role="alert"></div>
+          <div id="fields">
+            <div class="fgrid">
+              <div class="field"><label for="f_org">会社名・施設名<span class="req">*</span></label><input id="f_org" name="org" type="text" autocomplete="organization" required /></div>
+              <div class="field"><label for="f_name">お名前<span class="req">*</span></label><input id="f_name" name="name" type="text" autocomplete="name" required /></div>
+            </div>
+            <div class="fgrid">
+              <div class="field"><label for="f_email">メールアドレス<span class="req">*</span></label><input id="f_email" name="email" type="email" autocomplete="email" required /></div>
+              <div class="field"><label for="f_tel">電話番号（任意）</label><input id="f_tel" name="tel" type="tel" autocomplete="tel" /></div>
+            </div>
+            <div class="field"><label for="f_type">お問い合わせ種別</label>
+              <select id="f_type" name="type">
+                <option>資料請求</option><option>デモ希望</option><option>ご質問</option><option>その他</option>
+              </select>
+            </div>
+            <div class="field"><label for="f_body">お問い合わせ内容<span class="req">*</span></label><textarea id="f_body" name="body" required></textarea></div>
+            <div class="hp" aria-hidden="true"><label>この欄は入力しないでください<input type="text" name="website" tabindex="-1" autocomplete="off" /></label></div>
+            <button type="submit" class="btn btn-primary" id="fsubmit" style="width:100%; justify-content:center;">送信する →</button>
+            <p class="form-note">送信いただいた内容は、お問い合わせ対応の目的にのみ使用します。</p>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div>
+      <div class="brand"><span class="mark">🧪</span> 試薬在庫管理システム</div>
+      <div style="margin-top:8px; line-height:1.7;">
+        株式会社イーソフト　／　福岡県福岡市西区石丸１丁目<br>
+        TEL 092-515-7923　／　info@e-soft.jp
+      </div>
+    </div>
+    <div>© <span id="yr"></span> 株式会社イーソフト. All rights reserved.</div>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- flowing graphical background (Canvas) ---- */
+  (function () {
+    var cv = document.getElementById('flow');
+    var ctx = cv.getContext('2d');
+    var W, H, dpr;
+    function isDark() {
+      var t = document.documentElement.getAttribute('data-theme');
+      if (t) return t === 'dark';
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    var palettes = {
+      light: { bg: '#F3F6FE', blobs: ['#BFD3F7', '#D2C9F3', '#C7E2F6', '#A9C1F2', '#E0D6F6'] },
+      dark:  { bg: '#0B1120', blobs: ['#1E3568', '#26306E', '#1B2E57', '#2A2A63', '#16294C'] }
+    };
+    var blobs = [];
+    function build() {
+      blobs = [];
+      var n = 6;
+      for (var i = 0; i < n; i++) {
+        blobs.push({
+          x: Math.random(), y: Math.random(),
+          r: 0.28 + Math.random() * 0.32,
+          ax: 0.05 + Math.random() * 0.12, ay: 0.05 + Math.random() * 0.12,
+          sx: 0.10 + Math.random() * 0.18, sy: 0.10 + Math.random() * 0.18,
+          px: Math.random() * 6.28, py: Math.random() * 6.28,
+          ci: i
+        });
+      }
+    }
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = window.innerWidth; H = window.innerHeight;
+      cv.width = W * dpr; cv.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    function draw(t) {
+      var pal = palettes[isDark() ? 'dark' : 'light'];
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = pal.bg; ctx.fillRect(0, 0, W, H);
+      if (ctx.filter !== undefined) ctx.filter = 'blur(46px)';
+      ctx.globalCompositeOperation = isDark() ? 'lighter' : 'multiply';
+      var minSide = Math.min(W, H), maxSide = Math.max(W, H);
+      for (var i = 0; i < blobs.length; i++) {
+        var b = blobs[i];
+        var cx = (b.x + Math.sin(t * b.sx + b.px) * b.ax) * W;
+        var cy = (b.y + Math.cos(t * b.sy + b.py) * b.ay) * H;
+        var rad = b.r * maxSide;
+        var col = pal.blobs[b.ci % pal.blobs.length];
+        var g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
+        g.addColorStop(0, col);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.globalAlpha = isDark() ? 0.55 : 0.85;
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(cx, cy, rad, 0, 6.2832); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      if (ctx.filter !== undefined) ctx.filter = 'none';
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    var start = null;
+    function loop(ts) {
+      if (start === null) start = ts;
+      draw((ts - start) / 1000);
+      raf = requestAnimationFrame(loop);
+    }
+    var raf;
+    resize(); build();
+    if (reduce) { draw(2.0); }
+    else { raf = requestAnimationFrame(loop); }
+    window.addEventListener('resize', function () { resize(); if (reduce) draw(2.0); });
+  })();
+
+  /* ---- reveal on scroll ---- */
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.14 });
+  document.querySelectorAll('.reveal').forEach(function (el) {
+    if (reduce) { el.classList.add('in'); } else { io.observe(el); }
+  });
+
+  /* ---- instrument panel count-up ---- */
+  function animate() {
+    document.querySelectorAll('[data-count]').forEach(function (el) {
+      var target = +el.getAttribute('data-count'), t0 = null, dur = 1200;
+      if (reduce) { el.textContent = target.toLocaleString(); return; }
+      function tick(ts){ if(!t0)t0=ts; var p=Math.min((ts-t0)/dur,1); el.textContent = Math.round(target*(1-Math.pow(1-p,3))).toLocaleString(); if(p<1) requestAnimationFrame(tick); }
+      requestAnimationFrame(tick);
+    });
+    document.querySelectorAll('[data-pct]').forEach(function (el) {
+      var target = +el.getAttribute('data-pct');
+      if (reduce) { el.textContent = target + '%'; return; }
+      var t0 = null;
+      function tick(ts){ if(!t0)t0=ts; var p=Math.min((ts-t0)/1200,1); el.textContent = Math.round(target*(1-Math.pow(1-p,3)))+'%'; if(p<1) requestAnimationFrame(tick); }
+      requestAnimationFrame(tick);
+    });
+    document.querySelectorAll('.meter > i[data-w]').forEach(function (el) {
+      requestAnimationFrame(function(){ el.style.width = el.getAttribute('data-w') + '%'; });
+    });
+  }
+  var panel = document.querySelector('.panel');
+  if (panel) {
+    var pio = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { animate(); pio.disconnect(); } });
+    }, { threshold: 0.3 });
+    pio.observe(panel);
+  }
+
+  /* ---- contact form ---- */
+  (function () {
+    var form = document.getElementById('cform');
+    if (!form) return;
+    var msg = document.getElementById('fmsg');
+    var CONTACT_ENDPOINT = '';  // 試薬アプリの /api/contact 絶対URL（例: https://xxx.onrender.com/api/contact）
+    var isPreview = /claude\.ai|artifact|anthropic/.test(location.hostname);
+    function showMsg(kind, text) { msg.className = 'form-msg ' + kind; msg.textContent = text; }
+    function thanks() {
+      document.getElementById('fields').innerHTML =
+        '<div class="thanks"><div class="ico">✓</div>' +
+        '<h3 style="margin-bottom:6px;">送信しました</h3>' +
+        '<p style="color:var(--muted); font-size:.93rem;">お問い合わせありがとうございます。担当者より折り返しご連絡いたします。</p></div>';
+    }
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      msg.className = 'form-msg';
+      if (form.website && form.website.value) { thanks(); return; } // ハニーポット
+      var data = {
+        org: form.org.value.trim(), name: form.name.value.trim(),
+        email: form.email.value.trim(), tel: form.tel.value.trim(),
+        type: form.type.value, body: form.body.value.trim()
+      };
+      if (!data.org || !data.name || !data.email || !data.body) { showMsg('err', '必須項目（*）をご入力ください。'); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { showMsg('err', 'メールアドレスの形式をご確認ください。'); return; }
+
+      if (isPreview) { thanks(); return; } // プレビューでは送信せず完了表示
+      if (!CONTACT_ENDPOINT) { showMsg('err', '現在準備中です。お手数ですがお電話ください。'); return; }
+
+      var btn = document.getElementById('fsubmit');
+      btn.disabled = true; btn.textContent = '送信中…';
+      fetch(CONTACT_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+        .then(function (r) { return r.ok ? thanks() : r.json().then(function (d) { throw new Error((d && d.error) || '送信に失敗しました'); }); })
+        .catch(function (err) {
+          showMsg('err', (err && err.message) || '送信に失敗しました。お手数ですがお電話ください。');
+          btn.disabled = false; btn.textContent = '送信する →';
+        });
+    });
+  })();
+</script>
+
+</body>
+</html>
