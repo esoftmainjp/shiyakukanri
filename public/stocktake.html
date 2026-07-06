@@ -324,8 +324,8 @@
       const label = (data && data.added && data.result === 'ok') ? '✓ 追加して計上' : ((data && data.message) || m[0]);
       toast.textContent = label + `（${barcodeValue}）`;
       toast.style.color = m[1];
-      // 計上できた行を強調＋最上部へ
-      if (data.result === 'ok' && data.lineId != null) {
+      // 計上できた行(ok)＋既にスキャン済み(duplicate)も、確認のため最上部へ移動＋強調
+      if ((data.result === 'ok' || data.result === 'duplicate') && data.lineId != null) {
         const id = String(data.lineId);
         scannedLineIds = scannedLineIds.filter((x) => x !== id);
         scannedLineIds.unshift(id);

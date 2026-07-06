@@ -513,13 +513,13 @@ router.post('/:id/scan', async (req, res) => {
       if (barcodeId != null) {
         // 同一個体の既存スキャンを確認
         const ex = await client.query(
-          `SELECT id, result FROM stocktake_scans WHERE stocktake_id = $1 AND barcode_id = $2`,
+          `SELECT id, result, line_id FROM stocktake_scans WHERE stocktake_id = $1 AND barcode_id = $2`,
           [st.id, barcodeId]
         );
         if (ex.rowCount && ex.rows[0].result === 'ok') {
-          // 既に計上済み(有効) → 二重スキャン
+          // 既に計上済み(有効) → 二重スキャン。確認のため対象行を返す(フロントで最上部へ移動)
           await client.query('ROLLBACK');
-          return res.json({ ok: true, result: 'duplicate', message: 'この個体は既にスキャン済みです' });
+          return res.json({ ok: true, result: 'duplicate', lineId: ex.rows[0].line_id, message: 'この個体は既にスキャン済みです' });
         }
         if (ex.rowCount) {
           // 以前の非ok(対象外等)を今回の結果で上書き(棚卸し表に後から現れた等)
