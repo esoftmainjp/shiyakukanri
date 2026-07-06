@@ -34,6 +34,17 @@
       <div style="margin:8px 0;">
         <button onclick="orderChecked()">チェックした商品を発注予定に追加して発注画面へ →</button>
       </div>
+      <div style="margin:8px 0; display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; background:#fbfcfd; border:1px solid #eee; border-radius:8px; padding:8px 10px;">
+        <div style="flex:0; min-width:120px;"><label>処理区分</label>
+          <select id="dispType">
+            <option value="disposal">廃棄</option>
+            <option value="return">返品</option>
+          </select>
+        </div>
+        <div style="flex:0; min-width:220px;"><label>理由(必須)</label><input id="dispReason" value="使用期限切れ" /></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="danger" onclick="disposeChecked()">チェックした在庫を廃棄/返品</button></div>
+      </div>
+      <p style="font-size:0.82rem; color:#777; margin:0 0 6px;">※ チェックした各在庫の「在庫数」全量を処理します（期限切れ在庫の一括処理用）。在庫は0になり一覧から消えます。</p>
       <p class="msg" id="msg"></p>
       <table id="tbl">
         <thead><tr>
@@ -81,7 +92,8 @@
         const label = r.status === 'expired' ? '期限切れ' : '期限接近';
         const days = r.days_left < 0 ? `${-r.days_left}日超過` : `残${r.days_left}日`;
         tr.innerHTML =
-          `<td style="text-align:center;"><input type="checkbox" class="pick" data-pid="${r.product_id}" style="width:auto;" /></td>` +
+          `<td style="text-align:center;"><input type="checkbox" class="pick" data-pid="${r.product_id}" ` +
+          `data-lot="${esc(r.lot_number || '')}" data-exp="${r.expiry_date || ''}" data-qty="${r.stock_quantity}" data-name="${esc(r.product_name)}" style="width:auto;" /></td>` +
           `<td>${label}</td><td>${esc(r.product_name)}</td><td>${esc(r.lot_number) || '(なし)'}</td>` +
           `<td>${r.expiry_date}</td><td>${days}</td>` +
           `<td style="text-align:right;">${r.stock_quantity}</td><td style="text-align:right;">${r.product_total}</td>` +
@@ -121,6 +133,38 @@
       } else {
         setMsg(msg, '発注予定に追加できる商品がありませんでした', 'error');
       }
+    }
+
+    // チェックした在庫を廃棄/返品(各在庫の在庫数全量を処理)
+    async function disposeChecked() {
+      const msg = document.getElementById('msg');
+      const picks = [...document.querySelectorAll('.pick:checked')];
+      if (picks.length === 0) { setMsg(msg, '処理する在庫を選択してください', 'error'); return; }
+      const type = document.getElementById('dispType').value;
+      const typeLabel = type === 'disposal' ? '廃棄' : '返品';
+      const reason = document.getElementById('dispReason').value.trim();
+      if (!reason) { setMsg(msg, '理由を入力してください', 'error'); return; }
+      const items = picks.map((c) => ({
+        productId: c.dataset.pid, lotNumber: c.dataset.lot || '', expiryDate: c.dataset.exp || null,
+        qty: Number(c.dataset.qty), name: c.dataset.name,
+      })).filter((x) => x.qty > 0);
+      if (items.length === 0) { setMsg(msg, '在庫数のある行を選択してください', 'error'); return; }
+      const totalQty = items.reduce((s, x) => s + x.qty, 0);
+      if (!confirm(`選択した ${items.length} 件（在庫合計 ${totalQty} バラ）を「${typeLabel}」します。\nよろしいですか？`)) return;
+      let done = 0; const failed = [];
+      for (const it of items) {
+        const { ok, data } = await api('/api/inventory/movement', {
+          method: 'POST',
+          body: JSON.stringify({
+            productId: it.productId, lotNumber: it.lotNumber, expiryDate: it.expiryDate,
+            movementType: type, quantity: it.qty, reason,
+          }),
+        });
+        if (ok) done++; else failed.push(`${it.name}（ロット:${it.lotNumber || 'なし'}）: ${(data && data.error) || '失敗'}`);
+      }
+      if (failed.length) alert('次の在庫は処理できませんでした：\n' + failed.join('\n'));
+      setMsg(msg, `${typeLabel}を ${done} 件 実行しました${failed.length ? `（失敗 ${failed.length} 件）` : ''}`, done ? 'ok' : 'error');
+      load();
     }
 
     function esc(s) {
