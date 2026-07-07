@@ -70,8 +70,13 @@
       if (!user) return;
       document.getElementById('issueDate').value = localDateStr();
       products = await getProducts();
-      document.getElementById('product').innerHTML =
-        products.map((p) => `<option value="${p.productId}">${attr(p.productName)}</option>`).join('');
+      // 在庫のある商品だけを一覧に表示する
+      const stk = await api('/api/lookup/stocks');
+      const inStock = new Set(((stk.data && stk.data.stocks) || []).map((s) => String(s.product_id)));
+      const avail = products.filter((p) => inStock.has(String(p.productId)));
+      document.getElementById('product').innerHTML = avail.length
+        ? avail.map((p) => `<option value="${p.productId}">${attr(p.productName)}</option>`).join('')
+        : '<option value="">在庫のある商品がありません</option>';
       // バーコード欄: Enter(スキャナ送出)で読取実行
       document.getElementById('barcode').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); addBarcode(); }
@@ -86,16 +91,17 @@
     }
 
     async function onProductChange() {
+      const pid = document.getElementById('product').value;
+      const sel = document.getElementById('stock');
+      if (!pid) { sel.innerHTML = '<option value="">在庫なし</option>'; return; }
       const cur = currentDetail();
       if (cur && cur.detail) document.getElementById('pack').value = cur.detail.packSize;
-      const pid = document.getElementById('product').value;
       const { data } = await api('/api/lookup/stocks?productId=' + pid);
-      const sel = document.getElementById('stock');
       // 在庫は使用期限の昇順(FEFO)で返る。先頭(最短期限)を自動選択する。
       const stocks = data.stocks || [];
       sel.innerHTML = stocks.map((s, i) =>
         `<option value='${JSON.stringify({ lot: s.lot_number, exp: s.expiry_date })}'>` +
-        `${i === 0 ? '★最短期限 ' : ''}${attr(s.lot_number || '(ロットなし)')} / 期限:${s.expiry_date || 'なし'} / 在庫:${s.stock_quantity}</option>`
+        `${i === 0 ? '★最短期限 ' : ''}${attr(s.lot_number || '(ロットなし)')} / 期限:${s.expiry_date || 'なし'} / 在庫:${s.stock_quantity}バラ</option>`
       ).join('') || '<option value="">在庫なし</option>';
       sel.selectedIndex = 0; // FEFO: 最短期限を既定選択
     }
