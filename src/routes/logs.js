@@ -99,6 +99,110 @@ async function attachTargetNames(items) {
   return items;
 }
 
+// ---- before/after データ内のフィールド名・ID値を日本語/名称へ変換する ----
+
+// 変更前後データのキー(フィールド名)の和名。logs.html の KEY_LABELS と対応。
+const FIELD_LABELS = {
+  name: '名称', kana: 'カナ', note: '備考', is_active: '有効', login_id: 'ログインID', user_type: 'タイプ',
+  password: 'パスワード', department_id: '部門', category_id: '分類', management_code: '管理コード', qc_target_flag: '試薬管理対象',
+  product_id: '商品', supplier_id: '問屋', maker_id: 'メーカー', product_detail_id: '商品詳細',
+  lot_number: 'ロット', expiry_date: '使用期限', unit_price: '単価', pack_size: '梱包数',
+  quantity_unit: '数量単位', pack_unit: '梱包単位', spec: '規格', jan_code: 'JANコード',
+  test_count: 'テスト数', min_quantity: '最低個数', order_quantity: '発注数', jan_maker_code: 'JANメーカーコード',
+  stock_quantity: '在庫数', movementType: '区分', reason: '理由', receipt_date: '入庫日', issue_date: '出庫日',
+  order_date: '発注日', order_status: '状態', apply_start_date: '適用開始日', apply_end_date: '適用終了日',
+  barcode_issue_flag: 'バーコード発行', canceled_flag: 'キャンセル', held_flag: '保留',
+  password_changed: 'パスワード変更', file: 'ファイル', count: '件数',
+  productId: '商品', lotNumber: 'ロット', expiryDate: '使用期限',
+  issueDate: '出庫日', receiptDate: '入庫日', orderDate: '発注日',
+  detailCount: '明細件数', orderPlanCreated: '発注予定作成', receivedOrders: '入庫済み発注数',
+  values: 'バーコード値', from: '開始日', to: '終了日', groupBy: '集計単位', via: '経由',
+  admin_login_id: '管理者ログインID', order_id: '発注', planned_order_quantity: '予定数',
+  title: 'タイトル', lineCount: '明細件数', scope: '絞り込み条件', status: '状態',
+  confirmedLines: '反映件数', totalDiff: '差異合計', voidedBarcodes: '紛失無効化(本)',
+  driftLines: '在庫変動件数', uncounted: '未カウント件数',
+  inserted: '取込件数', skipped: 'スキップ件数',
+  departmentsCreated: '部門作成数', categoriesCreated: '分類作成数',
+  makersCreated: 'メーカー作成数', suppliersCreated: '問屋作成数',
+  productsCreated: '商品作成数', detailsCreated: '商品詳細作成数',
+  user_id: 'ユーザー', id: 'ID', created_at: '作成日時', updated_at: '更新日時',
+};
+const MOVE_LABEL = { adjust: '在庫調整', disposal: '廃棄', return: '返品', receipt: '入庫', issue: '出庫' };
+const OSTATUS_LABEL = { unordered: '未発注', ordered: '発注済み', received: '入庫済み', canceled: 'キャンセル' };
+const STATUS_LABEL = { open: '作成', counting: 'カウント中', confirmed: '確定', canceled: 'キャンセル', unordered: '未発注', ordered: '発注済み', received: '入庫済み' };
+const UTYPE_LABEL = { superadmin: '全体管理者', admin: '管理者', general: '一般', supplier: '問屋' };
+
+// before/after のキー(ID項目) → 名称を引くマスター種別(NAME_SQL のキー)
+const ID_FIELD_TABLE = {
+  product_id: 'products', productId: 'products',
+  supplier_id: 'suppliers', supplierId: 'suppliers',
+  maker_id: 'makers', makerId: 'makers',
+  department_id: 'departments', departmentId: 'departments',
+  category_id: 'categories', categoryId: 'categories',
+  product_detail_id: 'product_details', productDetailId: 'product_details',
+  user_id: 'users', userId: 'users',
+  facility_id: 'facilities', facilityId: 'facilities',
+  order_id: 'orders', orderId: 'orders',
+  order_detail_id: 'order_details',
+  barcode_id: 'barcodes', receipt_id: 'receipts', issue_id: 'issues',
+};
+
+// ログ配列の before_data/after_data 内のID項目を名称へ置換する(見つからなければIDのまま)。
+async function resolveIdsInLogs(items) {
+  const byTable = {};
+  const scan = (data) => {
+    if (!data || typeof data !== 'object') return;
+    for (const [k, v] of Object.entries(data)) {
+      const t = ID_FIELD_TABLE[k];
+      if (t && NAME_SQL[t] && v != null && /^\d+$/.test(String(v))) {
+        (byTable[t] ||= new Set()).add(String(v));
+      }
+    }
+  };
+  for (const r of items) { scan(r.before_data); scan(r.after_data); }
+  const nameMap = {};
+  for (const [t, idSet] of Object.entries(byTable)) {
+    try {
+      const { rows } = await pool.query(NAME_SQL[t], [[...idSet]]);
+      for (const row of rows) nameMap[`${t}:${row.id}`] = row.name;
+    } catch (e) { /* 名称引き失敗はIDのまま */ }
+  }
+  const apply = (data) => {
+    if (!data || typeof data !== 'object') return data;
+    const out = Array.isArray(data) ? data.slice() : { ...data };
+    for (const [k, v] of Object.entries(out)) {
+      const t = ID_FIELD_TABLE[k];
+      if (t && v != null) {
+        const nm = nameMap[`${t}:${v}`];
+        if (nm != null) out[k] = nm;
+      }
+    }
+    return out;
+  };
+  for (const r of items) { r.before_data = apply(r.before_data); r.after_data = apply(r.after_data); }
+  return items;
+}
+
+// 単一値を和訳(区分・状態・タイプ・真偽・空)。
+function fmtLogValue(k, v) {
+  if (v === undefined) return '';
+  if (v === null || v === '') return '(空)';
+  if (typeof v === 'boolean') return k === 'is_active' ? (v ? '有効' : '無効') : (v ? 'はい' : 'いいえ');
+  if (k === 'movementType') return MOVE_LABEL[v] || v;
+  if (k === 'order_status') return OSTATUS_LABEL[v] || v;
+  if (k === 'status') return STATUS_LABEL[v] || v;
+  if (k === 'user_type') return UTYPE_LABEL[v] || v;
+  if (typeof v === 'object') { try { return JSON.stringify(v); } catch (e) { return String(v); } }
+  return String(v);
+}
+
+// before/after オブジェクトを「項目: 値 / …」の日本語文字列にする(CSV・印刷用)。
+function formatLogText(data) {
+  if (data == null) return '';
+  if (typeof data !== 'object') return String(data);
+  return Object.entries(data).map(([k, v]) => `${FIELD_LABELS[k] || k}: ${fmtLogValue(k, v)}`).join(' / ');
+}
+
 // フィルタ用の候補(操作区分・対象テーブル・ユーザー)
 // GET /api/logs/meta
 router.get('/meta', async (req, res) => {
@@ -183,6 +287,12 @@ router.get('/', async (req, res) => {
       target_table_label: TABLE_LABELS[r.target_table] || r.target_table,
     }));
     await attachTargetNames(items);
+    await resolveIdsInLogs(items);
+    // 印刷用に日本語整形テキストも付与(画面はbefore_data/after_dataの差分表を使用)
+    for (const r of items) {
+      r.before_text = formatLogText(r.before_data);
+      r.after_text = formatLogText(r.after_data);
+    }
     res.json({ items, total, limit, offset });
   } catch (err) {
     console.error('操作ログ一覧エラー:', err.message);
@@ -208,7 +318,7 @@ router.get('/csv', async (req, res) => {
       p
     );
     await attachTargetNames(rows);
-    const toStr = (v) => (v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : String(v)));
+    await resolveIdsInLogs(rows);
     const data = rows.map((r) => ({
       created_at: r.created_at ? new Date(r.created_at).toISOString().replace('T', ' ').slice(0, 19) : '',
       user_name: r.user_name || '',
@@ -216,8 +326,8 @@ router.get('/csv', async (req, res) => {
       operation_type: r.operation_type || '',
       target_table: TABLE_LABELS[r.target_table] || r.target_table || '',
       target_name: (r.target_name && r.target_name !== r.user_name) ? r.target_name : '',
-      before_data: toStr(r.before_data),
-      after_data: toStr(r.after_data),
+      before_data: formatLogText(r.before_data),
+      after_data: formatLogText(r.after_data),
     }));
     const columns = [
       { key: 'created_at', label: '日時' },

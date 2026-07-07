@@ -222,17 +222,18 @@
       const rows = data.items || [];
       let h = metaRow([['期間', `${from || '—'} ～ ${to || '—'}`], ['件数', rows.length]]);
       h += `<table><thead><tr><th>日時</th><th>ユーザー</th><th>操作</th><th>対象</th>` +
-        `<th class="num">対象ID</th><th>変更前</th><th>変更後</th></tr></thead><tbody>`;
+        `<th>内容</th><th>変更前</th><th>変更後</th></tr></thead><tbody>`;
       if (rows.length === 0) {
         h += `<tr><td colspan="7" style="text-align:center;">該当するログがありません。</td></tr>`;
       } else {
         rows.forEach((r) => {
+          const nm = (r.target_name && r.target_name !== r.user_name) ? r.target_name : '';
           h += `<tr><td>${fmtTs(r.created_at)}</td><td>${esc(r.user_name || '(不明)')}</td>` +
             `<td>${esc(r.operation_type) || '-'}</td>` +
             `<td>${esc(r.target_table_label || LOG_TABLE_JP[r.target_table] || r.target_table || '')}</td>` +
-            `<td class="num">${r.target_id == null ? '' : esc(r.target_id)}</td>` +
-            `<td style="font-size:0.78rem; word-break:break-all;">${jsonInline(r.before_data)}</td>` +
-            `<td style="font-size:0.78rem; word-break:break-all;">${jsonInline(r.after_data)}</td></tr>`;
+            `<td>${esc(nm)}</td>` +
+            `<td style="font-size:0.78rem; word-break:break-all;">${esc(r.before_text || '')}</td>` +
+            `<td style="font-size:0.78rem; word-break:break-all;">${esc(r.after_text || '')}</td></tr>`;
         });
       }
       h += `</tbody></table>`;

@@ -191,6 +191,7 @@
     };
     const MOVE_LABEL = { adjust: '在庫調整', disposal: '廃棄', return: '返品', receipt: '入庫', issue: '出庫' };
     const OSTATUS_LABEL = { unordered: '未発注', ordered: '発注済み', received: '入庫済み', canceled: 'キャンセル' };
+    const STATUS_LABEL = { open: '作成', counting: 'カウント中', confirmed: '確定', canceled: 'キャンセル', unordered: '未発注', ordered: '発注済み', received: '入庫済み' };
     const UTYPE_LABEL = { superadmin: '全体管理者', admin: '管理者', general: '一般', supplier: '問屋' };
     function fmtLogVal(k, v) {
       if (v === undefined) return '';           // その項目が存在しない側
@@ -201,6 +202,7 @@
       }
       if (k === 'movementType') return MOVE_LABEL[v] || v;
       if (k === 'order_status') return OSTATUS_LABEL[v] || v;
+      if (k === 'status') return STATUS_LABEL[v] || v;
       if (k === 'user_type') return UTYPE_LABEL[v] || v;
       if (typeof v === 'object') { try { return JSON.stringify(v); } catch (e) { return String(v); } }
       return String(v);
