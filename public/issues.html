@@ -27,7 +27,12 @@
       <h3 style="margin-top:20px;">② 数量で出庫</h3>
       <p style="font-size:0.85rem; color:#555;">「梱包」＝入力数×梱包数のバラを出庫。「バラ」＝入力した数をそのままバラで出庫（梱包管理していない商品や端数の出庫に）。</p>
       <div class="row">
-        <div style="flex:2;"><label>商品</label><select id="product" onchange="onProductChange()"></select></div>
+        <div style="flex:2;"><label>商品</label>
+          <div style="display:flex; gap:6px;">
+            <select id="product" onchange="onProductChange()" style="flex:1;"></select>
+            <button type="button" class="secondary" onclick="openProductSearch()" style="white-space:nowrap;">検索</button>
+          </div>
+        </div>
         <div style="flex:2;"><label>ロット / 在庫</label><select id="stock"></select></div>
       </div>
       <div class="row">
@@ -61,9 +66,25 @@
 
   <script src="/common.js"></script>
   <script src="/gs1.js"></script>
+  <script src="/product-picker.js"></script>
   <script>
     let products = [];
     let lines = [];
+
+    // 商品検索モーダル(在庫のある商品のみ)
+    function openProductSearch() {
+      openProductPicker({ inStockOnly: true, onSelect: selectIssueProduct });
+    }
+    function selectIssueProduct(p) {
+      const sel = document.getElementById('product');
+      // 在庫のある商品のみ表示中。選択肢に無ければ暫定追加。
+      if (![...sel.options].some((o) => String(o.value) === String(p.productId))) {
+        const o = document.createElement('option');
+        o.value = p.productId; o.textContent = p.productName; sel.appendChild(o);
+      }
+      sel.value = String(p.productId);
+      onProductChange();
+    }
 
     async function boot() {
       const user = await initPage('issues');

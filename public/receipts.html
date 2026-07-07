@@ -52,7 +52,10 @@
       <div class="row">
         <div style="flex:2;">
           <label>商品</label>
-          <select id="product"></select>
+          <div style="display:flex; gap:6px;">
+            <select id="product" style="flex:1;"></select>
+            <button type="button" class="secondary" onclick="openProductSearch()" style="white-space:nowrap;">検索</button>
+          </div>
         </div>
         <div>
           <label>ロット番号</label>
@@ -107,10 +110,28 @@
 
   <script src="/common.js"></script>
   <script src="/gs1.js"></script>
+  <script src="/product-picker.js"></script>
   <script>
     let products = [];
     let lines = [];
     let incomingItems = [];
+
+    // 商品検索モーダル。選択後は商品の問屋に合わせて絞り込み直して選択する。
+    function openProductSearch() {
+      openProductPicker({ defaultSupplierId: document.getElementById('supplier').value || '', onSelect: selectSearchedProduct });
+    }
+    function selectSearchedProduct(p) {
+      const supEl = document.getElementById('supplier');
+      let sid = p.pickedSupplierId;
+      const cur = supEl.value;
+      if (!sid) sid = (cur && p.supplierIds.includes(String(cur))) ? cur : (p.supplierIds[0] || '');
+      if (sid) supEl.value = String(sid);
+      rebuildProductOptions();
+      loadIncoming();
+      const sel = document.getElementById('product');
+      sel.value = String(p.productId);
+      fillDefaults();
+    }
 
     async function boot() {
       const user = await initPage('receipts');

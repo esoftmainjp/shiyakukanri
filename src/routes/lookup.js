@@ -210,4 +210,47 @@ router.get('/barcode/:value', async (req, res) => {
   }
 });
 
+// 商品検索(検索モーダル用)。問屋/メーカー/部門/分類/商品名で絞り込み、
+// 施設スコープ内の商品を返す。inStockOnly=true で在庫(バラ>0)のある商品のみ。
+router.get('/product-search', async (req, res) => {
+  const scope = facilityScope(req);
+  try {
+    const { supplierId, makerId, departmentId, categoryId, name, inStockOnly } = req.query;
+    const where = ['p.is_active = TRUE'];
+    const params = [];
+    const add = (cond, val) => { params.push(val); where.push(cond.replace('$$', '$' + params.length)); };
+    if (!scope.all) add('p.facility_id = $$', scope.facilityId);
+    if (departmentId) add('p.department_id = $$', departmentId);
+    if (categoryId) add('p.category_id = $$', categoryId);
+    if (name) add('p.name ILIKE $$', '%' + name + '%');
+    if (supplierId) add('EXISTS (SELECT 1 FROM product_details pd WHERE pd.product_id = p.id AND pd.supplier_id = $$)', supplierId);
+    if (makerId) add('EXISTS (SELECT 1 FROM product_details pd WHERE pd.product_id = p.id AND pd.maker_id = $$)', makerId);
+    if (String(inStockOnly) === 'true') {
+      where.push('EXISTS (SELECT 1 FROM product_stocks ps WHERE ps.product_id = p.id AND ps.stock_quantity > 0)');
+    }
+    const { rows } = await pool.query(
+      `SELECT p.id AS product_id, p.name AS product_name,
+              d.name AS department, c.name AS category,
+              COALESCE((SELECT SUM(stock_quantity) FROM product_stocks ps WHERE ps.product_id = p.id), 0) AS stock_total,
+              (SELECT string_agg(DISTINCT s.name, ', ') FROM product_details pd2
+                 JOIN suppliers s ON s.id = pd2.supplier_id WHERE pd2.product_id = p.id) AS supplier_names,
+              (SELECT string_agg(DISTINCT m.name, ', ') FROM product_details pd2
+                 JOIN makers m ON m.id = pd2.maker_id WHERE pd2.product_id = p.id) AS maker_names,
+              (SELECT array_agg(DISTINCT pd2.supplier_id) FROM product_details pd2
+                WHERE pd2.product_id = p.id AND pd2.supplier_id IS NOT NULL) AS supplier_ids
+         FROM products p
+         LEFT JOIN departments d ON d.id = p.department_id
+         LEFT JOIN categories c ON c.id = p.category_id
+        WHERE ${where.join(' AND ')}
+        ORDER BY p.name
+        LIMIT 500`,
+      params
+    );
+    res.json({ products: rows });
+  } catch (err) {
+    console.error('商品検索エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 module.exports = router;
