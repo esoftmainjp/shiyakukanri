@@ -239,7 +239,8 @@ router.get('/movements/csv', async (req, res) => {
 //   disposal/return : quantity = 減少するバラ数
 router.post('/movement', async (req, res) => {
   const userId = req.session.user.id;
-  const { productId, lotNumber = '', expiryDate = null, movementType, quantity, reason, barcodeValue } = req.body || {};
+  const { productId, lotNumber = '', expiryDate = null, movementType, quantity, reason, barcodeValue,
+          supplierId: bodySupplierId, unitPrice: bodyUnitPrice, quantityInput: bodyQtyInput } = req.body || {};
 
   if (!productId || !['adjust', 'disposal', 'return'].includes(movementType)) {
     return res.status(400).json({ error: '商品IDと移動区分(adjust/disposal/return)は必須です' });
@@ -277,6 +278,42 @@ router.post('/movement', async (req, res) => {
     } else {
       opts.delta = -qty;              // 廃棄・返品は減少
       opts.allowNegative = false;
+    }
+
+    // 返品は精算用に問屋・単価・入力数量を保持(未指定は既定を解決)
+    if (movementType === 'return') {
+      let supplierId = bodySupplierId || null;
+      if (!supplierId) {
+        const s = await client.query(
+          `SELECT supplier_id FROM product_details
+            WHERE product_id = $1 AND supplier_id IS NOT NULL
+            ORDER BY (apply_start_date <= CURRENT_DATE
+                      AND (apply_end_date IS NULL OR apply_end_date >= CURRENT_DATE)) DESC,
+                     apply_start_date DESC LIMIT 1`,
+          [productId]
+        );
+        supplierId = s.rowCount ? s.rows[0].supplier_id : null;
+      } else {
+        // 指定問屋が操作施設のものか確認
+        const sc = await client.query('SELECT 1 FROM suppliers WHERE id = $1 AND facility_id = $2', [supplierId, scope.facilityId]);
+        if (sc.rowCount === 0) { await client.query('ROLLBACK'); return res.status(400).json({ error: '対象施設の問屋を指定してください' }); }
+      }
+      let unitPrice = (bodyUnitPrice !== undefined && bodyUnitPrice !== '' && bodyUnitPrice !== null) ? Number(bodyUnitPrice) : null;
+      if (unitPrice == null) {
+        const up = await client.query(
+          `SELECT rd.unit_price FROM receipt_details rd JOIN receipts r ON r.id = rd.receipt_id
+            WHERE rd.product_id = $1 ORDER BY r.receipt_date DESC, rd.id DESC LIMIT 1`,
+          [productId]
+        );
+        if (up.rowCount) unitPrice = Number(up.rows[0].unit_price);
+        else {
+          const pd = await client.query('SELECT unit_price FROM product_details WHERE product_id = $1 ORDER BY apply_start_date DESC LIMIT 1', [productId]);
+          unitPrice = pd.rowCount ? Number(pd.rows[0].unit_price) : 0;
+        }
+      }
+      opts.supplierId = supplierId;
+      opts.unitPrice = unitPrice;
+      opts.quantityInput = (bodyQtyInput != null && bodyQtyInput !== '') ? Number(bodyQtyInput) : null;
     }
 
     const result = await applyStockChange(client, opts);

@@ -16,6 +16,7 @@ async function applyStockChange(client, {
   targetQuantity = null,
   movementType, relatedId = null, userId, reason = '',
   receiptDate = null, issueDate = null, allowNegative = false,
+  supplierId = null, unitPrice = null, quantityInput = null,
 }) {
   // 対象在庫行をロック (使用期限NULLも IS NOT DISTINCT FROM で一致判定)
   const sel = await client.query(
@@ -61,10 +62,11 @@ async function applyStockChange(client, {
     `INSERT INTO stock_movements
        (product_id, lot_number, expiry_date, movement_type,
         quantity_change, quantity_before, quantity_after,
-        related_id, user_id, reason)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        related_id, user_id, reason, supplier_id, unit_price, quantity_input)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
     [productId, lotNumber, expiryDate, movementType,
-     effectiveDelta, before, after, relatedId, userId, reason]
+     effectiveDelta, before, after, relatedId, userId, reason,
+     supplierId, unitPrice, quantityInput]
   );
 
   return { before, after, delta: effectiveDelta };

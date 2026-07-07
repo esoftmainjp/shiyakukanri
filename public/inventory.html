@@ -68,6 +68,12 @@
         </div>
         <div><label id="qtyLabel">修正後の在庫数</label><input type="number" id="mQty" min="0" value="0" /></div>
       </div>
+      <div class="row" id="returnFields" style="display:none;">
+        <div><label>問屋（返品先）</label><select id="mSupplier"><option value="">（未設定）</option></select></div>
+        <div><label>単価（税抜）</label><input type="number" id="mUnitPrice" min="0" step="0.01" value="0" /></div>
+        <div><label>梱包数</label><input type="number" id="mPack" value="1" readonly style="background:#eef2f5;" title="商品詳細マスターの梱包数" /></div>
+      </div>
+      <p id="returnHint" style="display:none; font-size:0.82rem; color:#777; margin:0 0 6px;">返品数（入力単位）×梱包数＝減少バラ数。金額（精算）＝返品数×単価。問屋・単価は既定を自動入力（変更可）。</p>
       <div><label>理由(必須)</label><input id="mReason" style="width:100%;" /></div>
       <div style="margin-top:12px;">
         <button onclick="submitMovement()">実行</button>
@@ -80,6 +86,7 @@
   <script src="/common.js"></script>
   <script>
     let current = null;
+    let products = [];   // 返品時の梱包数・既定単価/問屋の参照用
 
     async function boot() {
       const user = await initPage('inventory');
@@ -93,6 +100,10 @@
       document.getElementById('fMaker').innerHTML = opt(mk.data.makers);
       document.getElementById('fDepartment').innerHTML = opt(dep.data.departments);
       document.getElementById('fCategory').innerHTML = opt(cat.data.categories);
+      // 返品先の問屋候補
+      document.getElementById('mSupplier').innerHTML = '<option value="">（未設定）</option>' +
+        (sup.data.suppliers || []).map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+      products = await getProducts();
       load();
     }
 
@@ -155,21 +166,45 @@
 
     function onTypeChange() {
       const t = document.getElementById('mType').value;
-      document.getElementById('qtyLabel').textContent = t === 'adjust' ? '修正後の在庫数' : '減少するバラ数';
+      const isReturn = t === 'return';
+      document.getElementById('returnFields').style.display = isReturn ? 'flex' : 'none';
+      document.getElementById('returnHint').style.display = isReturn ? 'block' : 'none';
+      document.getElementById('qtyLabel').textContent =
+        t === 'adjust' ? '修正後の在庫数' : (isReturn ? '返品数（入力単位）' : '減少するバラ数');
       if (t === 'adjust' && current) document.getElementById('mQty').value = current.stock_quantity;
       else document.getElementById('mQty').value = 1;
+      if (isReturn) prefillReturn();
+    }
+    // 返品の梱包数・既定単価/問屋を商品詳細から補完
+    function prefillReturn() {
+      const p = (products || []).find((x) => String(x.productId) === String(current && current.product_id));
+      const d = p && p.details && p.details[0];
+      document.getElementById('mPack').value = d && d.packSize ? d.packSize : 1;
+      document.getElementById('mUnitPrice').value = d && d.unitPrice != null ? d.unitPrice : 0;
+      const sup = document.getElementById('mSupplier');
+      sup.value = (d && d.supplierId) ? String(d.supplierId) : '';
     }
 
     async function submitMovement() {
       if (!current) return;
+      const t = document.getElementById('mType').value;
       const body = {
         productId: current.product_id,
         lotNumber: current.lot_number,
         expiryDate: current.expiry_date,
-        movementType: document.getElementById('mType').value,
-        quantity: Number(document.getElementById('mQty').value),
+        movementType: t,
         reason: document.getElementById('mReason').value,
       };
+      if (t === 'return') {
+        const retQty = Number(document.getElementById('mQty').value);
+        const pack = Number(document.getElementById('mPack').value) || 1;
+        body.quantity = retQty * pack;                                    // 減少バラ数
+        body.quantityInput = retQty;                                      // 精算用 入力単位数量
+        body.unitPrice = Number(document.getElementById('mUnitPrice').value) || 0;
+        body.supplierId = document.getElementById('mSupplier').value || null;
+      } else {
+        body.quantity = Number(document.getElementById('mQty').value);
+      }
       const { ok, data } = await api('/api/inventory/movement', { method: 'POST', body: JSON.stringify(body) });
       const msg = document.getElementById('editMsg');
       if (!ok) { setMsg(msg, data.error || '失敗', 'error'); return; }

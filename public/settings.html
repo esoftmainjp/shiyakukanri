@@ -43,6 +43,14 @@
       </div>
 
       <div class="card">
+        <h2>問屋精算・消費税</h2>
+        <div class="row">
+          <div style="flex:0;"><label>消費税率（％）</label><input type="number" id="tax_rate" min="0" step="0.1" style="width:120px;" /></div>
+        </div>
+        <p style="color:#6b7280; font-size:0.83rem;">問屋への支払/請求の集計で使います。単価は税抜として、税抜小計に対しこの率で消費税（円未満切り捨て）を計算します。</p>
+      </div>
+
+      <div class="card">
         <h2>施設情報（伝票・発注書に印字）</h2>
         <div class="row">
           <div style="flex:2;"><label>施設名</label><input id="company_name" placeholder="例：〇〇病院 中央検査室" /></div>
@@ -70,6 +78,7 @@
       low_stock_threshold:{ type: 'num',  def: 0 },
       allow_expired_issue:{ type: 'bool', def: false },
       password_expiry_days:{ type: 'num', def: 0 },
+      tax_rate:           { type: 'num',  def: 10 },
       company_name:       { type: 'text', def: '' },
       company_tel:        { type: 'text', def: '' },
       company_address:    { type: 'text', def: '' },
