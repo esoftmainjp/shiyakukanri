@@ -20,7 +20,7 @@ const TYPES = {
     table: 'product_details',
     cols: ['product_id', 'apply_start_date', 'apply_end_date', 'quantity_unit', 'pack_size', 'pack_unit',
       'spec', 'unit_price', 'test_count', 'min_quantity', 'order_quantity', 'jan_code',
-      'maker_id', 'supplier_id', 'barcode_issue_flag', 'note'],
+      'maker_id', 'supplier_id', 'barcode_issue_flag', 'expiry_warn_days', 'note'],
     hasActive: false,
   },
   users: { table: 'users', cols: ['user_type', 'name', 'kana', 'login_id', 'note', 'is_active'], hasActive: true },

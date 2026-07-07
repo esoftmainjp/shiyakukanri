@@ -101,31 +101,44 @@ router.get('/expiry', async (req, res) => {
       );
       warnDays = rows.length ? parseInt(rows[0].value, 10) : 30;
     }
-    const params = [String(warnDays)];
+    if (Number.isNaN(warnDays) || warnDays < 0) warnDays = 30;
+    const params = [warnDays];
     let facCond = '';
     if (!scope.all) { params.push(scope.facilityId); facCond = ` AND p.facility_id = $${params.length}`; }
+    // 有効警告日数 = 商品詳細の expiry_warn_days(0超) を優先、無ければ施設/既定の warnDays。
+    // 商品詳細は「本日適用中」を優先し、無ければ最新の適用開始日のものを採用。
     const { rows } = await pool.query(
-      `SELECT s.id, p.id AS product_id, p.name AS product_name,
-              s.lot_number, s.expiry_date, s.stock_quantity,
-              (SELECT COALESCE(SUM(ps.stock_quantity), 0) FROM product_stocks ps WHERE ps.product_id = p.id) AS product_total,
-              EXISTS (SELECT 1 FROM order_details od JOIN orders o ON o.id = od.order_id
-                       WHERE od.product_id = p.id AND o.order_status = 'unordered'
-                         AND od.canceled_flag = FALSE AND od.order_quantity > 0) AS has_order_plan,
-              EXISTS (SELECT 1 FROM order_details od JOIN orders o ON o.id = od.order_id
-                       LEFT JOIN product_details pd ON pd.id = od.product_detail_id
-                       WHERE od.product_id = p.id AND o.order_status = 'ordered' AND od.canceled_flag = FALSE
-                         AND (od.order_quantity * COALESCE(pd.pack_size, 1)
-                              - COALESCE((SELECT SUM(rp.receipt_piece_quantity) FROM receipt_plans rp WHERE rp.order_detail_id = od.id), 0)) > 0
-                     ) AS has_incoming,
-              (s.expiry_date - CURRENT_DATE) AS days_left,
-              CASE WHEN s.expiry_date < CURRENT_DATE THEN 'expired'
-                   ELSE 'warning' END AS status
-         FROM product_stocks s
-         JOIN products p ON p.id = s.product_id
-        WHERE s.stock_quantity > 0
-          AND s.expiry_date IS NOT NULL
-          AND s.expiry_date <= CURRENT_DATE + ($1 || ' days')::interval${facCond}
-        ORDER BY s.expiry_date`,
+      `WITH base AS (
+         SELECT s.id, p.id AS product_id, p.name AS product_name,
+                s.lot_number, s.expiry_date, s.stock_quantity,
+                (SELECT COALESCE(SUM(ps.stock_quantity), 0) FROM product_stocks ps WHERE ps.product_id = p.id) AS product_total,
+                EXISTS (SELECT 1 FROM order_details od JOIN orders o ON o.id = od.order_id
+                         WHERE od.product_id = p.id AND o.order_status = 'unordered'
+                           AND od.canceled_flag = FALSE AND od.order_quantity > 0) AS has_order_plan,
+                EXISTS (SELECT 1 FROM order_details od JOIN orders o ON o.id = od.order_id
+                         LEFT JOIN product_details pd ON pd.id = od.product_detail_id
+                         WHERE od.product_id = p.id AND o.order_status = 'ordered' AND od.canceled_flag = FALSE
+                           AND (od.order_quantity * COALESCE(pd.pack_size, 1)
+                                - COALESCE((SELECT SUM(rp.receipt_piece_quantity) FROM receipt_plans rp WHERE rp.order_detail_id = od.id), 0)) > 0
+                       ) AS has_incoming,
+                (s.expiry_date - CURRENT_DATE) AS days_left,
+                COALESCE(NULLIF((
+                   SELECT pd.expiry_warn_days FROM product_details pd
+                    WHERE pd.product_id = p.id
+                    ORDER BY (pd.apply_start_date <= CURRENT_DATE
+                              AND (pd.apply_end_date IS NULL OR pd.apply_end_date >= CURRENT_DATE)) DESC,
+                             pd.apply_start_date DESC
+                    LIMIT 1), 0), $1) AS warn_days
+           FROM product_stocks s
+           JOIN products p ON p.id = s.product_id
+          WHERE s.stock_quantity > 0
+            AND s.expiry_date IS NOT NULL${facCond}
+       )
+       SELECT *,
+              CASE WHEN expiry_date < CURRENT_DATE THEN 'expired' ELSE 'warning' END AS status
+         FROM base
+        WHERE expiry_date <= CURRENT_DATE + (warn_days || ' days')::interval
+        ORDER BY expiry_date`,
       params
     );
     res.json({ warnDays, rows });
