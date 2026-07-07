@@ -42,10 +42,24 @@
       <div class="card">
         <h2>施設一覧</h2>
         <p class="msg" id="msg"></p>
-        <table id="tbl">
-          <thead><tr><th>ID</th><th>施設名</th><th>カナ</th><th>プラン</th><th>ユーザー</th><th>商品</th><th>状態</th><th>操作</th></tr></thead>
-          <tbody></tbody>
-        </table>
+        <div class="scroll-x">
+          <table id="tbl">
+            <thead><tr><th>ID</th><th>施設名</th><th>カナ</th><th>プラン</th><th>ユーザー</th><th>商品</th><th>状態</th><th>操作</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>プラン設定</h2>
+        <p style="font-size:0.85rem; color:#555;">上限は空欄で「無制限」。チェックでプランごとの機能利用可否を切り替えます。変更は各行の「保存」で反映されます。</p>
+        <div class="scroll-x">
+          <table id="planTbl">
+            <thead><tr><th>プラン</th><th>ユーザー上限</th><th>商品上限</th><th>ログ保持(日)</th><th>棚卸し</th><th>バーコード</th><th>集計</th><th>台帳</th><th>CSV取込</th><th>操作</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="msg" id="planMsg"></p>
       </div>
     </div>
   </main>
@@ -61,7 +75,44 @@
       const pr = await api('/api/facilities/plans');
       PLANS = (pr.data && pr.data.plans) || [];
       document.getElementById('planCode').innerHTML = planOptions('free');
+      renderPlans();
       load();
+    }
+
+    // プラン設定の編集テーブル
+    function renderPlans() {
+      const num = (id, v) => `<input type="number" min="0" id="${id}" value="${v == null ? '' : v}" placeholder="無制限" style="width:90px;" />`;
+      const chk = (id, v) => `<input type="checkbox" id="${id}" ${v ? 'checked' : ''} style="width:auto;" />`;
+      const tb = document.querySelector('#planTbl tbody');
+      tb.innerHTML = PLANS.map((p) => `<tr>
+        <td><strong>${esc(p.name)}</strong><br><span style="color:#888; font-size:0.78rem;">${esc(p.code)}</span></td>
+        <td style="text-align:center;">${num('pu_' + p.code, p.max_users)}</td>
+        <td style="text-align:center;">${num('pp_' + p.code, p.max_products)}</td>
+        <td style="text-align:center;">${num('pr_' + p.code, p.log_retention_days)}</td>
+        <td style="text-align:center;">${chk('fs_' + p.code, p.feat_stocktake)}</td>
+        <td style="text-align:center;">${chk('fb_' + p.code, p.feat_barcode)}</td>
+        <td style="text-align:center;">${chk('fr_' + p.code, p.feat_reports)}</td>
+        <td style="text-align:center;">${chk('fl_' + p.code, p.feat_ledger)}</td>
+        <td style="text-align:center;">${chk('fi_' + p.code, p.feat_import)}</td>
+        <td><button class="secondary" style="padding:4px 10px; font-size:0.82rem;" onclick="savePlan('${p.code}')">保存</button></td>
+      </tr>`).join('');
+    }
+
+    async function savePlan(code) {
+      const val = (id) => document.getElementById(id).value;
+      const chk = (id) => document.getElementById(id).checked;
+      const body = {
+        max_users: val('pu_' + code), max_products: val('pp_' + code), log_retention_days: val('pr_' + code),
+        feat_stocktake: chk('fs_' + code), feat_barcode: chk('fb_' + code), feat_reports: chk('fr_' + code),
+        feat_ledger: chk('fl_' + code), feat_import: chk('fi_' + code),
+      };
+      const { ok, data } = await api('/api/facilities/plans/' + code, { method: 'PUT', body: JSON.stringify(body) });
+      setMsg(document.getElementById('planMsg'), ok ? `プラン「${code}」を保存しました` : (data.error || '保存失敗'), ok ? 'ok' : 'error');
+      if (ok) {
+        const pr = await api('/api/facilities/plans');
+        PLANS = (pr.data && pr.data.plans) || [];
+        load(); // 施設一覧の上限表示も更新
+      }
     }
 
     function planOptions(sel) {

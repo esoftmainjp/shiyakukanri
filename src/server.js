@@ -95,6 +95,28 @@ function requireRole(...roles) {
   };
 }
 
+// プラン機能ゲート: 施設のプランで当該機能が無効なら 403。
+// 全体管理者(superadmin)と施設未選択は制限しない。
+function requireFeature(featKey) {
+  const { getFacilityPlan } = require('./services/plan');
+  return async (req, res, next) => {
+    try {
+      const user = req.session && req.session.user;
+      if (user && user.userType === 'superadmin') return next();
+      const scope = facilityScope(req);
+      if (scope.all || scope.facilityId == null) return next();
+      const plan = await getFacilityPlan(pool, scope.facilityId);
+      if (plan && plan[featKey] === false) {
+        return res.status(403).json({ error: 'この機能は現在のプランではご利用いただけません。上位プランへの変更をご検討ください。' });
+      }
+      next();
+    } catch (err) {
+      console.error('プラン機能判定エラー:', err.message);
+      next(); // 判定失敗時は可用性優先で通す
+    }
+  };
+}
+
 // ------------------------------------------------------------
 // ヘルスチェック
 // ------------------------------------------------------------
@@ -393,14 +415,14 @@ app.use('/api/receipts',  requireLogin, requireRole('admin', 'general', 'supplie
 app.use('/api/orders',    requireLogin, requireRole('admin', 'general', 'supplier', 'superadmin'), require('./routes/orders'));
 app.use('/api/issues',    requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/issues'));
 app.use('/api/inventory', requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/inventory'));
-app.use('/api/stocktake', requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/stocktake'));
-app.use('/api/barcodes',  requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/barcodes'));
-app.use('/api/ledger',    requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/ledger'));
-app.use('/api/reports',   requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/reports'));
+app.use('/api/stocktake', requireLogin, requireRole('admin', 'general', 'superadmin'), requireFeature('feat_stocktake'), require('./routes/stocktake'));
+app.use('/api/barcodes',  requireLogin, requireRole('admin', 'general', 'superadmin'), requireFeature('feat_barcode'), require('./routes/barcodes'));
+app.use('/api/ledger',    requireLogin, requireRole('admin', 'general', 'superadmin'), requireFeature('feat_ledger'), require('./routes/ledger'));
+app.use('/api/reports',   requireLogin, requireRole('admin', 'general', 'superadmin'), requireFeature('feat_reports'), require('./routes/reports'));
 app.use('/api/facilities', requireLogin, requireRole('superadmin'), require('./routes/facilities'));
 app.use('/api/db-usage',  requireLogin, requireRole('superadmin'), require('./routes/db-usage'));
 app.use('/api/masters',   requireLogin, requireRole('admin', 'superadmin'), require('./routes/masters'));
-app.use('/api/import',    requireLogin, requireRole('admin', 'superadmin'), require('./routes/import'));
+app.use('/api/import',    requireLogin, requireRole('admin', 'superadmin'), requireFeature('feat_import'), require('./routes/import'));
 app.use('/api/logs',      requireLogin, requireRole('admin', 'superadmin'), require('./routes/logs'));
 
 // ------------------------------------------------------------
@@ -439,6 +461,26 @@ async function start() {
   app.listen(PORT, () => {
     console.log(`試薬在庫管理システム サーバー起動: http://localhost:${PORT}`);
   });
+  // プランの保持日数を超えた操作ログを定期削除(起動時＋24時間毎)。無制限(NULL)は対象外。
+  pruneOldLogs();
+  setInterval(pruneOldLogs, 24 * 60 * 60 * 1000);
+}
+
+// プラン(施設)の log_retention_days を超えた operation_logs を削除する。
+async function pruneOldLogs() {
+  try {
+    const r = await pool.query(
+      `DELETE FROM operation_logs ol
+         USING facilities f
+         JOIN plans p ON p.code = f.plan_code
+        WHERE ol.facility_id = f.id
+          AND p.log_retention_days IS NOT NULL
+          AND ol.created_at < now() - (p.log_retention_days || ' days')::interval`
+    );
+    if (r.rowCount) console.log(`[retention] 保持期間超過の操作ログを削除: ${r.rowCount}件`);
+  } catch (err) {
+    console.error('[retention] ログ保持期間の適用に失敗:', err.message);
+  }
 }
 
 start();

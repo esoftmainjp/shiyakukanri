@@ -145,7 +145,7 @@
     async function switchType() {
       editId = null;
       const t = curType();
-      document.getElementById('importCard').style.display = IMPORT_HINTS[t] ? 'block' : 'none';
+      document.getElementById('importCard').style.display = (IMPORT_HINTS[t] && (typeof planAllows !== 'function' || planAllows('feat_import'))) ? 'block' : 'none';
       // 「商品＋詳細同時」チェックは商品種別のときだけ表示
       document.getElementById('combinedRow').style.display = (t === 'products') ? 'block' : 'none';
       if (t !== 'products') document.getElementById('combined').checked = false;

@@ -40,6 +40,48 @@ router.get('/plans', async (req, res) => {
   }
 });
 
+// プランの上限・機能を編集
+// PUT /plans/:code
+router.put('/plans/:code', async (req, res) => {
+  const b = req.body || {};
+  const LIMIT_COLS = ['max_users', 'max_products', 'log_retention_days'];
+  const FEAT_COLS = ['feat_stocktake', 'feat_barcode', 'feat_reports', 'feat_ledger', 'feat_import'];
+  const allowed = ['name', 'sort_order', ...LIMIT_COLS, ...FEAT_COLS];
+  const sets = [];
+  const params = [];
+  for (const k of allowed) {
+    if (b[k] === undefined) continue;
+    let v = b[k];
+    if (LIMIT_COLS.includes(k)) {
+      v = (v === '' || v === null) ? null : Number(v);   // 空=無制限(NULL)
+      if (v !== null && (!Number.isFinite(v) || v < 0)) return res.status(400).json({ error: `${k} は0以上の数値または空(無制限)で入力してください` });
+    } else if (FEAT_COLS.includes(k)) {
+      v = !!v;
+    } else if (k === 'sort_order') {
+      v = Number(v) || 0;
+    } else {
+      v = String(v);
+    }
+    params.push(v); sets.push(`${k} = $${params.length}`);
+  }
+  if (sets.length === 0) return res.status(400).json({ error: '変更項目がありません' });
+  try {
+    params.push(String(req.params.code));
+    const r = await pool.query(
+      `UPDATE plans SET ${sets.join(', ')}, updated_at = now() WHERE code = $${params.length} RETURNING code`, params
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'プランが見つかりません' });
+    await writeLog(pool, {
+      userId: req.session.user.id, targetTable: 'plans', targetId: null, operationType: '更新',
+      after: { plan: req.params.code },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('プラン更新エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 // 施設の新規作成 + 初期管理者の作成
 // POST /  body: { name, kana?, adminLoginId(email), adminPassword }
 router.post('/', async (req, res) => {

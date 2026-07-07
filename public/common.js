@@ -119,25 +119,34 @@ document.addEventListener('click', () => {
   document.querySelectorAll('.navgroup.open').forEach((g) => g.classList.remove('open'));
 });
 
-// 施設の運用メニュー(管理者・一般・施設選択中の全体管理者で共通)
+// プランで当該機能が使えるか。プラン未設定(superadmin未選択等)は全許可。
+function planAllows(featKey) {
+  const me = currentMe || {};
+  if (!me.plan) return true;
+  return me.plan[featKey] !== false;
+}
+
+// 施設の運用メニュー(管理者・一般・施設選択中の全体管理者で共通)。プランで機能を出し分け。
 function operationalMenu(includeAdmin) {
+  const stockItems = [
+    ['inventory', '/inventory.html', '在庫管理'],
+    planAllows('feat_stocktake') && ['stocktake', '/stocktake.html', '棚卸し'],
+    ['expiry', '/expiry.html', '使用期限'],
+    ['useend', '/use-end.html', '使用終了日'],
+    planAllows('feat_barcode') && ['labels', '/labels.html', 'バーコード印刷'],
+  ].filter(Boolean);
+  const histItems = [
+    ['history', '/history.html', '履歴'],
+    planAllows('feat_reports') && ['reports', '/reports.html', '集計'],
+    planAllows('feat_ledger') && ['ledger', '/ledger.html', '試薬台帳'],
+  ].filter(Boolean);
   const m = [
     mkLink('dashboard', '/', 'ホーム'),
     mkLink('receipts', '/receipts.html', '入庫'),
     mkLink('issues', '/issues.html', '出庫'),
     mkLink('orders', '/orders.html', '発注'),
-    mkGroup('在庫', [
-      ['inventory', '/inventory.html', '在庫管理'],
-      ['stocktake', '/stocktake.html', '棚卸し'],
-      ['expiry', '/expiry.html', '使用期限'],
-      ['useend', '/use-end.html', '使用終了日'],
-      ['labels', '/labels.html', 'バーコード印刷'],
-    ]),
-    mkGroup('履歴・集計', [
-      ['history', '/history.html', '履歴'],
-      ['reports', '/reports.html', '集計'],
-      ['ledger', '/ledger.html', '試薬台帳'],
-    ]),
+    mkGroup('在庫', stockItems),
+    mkGroup('履歴・集計', histItems),
   ];
   if (includeAdmin) {
     m.push(mkGroup('管理', [
