@@ -32,6 +32,19 @@ function getType(req, res) {
   return t;
 }
 
+// 空欄("")の扱い: 日付列は NULL に、数値列は列を省略(DB既定/現状維持)する。
+// 文字列列の "" はそのまま(有効値)。これで空の適用終了日等でdate型エラーを防ぐ。
+const DATE_COLS = new Set(['apply_start_date', 'apply_end_date']);
+const NUM_COLS = new Set(['pack_size', 'unit_price', 'test_count', 'min_quantity', 'order_quantity', 'expiry_warn_days']);
+// 保存対象の [col, value] を返す。value===undefined は「この列は省略」を意味する。
+function coerceCol(col, v) {
+  if (v === '') {
+    if (DATE_COLS.has(col)) return null;   // 空の日付 → NULL
+    if (NUM_COLS.has(col)) return undefined; // 空の数値 → 省略(既定/現状維持)
+  }
+  return v;
+}
+
 // マスタ画面から作成/変更できるユーザー種別。
 // superadmin(全体管理者)はここから作成/変更させない: 施設に紐づくsuperadminは
 // 全施設を横断できてしまうため(権限昇格・テナント越境の防止)。superadminはseed/移行でのみ発行する。
@@ -108,7 +121,10 @@ router.post('/:type', async (req, res) => {
     const cols = [];
     const vals = [];
     for (const c of t.cols) {
-      if (body[c] !== undefined) { cols.push(c); vals.push(body[c]); }
+      if (body[c] === undefined) continue;
+      const v = coerceCol(c, body[c]);
+      if (v === undefined) continue; // 空の数値列は省略しDB既定に任せる
+      cols.push(c); vals.push(v);
     }
     if (cols.length === 0 && t.table !== 'users') return res.status(400).json({ error: '登録項目がありません' });
     // 所属施設を付与(全マスタ共通)
@@ -171,7 +187,10 @@ router.put('/:type/:id', async (req, res) => {
     const vals = [];
     const changedCols = [];
     for (const c of t.cols) {
-      if (body[c] !== undefined) { vals.push(body[c]); sets.push(`${c} = $${vals.length}`); changedCols.push(c); }
+      if (body[c] === undefined) continue;
+      const v = coerceCol(c, body[c]);
+      if (v === undefined) continue; // 空の数値列は変更しない(現状維持)
+      vals.push(v); sets.push(`${c} = $${vals.length}`); changedCols.push(c);
     }
     // 変更前の値(変更対象カラムのみ)を取得してログに残す
     let beforeObj = {};
