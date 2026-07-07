@@ -40,7 +40,7 @@
       receipts_list: '入 庫 履 歴', issues_list: '出 庫 履 歴',
       orders_list: '発 注 履 歴', movements_list: '在 庫 調 整 履 歴',
       usage_report: '使 用 量 集 計', monthly_report: '月 次 推 移',
-      billing: '請 求 書', billing_detail: '請 求 明 細 書',
+      billing: '支 払 書', billing_detail: '支 払 明 細 書',
     };
     // id を使わず期間/絞り込みで出力する一覧系
     const LIST_TYPES = ['ledger', 'logs', 'receipts_list', 'issues_list', 'orders_list', 'movements_list', 'usage_report', 'monthly_report'];
@@ -145,7 +145,7 @@
       return `<div class="note-line"><strong>備考：</strong>${esc(note || '')}</div>`;
     }
 
-    // 請求書(A4・1ページ・合計金額のみ)
+    // 支払書(A4・1ページ・合計金額のみ)
     function billingBody(data) {
       const b = data.bill;
       const sender = [];
@@ -156,18 +156,18 @@
       if (tel || person) sender.push(`<div>${[tel, person].filter(Boolean).join('　')}</div>`);
       const issueDate = b.confirmed_at ? String(b.confirmed_at).slice(0, 10) : (b.closing_date || '');
 
-      let h = `<h1 style="text-align:center; letter-spacing:0.4em; border:none; margin:6px 0 26px;">請　求　書</h1>`;
-      // 上部: 左=宛先 / 右=発行日・番号・自社
+      let h = `<h1 style="text-align:center; letter-spacing:0.4em; border:none; margin:6px 0 26px;">支　払　書</h1>`;
+      // 上部: 左=宛先(問屋) / 右=発行日・番号・自社
       h += `<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:24px; margin-bottom:18px;">`;
       h += `<div style="flex:1; padding-top:6px;"><span style="font-size:1.3rem; font-weight:700; border-bottom:2px solid #2456c9; padding-bottom:5px;">${esc(b.supplier_name)}&nbsp;御中</span></div>`;
       h += `<div style="text-align:right; font-size:0.9rem; line-height:1.7;">` +
-        `<div>発行日：${issueDate}</div><div>請求番号：${esc(b.bill_number)}</div>` +
+        `<div>発行日：${issueDate}</div><div>支払番号：${esc(b.bill_number)}</div>` +
         `<div style="margin-top:10px;">${sender.join('')}</div></div>`;
       h += `</div>`;
-      h += `<p style="margin:0 0 14px;">下記の通りご請求申し上げます。</p>`;
-      // ご請求金額(税込)を大きく強調
+      h += `<p style="margin:0 0 14px;">下記の通りお支払いいたします。</p>`;
+      // お支払金額(税込)を大きく強調
       h += `<div style="border:2px solid #2456c9; border-radius:6px; padding:14px 20px; display:flex; align-items:center; gap:20px; max-width:540px; margin-bottom:24px; background:#f4f8ff;">` +
-        `<div style="font-size:1.05rem; font-weight:700; color:#2456c9; white-space:nowrap;">ご請求金額（税込）</div>` +
+        `<div style="font-size:1.05rem; font-weight:700; color:#2456c9; white-space:nowrap;">お支払金額（税込）</div>` +
         `<div style="font-size:2rem; font-weight:800; letter-spacing:-0.02em; margin-left:auto;">${yen(b.total_amount)}<span style="font-size:1rem; font-weight:600;">-</span></div></div>`;
       // 内訳(合計のみ)
       h += `<table style="width:100%; max-width:540px;"><tbody>` +
@@ -180,12 +180,12 @@
       return h;
     }
 
-    // 請求明細書(明細つき)
+    // 支払明細書(明細つき)
     function billingDetailBody(data) {
       const b = data.bill;
-      const SL = { draft: '未確定', confirmed: '確定', paid: '入金済', canceled: '取消' };
+      const SL = { draft: '未確定', confirmed: '確定', paid: '支払済', canceled: '取消' };
       let h = `<div style="margin:6px 0 14px; font-size:1.1rem;"><strong>${esc(b.supplier_name)}</strong> 御中</div>`;
-      h += metaRow([['請求番号', b.bill_number], ['対象期間', `${b.period_from}〜${b.period_to}`], ['締日', b.closing_date || '-'], ['状態', SL[b.status] || b.status]]);
+      h += metaRow([['支払番号', b.bill_number], ['対象期間', `${b.period_from}〜${b.period_to}`], ['締日', b.closing_date || '-'], ['状態', SL[b.status] || b.status]]);
       h += `<table><thead><tr><th>日付</th><th>種別</th><th>商品</th><th class="num">数量</th><th class="num">単価</th><th class="num">金額</th></tr></thead><tbody>`;
       (data.lines || []).forEach((l) => {
         h += `<tr><td>${l.event_date || ''}</td><td>${l.source_type === 'return' ? '返品' : '入庫'}</td><td>${esc(l.product_name)}</td>` +

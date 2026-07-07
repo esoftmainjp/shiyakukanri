@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>請求処理 | 試薬在庫管理システム</title>
+  <title>支払管理 | 試薬在庫管理システム</title>
   <link rel="stylesheet" href="/app.css" />
   <style>
     .num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -25,8 +25,8 @@
   <header></header>
   <main>
     <div class="card">
-      <h2>請求処理（支払/請求）</h2>
-      <p style="font-size:0.85rem; color:#555;">入庫実績を問屋×期間で集計し、返品を控除・消費税を加味して締めます。表示は<strong>未精算分のみ</strong>です。</p>
+      <h2>支払管理（問屋への支払）</h2>
+      <p style="font-size:0.85rem; color:#555;">入庫実績を問屋×期間で集計し、返品を控除・消費税を加味して<strong>支払額</strong>を締めます。表示は<strong>未精算分のみ</strong>です。問屋からの請求書と金額を照合できます。</p>
       <div class="row">
         <div style="flex:0; min-width:200px;"><label>問屋</label><select id="supplier"></select></div>
         <div style="flex:0;"><label>期間(開始)</label><input type="date" id="from" /></div>
@@ -56,13 +56,13 @@
     </div>
 
     <div class="card">
-      <h2>請求一覧</h2>
+      <h2>支払一覧</h2>
       <div class="row">
         <div style="flex:0; min-width:180px;"><label>問屋</label><select id="fSupplier" onchange="loadList()"><option value="">すべて</option></select></div>
         <div style="flex:0; min-width:140px;"><label>状態</label>
           <select id="fStatus" onchange="loadList()">
             <option value="">すべて</option><option value="confirmed">確定</option>
-            <option value="paid">入金済</option><option value="canceled">取消</option>
+            <option value="paid">支払済</option><option value="canceled">取消</option>
           </select>
         </div>
         <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="downloadListCsv()">一覧CSV</button></div>
@@ -70,7 +70,7 @@
       <p class="msg" id="lmsg"></p>
       <div class="scroll-x">
         <table id="listTbl">
-          <thead><tr><th>請求番号</th><th>問屋</th><th>期間</th><th class="num">税抜</th><th class="num">消費税</th><th class="num">税込</th><th>状態</th><th>操作</th></tr></thead>
+          <thead><tr><th>支払番号</th><th>問屋</th><th>期間</th><th class="num">税抜</th><th class="num">消費税</th><th class="num">税込</th><th>状態</th><th>操作</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -79,7 +79,7 @@
     <div class="modal-bg" id="detailModal">
       <div class="modal">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-          <h3 id="dTitle">請求詳細</h3>
+          <h3 id="dTitle">支払詳細</h3>
           <button class="secondary" onclick="closeDetail()">閉じる</button>
         </div>
         <div id="dBody"></div>
@@ -89,7 +89,7 @@
 
   <script src="/common.js"></script>
   <script>
-    const SLABEL = { draft: '未確定', confirmed: '確定', paid: '入金済', canceled: '取消' };
+    const SLABEL = { draft: '未確定', confirmed: '確定', paid: '支払済', canceled: '取消' };
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
     function yen(n) { return '¥' + Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 }); }
 
@@ -141,7 +141,7 @@
     }
 
     async function confirmBill() {
-      if (!confirm('この内容で締め確定します。よろしいですか？（対象取引は他の請求に含められなくなります）')) return;
+      if (!confirm('この内容で締め確定します。よろしいですか？（対象取引は他の支払に含められなくなります）')) return;
       const body = {
         supplierId: document.getElementById('supplier').value,
         from: document.getElementById('from').value,
@@ -152,7 +152,7 @@
       const { ok, data } = await api('/api/billing/confirm', { method: 'POST', body: JSON.stringify(body) });
       const msg = document.getElementById('pmsg');
       if (!ok) { setMsg(msg, data.error || '締めに失敗しました', 'error'); return; }
-      setMsg(msg, `締め確定しました（請求番号: ${data.billNumber} / 税込 ${yen(data.total)}）`, 'ok');
+      setMsg(msg, `締め確定しました（支払番号: ${data.billNumber} / 税込 ${yen(data.total)}）`, 'ok');
       document.getElementById('previewArea').style.display = 'none';
       loadList();
     }
@@ -165,15 +165,15 @@
       const tb = document.querySelector('#listTbl tbody');
       if (!ok) { setMsg(document.getElementById('lmsg'), (data && data.error) || '取得失敗', 'error'); return; }
       const rows = data.bills || [];
-      if (!rows.length) { tb.innerHTML = '<tr><td colspan="8">請求はありません</td></tr>'; return; }
+      if (!rows.length) { tb.innerHTML = '<tr><td colspan="8">支払はありません</td></tr>'; return; }
       tb.innerHTML = rows.map((b) => {
         const ops = [
           `<a href="#" onclick="openDetail(${b.id});return false;">詳細</a>`,
-          `<a href="/print.html?type=billing&id=${b.id}" target="_blank">請求書</a>`,
+          `<a href="/print.html?type=billing&id=${b.id}" target="_blank">支払書</a>`,
           `<a href="/print.html?type=billing_detail&id=${b.id}" target="_blank">明細</a>`,
           `<a href="#" onclick="window.location='/api/billing/${b.id}/csv';return false;">CSV</a>`,
         ];
-        if (b.status === 'confirmed') ops.unshift(`<a href="#" onclick="markPaid(${b.id});return false;">入金済</a>`);
+        if (b.status === 'confirmed') ops.unshift(`<a href="#" onclick="markPaid(${b.id});return false;">支払済</a>`);
         if (b.status === 'confirmed' || b.status === 'paid') ops.push(`<a href="#" class="neg" onclick="cancelBill(${b.id});return false;">取消</a>`);
         return `<tr><td>${esc(b.bill_number)}</td><td>${esc(b.supplier_name)}</td>` +
           `<td>${b.period_from}〜${b.period_to}</td>` +
@@ -188,7 +188,7 @@
       const { ok, data } = await api('/api/billing/' + id);
       if (!ok) { setMsg(document.getElementById('lmsg'), (data && data.error) || '取得に失敗しました', 'error'); return; }
       const b = data.bill;
-      document.getElementById('dTitle').textContent = `請求詳細　${b.bill_number}（${b.supplier_name}）`;
+      document.getElementById('dTitle').textContent = `支払詳細　${b.bill_number}（${b.supplier_name}）`;
       let h = `<p style="color:#555; font-size:0.9rem;">対象期間 ${b.period_from}〜${b.period_to} ／ 締日 ${b.closing_date || '-'} ／ 状態 <span class="badge ${b.status}">${SLABEL[b.status] || b.status}</span></p>`;
       h += '<div class="scroll-x"><table><thead><tr><th>日付</th><th>種別</th><th>商品</th><th class="num">数量</th><th class="num">単価</th><th class="num">金額</th></tr></thead><tbody>';
       (data.lines || []).forEach((l) => {
@@ -201,7 +201,7 @@
         `<div>税抜小計：<strong>${yen(b.subtotal)}</strong></div>` +
         `<div>消費税（${b.tax_rate}%）：<strong>${yen(b.tax_amount)}</strong></div>` +
         `<div style="font-size:1.2rem;">税込合計：<strong>${yen(b.total_amount)}</strong></div></div>`;
-      h += `<div style="margin-top:14px;"><a href="/print.html?type=billing&id=${id}" target="_blank">請求書を印刷</a>　｜　<a href="/print.html?type=billing_detail&id=${id}" target="_blank">請求明細書を印刷</a></div>`;
+      h += `<div style="margin-top:14px;"><a href="/print.html?type=billing&id=${id}" target="_blank">支払書を印刷</a>　｜　<a href="/print.html?type=billing_detail&id=${id}" target="_blank">支払明細書を印刷</a></div>`;
       document.getElementById('dBody').innerHTML = h;
       document.getElementById('detailModal').classList.add('show');
     }
@@ -209,11 +209,11 @@
 
     async function markPaid(id) {
       const { ok, data } = await api('/api/billing/' + id + '/paid', { method: 'POST' });
-      setMsg(document.getElementById('lmsg'), ok ? '入金済にしました' : (data.error || '失敗'), ok ? 'ok' : 'error');
+      setMsg(document.getElementById('lmsg'), ok ? '支払済にしました' : (data.error || '失敗'), ok ? 'ok' : 'error');
       loadList();
     }
     async function cancelBill(id) {
-      if (!confirm('この請求を取消します（対象取引は再度精算できるようになります）。よろしいですか？')) return;
+      if (!confirm('この支払を取消します（対象取引は再度精算できるようになります）。よろしいですか？')) return;
       const { ok, data } = await api('/api/billing/' + id + '/cancel', { method: 'POST' });
       setMsg(document.getElementById('lmsg'), ok ? '取消しました' : (data.error || '失敗'), ok ? 'ok' : 'error');
       loadList();

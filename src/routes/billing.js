@@ -11,7 +11,7 @@ const { collectBillables, computeTax, nextBillNumber } = require('../services/bi
 
 const router = express.Router();
 
-const STATUS_LABEL = { draft: '未確定', confirmed: '確定', paid: '入金済', canceled: '取消' };
+const STATUS_LABEL = { draft: '未確定', confirmed: '確定', paid: '支払済', canceled: '取消' };
 
 function requireFacilitySel(req, res) {
   const scope = facilityScope(req);
@@ -88,7 +88,7 @@ router.post('/confirm', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     if (err.code === '23505') {
-      return res.status(409).json({ error: '対象の取引が別の請求で締め済みです。プレビューし直してください。' });
+      return res.status(409).json({ error: '対象の取引が別の支払で締め済みです。プレビューし直してください。' });
     }
     console.error('請求締めエラー:', err.message);
     res.status(err.status || 500).json({ error: err.message || 'サーバーエラー' });
@@ -107,8 +107,8 @@ router.get('/csv', async (req, res) => {
       period: `${b.period_from}〜${b.period_to}`, subtotal: b.subtotal,
       tax: b.tax_amount, total: b.total_amount, status: STATUS_LABEL[b.status] || b.status,
     }));
-    sendCsv(res, '問屋請求一覧.csv', [
-      { key: 'bill_number', label: '請求番号' }, { key: 'supplier', label: '問屋' },
+    sendCsv(res, '問屋支払一覧.csv', [
+      { key: 'bill_number', label: '支払番号' }, { key: 'supplier', label: '問屋' },
       { key: 'period', label: '期間' }, { key: 'subtotal', label: '税抜小計' },
       { key: 'tax', label: '消費税' }, { key: 'total', label: '税込合計' }, { key: 'status', label: '状態' },
     ], data);
@@ -152,7 +152,7 @@ router.get('/:id', async (req, res) => {
   const scope = requireFacilitySel(req, res); if (!scope) return;
   try {
     const bill = await loadBill(pool, req.params.id, scope.facilityId);
-    if (!bill) return res.status(404).json({ error: '請求が見つかりません' });
+    if (!bill) return res.status(404).json({ error: '支払が見つかりません' });
     const sup = await pool.query('SELECT name FROM suppliers WHERE id = $1', [bill.supplier_id]);
     const lines = await pool.query(
       `SELECT bl.*, p.name AS product_name FROM supplier_bill_lines bl
@@ -172,7 +172,7 @@ router.get('/:id/csv', async (req, res) => {
   const scope = requireFacilitySel(req, res); if (!scope) return;
   try {
     const bill = await loadBill(pool, req.params.id, scope.facilityId);
-    if (!bill) return res.status(404).json({ error: '請求が見つかりません' });
+    if (!bill) return res.status(404).json({ error: '支払が見つかりません' });
     const lines = await pool.query(
       `SELECT bl.event_date, bl.source_type, p.name AS product_name, bl.quantity, bl.unit_price, bl.amount
          FROM supplier_bill_lines bl LEFT JOIN products p ON p.id = bl.product_id
@@ -183,7 +183,7 @@ router.get('/:id/csv', async (req, res) => {
       event_date: l.event_date || '', kind: l.source_type === 'return' ? '返品' : '入庫',
       product_name: l.product_name || '', quantity: l.quantity, unit_price: l.unit_price, amount: l.amount,
     }));
-    sendCsv(res, `問屋請求_${bill.bill_number}.csv`, [
+    sendCsv(res, `問屋支払_${bill.bill_number}.csv`, [
       { key: 'event_date', label: '日付' }, { key: 'kind', label: '種別' },
       { key: 'product_name', label: '商品' }, { key: 'quantity', label: '数量' },
       { key: 'unit_price', label: '単価' }, { key: 'amount', label: '金額' },
@@ -199,8 +199,8 @@ router.post('/:id/paid', async (req, res) => {
   const scope = requireFacilitySel(req, res); if (!scope) return;
   try {
     const bill = await loadBill(pool, req.params.id, scope.facilityId);
-    if (!bill) return res.status(404).json({ error: '請求が見つかりません' });
-    if (bill.status !== 'confirmed') return res.status(409).json({ error: '確定済みの請求のみ入金にできます' });
+    if (!bill) return res.status(404).json({ error: '支払が見つかりません' });
+    if (bill.status !== 'confirmed') return res.status(409).json({ error: '確定済みの支払のみ支払済にできます' });
     await pool.query(`UPDATE supplier_bills SET status = 'paid', paid_at = now() WHERE id = $1`, [bill.id]);
     await writeLog(pool, { userId: req.session.user.id, targetTable: 'supplier_bills', targetId: bill.id, operationType: '更新', after: { status: 'paid' }, facilityId: scope.facilityId });
     res.json({ ok: true });
@@ -217,8 +217,8 @@ router.post('/:id/cancel', async (req, res) => {
   try {
     await client.query('BEGIN');
     const bill = await loadBill(client, req.params.id, scope.facilityId);
-    if (!bill) { await client.query('ROLLBACK'); return res.status(404).json({ error: '請求が見つかりません' }); }
-    if (!['confirmed', 'paid'].includes(bill.status)) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'この請求は取消できません' }); }
+    if (!bill) { await client.query('ROLLBACK'); return res.status(404).json({ error: '支払が見つかりません' }); }
+    if (!['confirmed', 'paid'].includes(bill.status)) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'この支払は取消できません' }); }
     await client.query('DELETE FROM supplier_bill_lines WHERE bill_id = $1', [bill.id]); // source解放
     await client.query(`UPDATE supplier_bills SET status = 'canceled', canceled_at = now() WHERE id = $1`, [bill.id]);
     await writeLog(client, { userId: req.session.user.id, targetTable: 'supplier_bills', targetId: bill.id, operationType: '取消', before: { status: bill.status }, after: { status: 'canceled' }, facilityId: scope.facilityId });
