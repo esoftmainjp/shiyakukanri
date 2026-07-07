@@ -112,8 +112,8 @@
       render();
     }
 
-    // 施設×テーブルの容量マトリクス(1施設=1行)をCSVダウンロード
-    function exportCsv() { window.location = '/api/db-usage/csv'; }
+    // 施設×テーブルのマトリクス(1施設=1行)をCSVダウンロード。選択中の指標(容量/件数)で出力。
+    function exportCsv() { window.location = '/api/db-usage/csv?metric=' + metric; }
 
     async function load() {
       const { ok, data } = await api('/api/db-usage');

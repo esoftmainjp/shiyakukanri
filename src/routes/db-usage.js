@@ -103,19 +103,24 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/db-usage/csv
-// 施設×テーブルの容量マトリクス(1施設=1行、列=テーブル、値=容量バイト)。
-// 施設別の容量はレコード数比による概算。施設共通テーブルは「施設共通」行に計上。
+// GET /api/db-usage/csv?metric=bytes|rows
+// 施設×テーブルのマトリクス(1施設=1行、列=テーブル)。metric で値を切替:
+//   bytes(容量) … 施設別はレコード数比による概算、施設共通は実容量
+//   rows(件数)  … 施設別は正確なレコード数、施設共通は実件数
 router.get('/csv', async (req, res) => {
   try {
+    const metric = req.query.metric === 'rows' ? 'rows' : 'bytes';
     const { tables, facilities } = await gatherUsage();
 
-    // 施設別の概算容量: テーブル容量 × その施設のレコード数 / 総レコード数
-    const est = (t, key) => {
-      if (!t.facilityRows) return 0;
+    // 施設帰属テーブルの、その施設ぶんの値。容量は概算(容量×件数比)、件数は正確。
+    const facVal = (t, key) => {
+      if (!t.facilityRows) return 0;              // 施設共通は別行に計上
       const c = t.facilityRows[key] || 0;
+      if (metric === 'rows') return c;
       return t.rows > 0 ? Math.round(t.bytes * c / t.rows) : 0;
     };
+    // 施設共通テーブル(施設に紐づかない)の実値。
+    const commonVal = (t) => (t.facilityRows ? 0 : (metric === 'rows' ? t.rows : t.bytes));
 
     // 列: 施設 + 各テーブル(容量の大きい順) + 合計
     const columns = [{ key: 'facility', label: '施設' }]
@@ -137,15 +142,15 @@ router.get('/csv', async (req, res) => {
       return { row, any };
     };
 
-    // 施設ごと(1施設=1行): 施設帰属テーブルの概算容量
+    // 施設ごと(1施設=1行)
     for (const f of facilities) {
-      dataRows.push(pushRow(f.name, (t) => est(t, String(f.id))).row);
+      dataRows.push(pushRow(f.name, (t) => facVal(t, String(f.id))).row);
     }
     // 施設ID未割当(facility_id が NULL)の分
-    const un = pushRow('未割当(施設ID無し)', (t) => est(t, 'null'));
+    const un = pushRow('未割当(施設ID無し)', (t) => facVal(t, 'null'));
     if (un.any) dataRows.push(un.row);
-    // 施設共通(施設に紐づかないテーブルの実容量)
-    const common = pushRow('施設共通', (t) => (t.facilityRows ? 0 : t.bytes));
+    // 施設共通(施設に紐づかないテーブル)
+    const common = pushRow('施設共通', commonVal);
     if (common.any) dataRows.push(common.row);
     // 合計行(列ごとの合計)
     const totalRow = { facility: '合計' };
@@ -158,7 +163,8 @@ router.get('/csv', async (req, res) => {
     totalRow._total = grand;
     dataRows.push(totalRow);
 
-    sendCsv(res, 'DB使用量_施設別容量.csv', columns, dataRows);
+    const fname = metric === 'rows' ? 'DB使用量_施設別件数.csv' : 'DB使用量_施設別容量.csv';
+    sendCsv(res, fname, columns, dataRows);
   } catch (err) {
     console.error('DB使用量CSVエラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
