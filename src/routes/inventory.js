@@ -261,7 +261,8 @@ router.get('/return-default', async (req, res) => {
     );
     if (lotRec.rowCount) {
       supplierId = lotRec.rows[0].supplier_id;
-      if (lotRec.rows[0].unit_price != null) unitPrice = Number(lotRec.rows[0].unit_price);
+      // 入庫単価が0/未設定ならマスター単価にフォールバックさせる
+      if (lotRec.rows[0].unit_price != null && Number(lotRec.rows[0].unit_price) > 0) unitPrice = Number(lotRec.rows[0].unit_price);
     }
     if (supplierId == null && pd.rowCount) supplierId = pd.rows[0].supplier_id;
     if (unitPrice == null) {
@@ -354,7 +355,8 @@ router.post('/movement', async (req, res) => {
         );
         if (lotRec.rowCount) {
           if (supplierId == null && lotRec.rows[0].supplier_id != null) supplierId = lotRec.rows[0].supplier_id;
-          if (unitPrice == null && lotRec.rows[0].unit_price != null) unitPrice = Number(lotRec.rows[0].unit_price);
+          // 入庫単価が0/未設定ならマスター単価にフォールバックさせる
+          if (unitPrice == null && lotRec.rows[0].unit_price != null && Number(lotRec.rows[0].unit_price) > 0) unitPrice = Number(lotRec.rows[0].unit_price);
         }
       }
       // 2) 問屋フォールバック: 商品の主問屋

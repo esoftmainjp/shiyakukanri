@@ -83,6 +83,15 @@ router.post('/', async (req, res) => {
       const lotNumber = d.lotNumber || '';
       const expiryDate = d.expiryDate || null;
 
+      // 単価(税抜): 指定が無ければ商品詳細マスターの単価を既定に(精算・返品の元になる)。
+      let unitPrice = (d.unitPrice != null && d.unitPrice !== '' && Number(d.unitPrice) > 0) ? Number(d.unitPrice) : null;
+      if (unitPrice == null) {
+        const pdp = d.productDetailId
+          ? await client.query('SELECT unit_price FROM product_details WHERE id = $1', [d.productDetailId])
+          : await client.query('SELECT unit_price FROM product_details WHERE product_id = $1 ORDER BY apply_start_date DESC LIMIT 1', [d.productId]);
+        unitPrice = pdp.rowCount ? Number(pdp.rows[0].unit_price) || 0 : 0;
+      }
+
       // 入庫明細 (在庫加算数は生成列で自動計算)
       const det = await client.query(
         `INSERT INTO receipt_details
@@ -91,7 +100,7 @@ router.post('/', async (req, res) => {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING id, stock_added_quantity`,
         [receiptId, d.productId, d.productDetailId || null, lotNumber, expiryDate,
-         d.receiptQuantity, d.packSize, d.unitPrice || 0, d.note || '']
+         d.receiptQuantity, d.packSize, unitPrice, d.note || '']
       );
       const receiptDetailId = det.rows[0].id;
       const addedBara = Number(det.rows[0].stock_added_quantity);
