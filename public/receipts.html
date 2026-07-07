@@ -130,6 +130,9 @@
       loadIncoming();
       const sel = document.getElementById('product');
       sel.value = String(p.productId);
+      // 新しい商品なのでロット/期限はクリア(現在庫は商品全体の合計を表示)
+      document.getElementById('lot').value = '';
+      document.getElementById('expiry').value = '';
       fillDefaults();
     }
 
@@ -169,8 +172,14 @@
       if (!pid) { el.value = 0; return; }
       const { data } = await api('/api/lookup/stocks?productId=' + pid);
       if (my !== stockReq) return; // 古い結果は破棄(レース対策)
-      const row = (data.stocks || []).find((s) => (s.lot_number || '') === lot && (s.expiry_date || null) === exp);
-      el.value = row ? row.stock_quantity : 0;
+      const stocks = data.stocks || [];
+      // ロット/期限が未指定なら商品全体の合計(商品選択画面と一致)。指定時はそのロットの在庫。
+      if (lot === '' && exp === null) {
+        el.value = stocks.reduce((sum, s) => sum + Number(s.stock_quantity || 0), 0);
+      } else {
+        const row = stocks.find((s) => (s.lot_number || '') === lot && (s.expiry_date || null) === exp);
+        el.value = row ? row.stock_quantity : 0;
+      }
     }
 
     async function handleScan(raw) {
