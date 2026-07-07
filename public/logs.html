@@ -174,6 +174,20 @@
       order_date: '発注日', order_status: '状態', apply_start_date: '適用開始日', apply_end_date: '適用終了日',
       barcode_issue_flag: 'バーコード発行', canceled_flag: 'キャンセル', held_flag: '保留',
       password_changed: 'パスワード変更', file: 'ファイル', count: '件数',
+      // camelCase(API内部キー)や集計系の項目名も日本語化
+      productId: '商品', lotNumber: 'ロット', expiryDate: '使用期限',
+      issueDate: '出庫日', receiptDate: '入庫日', orderDate: '発注日',
+      detailCount: '明細件数', orderPlanCreated: '発注予定作成', receivedOrders: '入庫済み発注数',
+      values: 'バーコード値', from: '開始日', to: '終了日', groupBy: '集計単位', via: '経由',
+      admin_login_id: '管理者ログインID', order_id: '発注ID', planned_order_quantity: '予定数',
+      title: 'タイトル', lineCount: '明細件数', scope: '絞り込み条件', status: '状態',
+      confirmedLines: '反映件数', totalDiff: '差異合計', voidedBarcodes: '紛失無効化(本)',
+      driftLines: '在庫変動件数', uncounted: '未カウント件数',
+      inserted: '取込件数', skipped: 'スキップ件数',
+      departmentsCreated: '部門作成数', categoriesCreated: '分類作成数',
+      makersCreated: 'メーカー作成数', suppliersCreated: '問屋作成数',
+      productsCreated: '商品作成数', detailsCreated: '商品詳細作成数',
+      user_id: 'ユーザー', id: 'ID', created_at: '作成日時', updated_at: '更新日時',
     };
     const MOVE_LABEL = { adjust: '在庫調整', disposal: '廃棄', return: '返品', receipt: '入庫', issue: '出庫' };
     const OSTATUS_LABEL = { unordered: '未発注', ordered: '発注済み', received: '入庫済み', canceled: 'キャンセル' };
