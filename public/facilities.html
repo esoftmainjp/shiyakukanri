@@ -55,7 +55,7 @@
         <p style="font-size:0.85rem; color:#555;">上限は空欄で「無制限」。チェックでプランごとの機能利用可否を切り替えます。変更は各行の「保存」で反映されます。</p>
         <div class="scroll-x">
           <table id="planTbl">
-            <thead><tr><th>プラン</th><th>ユーザー上限</th><th>商品上限</th><th>ログ保持(日)</th><th>棚卸し</th><th>バーコード</th><th>集計</th><th>台帳</th><th>CSV取込</th><th>操作</th></tr></thead>
+            <thead><tr><th>プラン</th><th>ユーザー上限</th><th>商品上限</th><th>ログ保持(日)</th><th>棚卸し</th><th>バーコード</th><th>集計</th><th>台帳</th><th>CSV取込</th><th>精算</th><th>操作</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -94,6 +94,7 @@
         <td style="text-align:center;">${chk('fr_' + p.code, p.feat_reports)}</td>
         <td style="text-align:center;">${chk('fl_' + p.code, p.feat_ledger)}</td>
         <td style="text-align:center;">${chk('fi_' + p.code, p.feat_import)}</td>
+        <td style="text-align:center;">${chk('fbi_' + p.code, p.feat_billing)}</td>
         <td><button class="secondary" style="padding:4px 10px; font-size:0.82rem;" onclick="savePlan('${p.code}')">保存</button></td>
       </tr>`).join('');
     }
@@ -104,7 +105,7 @@
       const body = {
         max_users: val('pu_' + code), max_products: val('pp_' + code), log_retention_days: val('pr_' + code),
         feat_stocktake: chk('fs_' + code), feat_barcode: chk('fb_' + code), feat_reports: chk('fr_' + code),
-        feat_ledger: chk('fl_' + code), feat_import: chk('fi_' + code),
+        feat_ledger: chk('fl_' + code), feat_import: chk('fi_' + code), feat_billing: chk('fbi_' + code),
       };
       const { ok, data } = await api('/api/facilities/plans/' + code, { method: 'PUT', body: JSON.stringify(body) });
       setMsg(document.getElementById('planMsg'), ok ? `プラン「${code}」を保存しました` : (data.error || '保存失敗'), ok ? 'ok' : 'error');

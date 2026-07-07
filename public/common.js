@@ -149,11 +149,13 @@ function operationalMenu(includeAdmin) {
     mkGroup('履歴・集計', histItems),
   ];
   if (includeAdmin) {
-    m.push(mkGroup('管理', [
+    const adminItems = [
       ['masters', '/masters.html', 'マスター編集'],
+      planAllows('feat_billing') && ['billing', '/billing.html', '問屋精算'],
       ['logs', '/logs.html', '操作ログ'],
       ['settings', '/settings.html', '施設設定'],
-    ]));
+    ].filter(Boolean);
+    m.push(mkGroup('管理', adminItems));
   }
   return m;
 }

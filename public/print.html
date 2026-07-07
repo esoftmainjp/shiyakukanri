@@ -40,6 +40,7 @@
       receipts_list: '入 庫 履 歴', issues_list: '出 庫 履 歴',
       orders_list: '発 注 履 歴', movements_list: '在 庫 調 整 履 歴',
       usage_report: '使 用 量 集 計', monthly_report: '月 次 推 移',
+      billing: '請 求 書',
     };
     // id を使わず期間/絞り込みで出力する一覧系
     const LIST_TYPES = ['ledger', 'logs', 'receipts_list', 'issues_list', 'orders_list', 'movements_list', 'usage_report', 'monthly_report'];
@@ -124,6 +125,7 @@
       else if (type === 'movements_list') html += movementsListBody(data);
       else if (type === 'usage_report') html += usageReportBody(data);
       else if (type === 'monthly_report') html += monthlyReportBody(data);
+      else if (type === 'billing') html += billingBody(data);
       else html += orderBody(data);
       document.getElementById('sheet').innerHTML = html;
     }
@@ -133,6 +135,25 @@
     }
     function noteLine(note) {
       return `<div class="note-line"><strong>備考：</strong>${esc(note || '')}</div>`;
+    }
+
+    function billingBody(data) {
+      const b = data.bill;
+      const SL = { draft: '未確定', confirmed: '確定', paid: '入金済', canceled: '取消' };
+      let h = `<div style="margin:6px 0 14px; font-size:1.1rem;"><strong>${esc(b.supplier_name)}</strong> 御中</div>`;
+      h += metaRow([['請求番号', b.bill_number], ['対象期間', `${b.period_from}〜${b.period_to}`], ['締日', b.closing_date || '-'], ['状態', SL[b.status] || b.status]]);
+      h += `<table><thead><tr><th>日付</th><th>種別</th><th>商品</th><th class="num">数量</th><th class="num">単価</th><th class="num">金額</th></tr></thead><tbody>`;
+      (data.lines || []).forEach((l) => {
+        h += `<tr><td>${l.event_date || ''}</td><td>${l.source_type === 'return' ? '返品' : '入庫'}</td><td>${esc(l.product_name)}</td>` +
+          `<td class="num">${num(l.quantity)}</td><td class="num">${yen(l.unit_price)}</td><td class="num">${yen(l.amount)}</td></tr>`;
+      });
+      h += `</tbody></table>`;
+      h += `<div style="margin-top:14px; text-align:right; line-height:1.8;">` +
+        `<div>税抜小計：<strong>${yen(b.subtotal)}</strong></div>` +
+        `<div>消費税（${num(b.tax_rate)}%）：<strong>${yen(b.tax_amount)}</strong></div>` +
+        `<div style="font-size:1.2rem;">税込合計：<strong>${yen(b.total_amount)}</strong></div></div>`;
+      h += noteLine(b.note);
+      return h;
     }
 
     function receiptBody(data) {

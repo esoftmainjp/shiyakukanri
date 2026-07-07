@@ -419,6 +419,7 @@ app.use('/api/stocktake', requireLogin, requireRole('admin', 'general', 'superad
 app.use('/api/barcodes',  requireLogin, requireRole('admin', 'general', 'superadmin'), requireFeature('feat_barcode'), require('./routes/barcodes'));
 app.use('/api/ledger',    requireLogin, requireRole('admin', 'general', 'superadmin'), requireFeature('feat_ledger'), require('./routes/ledger'));
 app.use('/api/reports',   requireLogin, requireRole('admin', 'general', 'superadmin'), requireFeature('feat_reports'), require('./routes/reports'));
+app.use('/api/billing',   requireLogin, requireRole('admin', 'superadmin'), requireFeature('feat_billing'), require('./routes/billing'));
 app.use('/api/facilities', requireLogin, requireRole('superadmin'), require('./routes/facilities'));
 app.use('/api/db-usage',  requireLogin, requireRole('superadmin'), require('./routes/db-usage'));
 app.use('/api/masters',   requireLogin, requireRole('admin', 'superadmin'), require('./routes/masters'));
