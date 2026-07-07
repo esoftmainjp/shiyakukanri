@@ -264,9 +264,20 @@ app.get('/api/me', requireLogin, async (req, res) => {
     console.error('施設情報取得エラー:', err.message);
   }
 
+  // 施設のプラン(上限・機能フラグ)。施設選択時のみ。全体管理者が未選択なら null(全機能)。
+  let plan = null;
+  try {
+    if (activeFacilityId != null) {
+      const { getFacilityPlan } = require('./services/plan');
+      plan = await getFacilityPlan(pool, activeFacilityId);
+    }
+  } catch (err) {
+    console.error('プラン取得エラー:', err.message);
+  }
+
   res.json({
     user: req.session.user, passwordExpired, passwordExpiryDays, daysSinceChange,
-    isSuperadmin: isSuper, facilities, activeFacilityId, facilityName,
+    isSuperadmin: isSuper, facilities, activeFacilityId, facilityName, plan,
   });
 });
 

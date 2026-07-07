@@ -85,16 +85,42 @@ COMMENT ON COLUMN categories.kana IS 'カナ名称';
 COMMENT ON COLUMN categories.note IS '備考';
 COMMENT ON COLUMN categories.is_active IS '有効フラグ';
 
+-- 10a. プランマスタ (施設ごとの上限・機能差別化)
+CREATE TABLE plans (
+    code               VARCHAR(16)  PRIMARY KEY,
+    name               VARCHAR(64)  NOT NULL,
+    sort_order         INTEGER      NOT NULL DEFAULT 0,
+    max_users          INTEGER,
+    max_products       INTEGER,
+    log_retention_days INTEGER,
+    feat_stocktake     BOOLEAN      NOT NULL DEFAULT TRUE,
+    feat_barcode       BOOLEAN      NOT NULL DEFAULT TRUE,
+    feat_reports       BOOLEAN      NOT NULL DEFAULT TRUE,
+    feat_ledger        BOOLEAN      NOT NULL DEFAULT TRUE,
+    feat_import        BOOLEAN      NOT NULL DEFAULT TRUE,
+    updated_at         TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE plans IS 'プランマスタ(上限NULL=無制限。feat_*=機能利用可否)';
+INSERT INTO plans (code, name, sort_order, max_users, max_products, log_retention_days,
+                   feat_stocktake, feat_barcode, feat_reports, feat_ledger, feat_import) VALUES
+  ('free',     'フリー',       1,    1,    10,   30,   FALSE, FALSE, FALSE, FALSE, FALSE),
+  ('light',    'ライト',       2,   10,   100,   90,   FALSE, TRUE,  FALSE, TRUE,  TRUE),
+  ('standard', 'スタンダード', 3,  100,  1000,  365,   TRUE,  TRUE,  TRUE,  TRUE,  TRUE),
+  ('pro',      'プロ',         4, 1000, 10000, NULL,   TRUE,  TRUE,  TRUE,  TRUE,  TRUE)
+ON CONFLICT (code) DO NOTHING;
+
 -- 10b. 施設マスタ (マルチテナント)
 CREATE TABLE facilities (
     id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name       VARCHAR(255) NOT NULL,
     kana       VARCHAR(255) NOT NULL DEFAULT '',
     is_active  BOOLEAN      NOT NULL DEFAULT TRUE,
+    plan_code  VARCHAR(16)  NOT NULL DEFAULT 'free' REFERENCES plans(code),
     created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
-COMMENT ON TABLE  facilities      IS '施設マスタ';
-COMMENT ON COLUMN facilities.name IS '施設名';
+COMMENT ON TABLE  facilities           IS '施設マスタ';
+COMMENT ON COLUMN facilities.name      IS '施設名';
+COMMENT ON COLUMN facilities.plan_code IS 'プラン(plans.code)';
 
 -- 11. ユーザーマスタ
 CREATE TABLE users (

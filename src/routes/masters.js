@@ -6,6 +6,7 @@ const { pool } = require('../db');
 const { writeLog } = require('../services/log');
 const { isEmail } = require('../services/validate');
 const { facilityScope } = require('../services/facility');
+const { getFacilityPlan, canAdd } = require('../services/plan');
 
 const router = express.Router();
 
@@ -118,6 +119,23 @@ router.post('/:type', async (req, res) => {
   if (scope.all) return res.status(400).json({ error: '対象施設を選択してから登録してください' });
   const body = req.body || {};
   try {
+    // プラン上限チェック(ユーザー/商品の新規登録)
+    if (t.table === 'users' || t.table === 'products') {
+      const plan = await getFacilityPlan(pool, scope.facilityId);
+      if (plan) {
+        if (t.table === 'users') {
+          const c = (await pool.query('SELECT COUNT(*) AS c FROM users WHERE facility_id = $1 AND is_active = TRUE', [scope.facilityId])).rows[0].c;
+          if (!canAdd(c, plan.max_users)) {
+            return res.status(400).json({ error: `ユーザー登録数の上限（${plan.name}：${plan.max_users}人）に達しています。上位プランへの変更をご検討ください。` });
+          }
+        } else {
+          const c = (await pool.query('SELECT COUNT(*) AS c FROM products WHERE facility_id = $1', [scope.facilityId])).rows[0].c;
+          if (!canAdd(c, plan.max_products)) {
+            return res.status(400).json({ error: `商品マスター登録数の上限（${plan.name}：${plan.max_products}件）に達しています。上位プランへの変更をご検討ください。` });
+          }
+        }
+      }
+    }
     const cols = [];
     const vals = [];
     for (const c of t.cols) {

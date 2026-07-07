@@ -29,6 +29,7 @@
         <div class="row">
           <div style="flex:2;"><label>施設名 <span style="color:#c0392b;">*</span></label><input id="name" placeholder="例：〇〇病院 中央検査室" /></div>
           <div style="flex:1;"><label>カナ</label><input id="kana" placeholder="任意" /></div>
+          <div style="flex:0; min-width:140px;"><label>プラン</label><select id="planCode"></select></div>
         </div>
         <div class="row">
           <div style="flex:2;"><label>初期管理者ログインID（メール） <span style="color:#c0392b;">*</span></label><input id="adminLoginId" placeholder="例：admin@example.com" /></div>
@@ -42,7 +43,7 @@
         <h2>施設一覧</h2>
         <p class="msg" id="msg"></p>
         <table id="tbl">
-          <thead><tr><th>ID</th><th>施設名</th><th>カナ</th><th>ユーザー数</th><th>状態</th><th>操作</th></tr></thead>
+          <thead><tr><th>ID</th><th>施設名</th><th>カナ</th><th>プラン</th><th>ユーザー</th><th>商品</th><th>状態</th><th>操作</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -51,18 +52,26 @@
 
   <script src="/common.js"></script>
   <script>
+    let PLANS = [];
     async function boot() {
       const user = await initPage('facilities');
       if (!user) return;
       if (user.userType !== 'superadmin') { document.getElementById('denied').style.display = 'block'; return; }
       document.getElementById('area').style.display = 'block';
+      const pr = await api('/api/facilities/plans');
+      PLANS = (pr.data && pr.data.plans) || [];
+      document.getElementById('planCode').innerHTML = planOptions('free');
       load();
     }
 
+    function planOptions(sel) {
+      return PLANS.map((p) => `<option value="${p.code}"${String(p.code) === String(sel) ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+    }
     function esc(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
+    function lim(v) { return v == null ? '∞' : v; }
 
     async function load() {
       const { ok, data } = await api('/api/facilities');
@@ -71,16 +80,18 @@
       const rows = data.facilities || [];
       tbody.innerHTML = rows.map((f) => `<tr class="${f.is_active ? '' : 'facinactive'}">
         <td>${f.id}</td>
-        <td><input value="${esc(f.name)}" id="nm_${f.id}" style="width:220px;" /></td>
-        <td><input value="${esc(f.kana)}" id="kn_${f.id}" style="width:140px;" /></td>
-        <td style="text-align:right;">${f.user_count}</td>
+        <td><input value="${esc(f.name)}" id="nm_${f.id}" style="width:200px;" /></td>
+        <td><input value="${esc(f.kana)}" id="kn_${f.id}" style="width:120px;" /></td>
+        <td><select id="pl_${f.id}" style="width:auto;">${planOptions(f.plan_code)}</select></td>
+        <td style="text-align:right; white-space:nowrap;">${f.user_count} / ${lim(f.max_users)}</td>
+        <td style="text-align:right; white-space:nowrap;">${f.product_count} / ${lim(f.max_products)}</td>
         <td>${f.is_active
           ? '<span class="statusbadge on">有効</span>'
           : '<span class="statusbadge off">無効</span>'}</td>
         <td style="white-space:nowrap;">
           <button class="secondary" style="padding:4px 10px; font-size:0.82rem;" onclick="saveFacility(${f.id})">保存</button>
           <button class="secondary" style="padding:4px 10px; font-size:0.82rem;" onclick="toggleFacility(${f.id}, ${f.is_active ? 'false' : 'true'})">${f.is_active ? '無効化' : '有効化'}</button>
-        </td></tr>`).join('') || '<tr><td colspan="6">施設がありません。</td></tr>';
+        </td></tr>`).join('') || '<tr><td colspan="8">施設がありません。</td></tr>';
     }
 
     async function createFacility() {
@@ -88,6 +99,7 @@
       const body = {
         name: document.getElementById('name').value.trim(),
         kana: document.getElementById('kana').value.trim(),
+        planCode: document.getElementById('planCode').value,
         adminLoginId: document.getElementById('adminLoginId').value.trim(),
         adminPassword: document.getElementById('adminPassword').value,
       };
@@ -102,7 +114,8 @@
     async function saveFacility(id) {
       const name = document.getElementById('nm_' + id).value.trim();
       const kana = document.getElementById('kn_' + id).value.trim();
-      const { ok, data } = await api('/api/facilities/' + id, { method: 'PUT', body: JSON.stringify({ name, kana }) });
+      const planCode = document.getElementById('pl_' + id).value;
+      const { ok, data } = await api('/api/facilities/' + id, { method: 'PUT', body: JSON.stringify({ name, kana, planCode }) });
       setMsg(document.getElementById('msg'), ok ? '保存しました' : (data.error || '保存失敗'), ok ? 'ok' : 'error');
       load();
     }

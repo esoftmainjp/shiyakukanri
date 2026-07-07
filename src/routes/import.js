@@ -5,6 +5,15 @@ const { pool, getClient } = require('../db');
 const { parseCsv, sendCsv } = require('../services/csv');
 const { facilityScope } = require('../services/facility');
 const { writeLog } = require('../services/log');
+const { getFacilityPlan } = require('../services/plan');
+
+// 取込での商品追加上限。現在数を返す(max=NULL は無制限)。
+async function productLimit(client, fid) {
+  const plan = await getFacilityPlan(client, fid);
+  const max = plan ? plan.max_products : null;
+  const existing = Number((await client.query('SELECT COUNT(*) AS c FROM products WHERE facility_id = $1', [fid])).rows[0].c);
+  return { max, existing };
+}
 
 const router = express.Router();
 
@@ -64,6 +73,7 @@ router.post('/products', async (req, res) => {
     let skipped = 0;
     let departmentsCreated = 0;
     let categoriesCreated = 0;
+    const { max: maxProducts, existing: existingProducts } = await productLimit(client, fid);
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
@@ -73,6 +83,12 @@ router.post('/products', async (req, res) => {
       // 重複チェックは商品名で行う(同一施設内。既存があればスキップ)
       const dup = await client.query(`SELECT id FROM products WHERE name = $1 AND facility_id = $2`, [name, fid]);
       if (dup.rowCount > 0) { skipped++; continue; }
+
+      // プラン上限チェック(全件取消)
+      if (maxProducts != null && existingProducts + inserted >= maxProducts) {
+        errors.push({ line: i + 2, error: `商品マスター登録数の上限(${maxProducts}件)を超えます。上位プランへの変更をご検討ください。` });
+        break;
+      }
 
       // 部門・分類は無ければ自動追加(同一施設内)
       let deptId = null, catId = null;
@@ -218,6 +234,7 @@ router.post('/products-combined', async (req, res) => {
     let departmentsCreated = 0;
     let categoriesCreated = 0;
     let suppliersCreated = 0;
+    const { max: maxProducts, existing: existingProducts } = await productLimit(client, fid);
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
@@ -255,6 +272,11 @@ router.post('/products-combined', async (req, res) => {
       if (ex.rowCount > 0) {
         productId = ex.rows[0].id;
       } else {
+        // プラン上限チェック(全件取消)
+        if (maxProducts != null && existingProducts + productsCreated >= maxProducts) {
+          errors.push({ line, error: `商品マスター登録数の上限(${maxProducts}件)を超えます。上位プランへの変更をご検討ください。` });
+          break;
+        }
         const ins = await client.query(
           `INSERT INTO products (name, kana, department_id, category_id, management_code, qc_target_flag, facility_id)
            VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,

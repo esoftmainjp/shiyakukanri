@@ -10,13 +10,16 @@ const { isEmail } = require('../services/validate');
 
 const router = express.Router();
 
-// 施設一覧(管理者数付き)
+// 施設一覧(管理者数・プラン付き)
 router.get('/', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT f.id, f.name, f.kana, f.is_active, f.created_at,
-              (SELECT COUNT(*) FROM users u WHERE u.facility_id = f.id AND u.is_active = TRUE) AS user_count
+      `SELECT f.id, f.name, f.kana, f.is_active, f.created_at, f.plan_code,
+              pl.name AS plan_name, pl.max_users, pl.max_products,
+              (SELECT COUNT(*) FROM users u WHERE u.facility_id = f.id AND u.is_active = TRUE) AS user_count,
+              (SELECT COUNT(*) FROM products p WHERE p.facility_id = f.id) AS product_count
          FROM facilities f
+         LEFT JOIN plans pl ON pl.code = f.plan_code
         ORDER BY f.id`
     );
     res.json({ facilities: rows });
@@ -26,10 +29,21 @@ router.get('/', async (req, res) => {
   }
 });
 
+// プラン一覧(割当・編集用)
+router.get('/plans', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM plans ORDER BY sort_order, code');
+    res.json({ plans: rows });
+  } catch (err) {
+    console.error('プラン一覧エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 // 施設の新規作成 + 初期管理者の作成
 // POST /  body: { name, kana?, adminLoginId(email), adminPassword }
 router.post('/', async (req, res) => {
-  const { name, kana, adminLoginId, adminPassword } = req.body || {};
+  const { name, kana, adminLoginId, adminPassword, planCode } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: '施設名は必須です' });
   if (!adminLoginId || !adminPassword) return res.status(400).json({ error: '管理者のログインID(メール)とパスワードは必須です' });
   if (!isEmail(adminLoginId)) return res.status(400).json({ error: 'ログインIDはメールアドレス形式で入力してください' });
@@ -44,9 +58,15 @@ router.post('/', async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'このログインID(メール)は既に使用されています' });
     }
+    // プラン(未指定/不明なら free)
+    let plan = 'free';
+    if (planCode) {
+      const chk = await client.query('SELECT 1 FROM plans WHERE code = $1', [planCode]);
+      if (chk.rowCount) plan = String(planCode);
+    }
     const f = await client.query(
-      `INSERT INTO facilities (name, kana) VALUES ($1, $2) RETURNING id, name`,
-      [String(name).trim(), kana ? String(kana) : '']
+      `INSERT INTO facilities (name, kana, plan_code) VALUES ($1, $2, $3) RETURNING id, name`,
+      [String(name).trim(), kana ? String(kana) : '', plan]
     );
     const facilityId = f.rows[0].id;
     // 伝票印字用の施設名(company_name)を施設名で初期化(後で設定画面から変更可)
@@ -80,12 +100,17 @@ router.post('/', async (req, res) => {
 // 施設の更新(名称・カナ・有効フラグ)
 // PUT /:id  body: { name?, kana?, isActive? }
 router.put('/:id', async (req, res) => {
-  const { name, kana, isActive } = req.body || {};
+  const { name, kana, isActive, planCode } = req.body || {};
   const sets = [];
   const params = [];
   if (name !== undefined) { params.push(String(name)); sets.push(`name = $${params.length}`); }
   if (kana !== undefined) { params.push(String(kana)); sets.push(`kana = $${params.length}`); }
   if (isActive !== undefined) { params.push(!!isActive); sets.push(`is_active = $${params.length}`); }
+  if (planCode !== undefined) {
+    const chk = await pool.query('SELECT 1 FROM plans WHERE code = $1', [planCode]);
+    if (chk.rowCount === 0) return res.status(400).json({ error: '不明なプランです' });
+    params.push(String(planCode)); sets.push(`plan_code = $${params.length}`);
+  }
   if (sets.length === 0) return res.status(400).json({ error: '変更項目がありません' });
   try {
     params.push(req.params.id);
