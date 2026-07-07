@@ -15,6 +15,10 @@
     .badge.canceled { background: #f0f0f0; color: #888; }
     .neg { color: #c62d42; }
     .scroll-x { overflow-x: auto; margin-top: 10px; }
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 20; }
+    .modal-bg.show { display: flex; }
+    .modal { background: #fff; border-radius: 10px; padding: 20px; max-width: 94vw; max-height: 90vh; overflow: auto; min-width: min(780px, 94vw); }
+    .modal h3 { margin: 0; }
   </style>
 </head>
 <body>
@@ -69,6 +73,16 @@
           <thead><tr><th>請求番号</th><th>問屋</th><th>期間</th><th class="num">税抜</th><th class="num">消費税</th><th class="num">税込</th><th>状態</th><th>操作</th></tr></thead>
           <tbody></tbody>
         </table>
+      </div>
+    </div>
+
+    <div class="modal-bg" id="detailModal">
+      <div class="modal">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <h3 id="dTitle">請求詳細</h3>
+          <button class="secondary" onclick="closeDetail()">閉じる</button>
+        </div>
+        <div id="dBody"></div>
       </div>
     </div>
   </main>
@@ -153,8 +167,12 @@
       const rows = data.bills || [];
       if (!rows.length) { tb.innerHTML = '<tr><td colspan="8">請求はありません</td></tr>'; return; }
       tb.innerHTML = rows.map((b) => {
-        const ops = [`<a href="/print.html?type=billing&id=${b.id}" target="_blank">印刷</a>`,
-          `<a href="#" onclick="window.location='/api/billing/${b.id}/csv';return false;">CSV</a>`];
+        const ops = [
+          `<a href="#" onclick="openDetail(${b.id});return false;">詳細</a>`,
+          `<a href="/print.html?type=billing&id=${b.id}" target="_blank">請求書</a>`,
+          `<a href="/print.html?type=billing_detail&id=${b.id}" target="_blank">明細</a>`,
+          `<a href="#" onclick="window.location='/api/billing/${b.id}/csv';return false;">CSV</a>`,
+        ];
         if (b.status === 'confirmed') ops.unshift(`<a href="#" onclick="markPaid(${b.id});return false;">入金済</a>`);
         if (b.status === 'confirmed' || b.status === 'paid') ops.push(`<a href="#" class="neg" onclick="cancelBill(${b.id});return false;">取消</a>`);
         return `<tr><td>${esc(b.bill_number)}</td><td>${esc(b.supplier_name)}</td>` +
@@ -164,6 +182,30 @@
           `<td style="white-space:nowrap;">${ops.join(' / ')}</td></tr>`;
       }).join('');
     }
+
+    // 確定済み請求の内容を画面で確認
+    async function openDetail(id) {
+      const { ok, data } = await api('/api/billing/' + id);
+      if (!ok) { setMsg(document.getElementById('lmsg'), (data && data.error) || '取得に失敗しました', 'error'); return; }
+      const b = data.bill;
+      document.getElementById('dTitle').textContent = `請求詳細　${b.bill_number}（${b.supplier_name}）`;
+      let h = `<p style="color:#555; font-size:0.9rem;">対象期間 ${b.period_from}〜${b.period_to} ／ 締日 ${b.closing_date || '-'} ／ 状態 <span class="badge ${b.status}">${SLABEL[b.status] || b.status}</span></p>`;
+      h += '<div class="scroll-x"><table><thead><tr><th>日付</th><th>種別</th><th>商品</th><th class="num">数量</th><th class="num">単価</th><th class="num">金額</th></tr></thead><tbody>';
+      (data.lines || []).forEach((l) => {
+        const neg = Number(l.amount) < 0;
+        h += `<tr class="${neg ? 'neg' : ''}"><td>${l.event_date || ''}</td><td>${l.source_type === 'return' ? '返品' : '入庫'}</td>` +
+          `<td>${esc(l.product_name)}</td><td class="num">${l.quantity}</td><td class="num">${yen(l.unit_price)}</td><td class="num">${yen(l.amount)}</td></tr>`;
+      });
+      h += '</tbody></table></div>';
+      h += `<div style="text-align:right; margin-top:10px; line-height:1.8;">` +
+        `<div>税抜小計：<strong>${yen(b.subtotal)}</strong></div>` +
+        `<div>消費税（${b.tax_rate}%）：<strong>${yen(b.tax_amount)}</strong></div>` +
+        `<div style="font-size:1.2rem;">税込合計：<strong>${yen(b.total_amount)}</strong></div></div>`;
+      h += `<div style="margin-top:14px;"><a href="/print.html?type=billing&id=${id}" target="_blank">請求書を印刷</a>　｜　<a href="/print.html?type=billing_detail&id=${id}" target="_blank">請求明細書を印刷</a></div>`;
+      document.getElementById('dBody').innerHTML = h;
+      document.getElementById('detailModal').classList.add('show');
+    }
+    function closeDetail() { document.getElementById('detailModal').classList.remove('show'); }
 
     async function markPaid(id) {
       const { ok, data } = await api('/api/billing/' + id + '/paid', { method: 'POST' });
