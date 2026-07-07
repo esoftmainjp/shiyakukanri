@@ -23,17 +23,18 @@ async function collectBillables(db, { facilityId, supplierId, from, to }) {
   );
   const returns = await db.query(
     `SELECT m.id AS source_id, m.product_id, p.name AS product_name,
-            m.created_at::date AS event_date, (-m.quantity_input) AS quantity,
+            COALESCE(m.movement_date, m.created_at::date) AS event_date, (-m.quantity_input) AS quantity,
             m.unit_price, (-(m.quantity_input * m.unit_price)) AS amount
        FROM stock_movements m
        JOIN products p ON p.id = m.product_id
       WHERE m.movement_type = 'return' AND m.supplier_id = $1 AND p.facility_id = $2
         AND m.supplier_id IS NOT NULL AND m.unit_price IS NOT NULL AND m.quantity_input IS NOT NULL
-        AND m.created_at::date >= $3 AND m.created_at::date <= $4
+        AND COALESCE(m.movement_date, m.created_at::date) >= $3
+        AND COALESCE(m.movement_date, m.created_at::date) <= $4
         AND NOT EXISTS (SELECT 1 FROM supplier_bill_lines bl JOIN supplier_bills b ON b.id = bl.bill_id
                          WHERE bl.source_type = 'return' AND bl.source_id = m.id
                            AND b.status IN ('confirmed','paid'))
-      ORDER BY m.created_at, m.id`,
+      ORDER BY COALESCE(m.movement_date, m.created_at::date), m.id`,
     [supplierId, facilityId, from, to]
   );
   const receiptLines = receipts.rows.map((r) => ({ ...r, source_type: 'receipt' }));

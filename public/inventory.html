@@ -67,6 +67,7 @@
           </select>
         </div>
         <div><label id="qtyLabel">修正後の在庫数</label><input type="number" id="mQty" min="0" value="0" /></div>
+        <div><label>日付（対象日）</label><input type="date" id="mDate" title="修正・廃棄・返品を計上する日付。既定は当日。返品は支払集計にこの日付を使用します。" /></div>
       </div>
       <div class="row" id="returnFields" style="display:none;">
         <div><label>問屋（返品先）</label><select id="mSupplier"><option value="">（未設定）</option></select></div>
@@ -156,6 +157,7 @@
         `${s.product_name} / ロット:${s.lot_number || '(なし)'} / 期限:${s.expiry_date || '(なし)'} / 現在庫:${s.stock_quantity}`;
       document.getElementById('mType').value = 'adjust';
       document.getElementById('mQty').value = s.stock_quantity;
+      document.getElementById('mDate').value = localDateStr();   // 既定は当日
       document.getElementById('mReason').value = '';
       onTypeChange();
       setMsg(document.getElementById('editMsg'), '', '');
@@ -206,6 +208,7 @@
         lotNumber: current.lot_number,
         expiryDate: current.expiry_date,
         movementType: t,
+        movementDate: document.getElementById('mDate').value || null,   // 対象日(全区分)
         reason: document.getElementById('mReason').value,
       };
       if (t === 'return') {

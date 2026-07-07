@@ -543,6 +543,7 @@ CREATE TABLE stock_movements (
     supplier_id      BIGINT      REFERENCES suppliers(id), -- 返品等の相手問屋(精算用。receipt/issue/adjustはNULL)
     unit_price       NUMERIC(12,2),                        -- 返品等の単価(精算用)
     quantity_input   INTEGER,                              -- 入力単位数量(精算用。金額=quantity_input×unit_price)
+    movement_date    DATE,                                 -- 対象日(返品日など。NULLなら集計でcreated_at::dateを使用)
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 COMMENT ON TABLE  stock_movements                 IS '在庫移動履歴';
@@ -561,6 +562,7 @@ CREATE INDEX idx_stock_movements_product  ON stock_movements(product_id);
 CREATE INDEX idx_stock_movements_type     ON stock_movements(movement_type);
 CREATE INDEX idx_stock_movements_supplier ON stock_movements(supplier_id);
 CREATE INDEX idx_stock_movements_created ON stock_movements(created_at);
+CREATE INDEX idx_stock_movements_movement_date ON stock_movements(movement_date);
 
 -- 17. 操作ログ
 CREATE TABLE operation_logs (

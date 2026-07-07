@@ -162,12 +162,14 @@ async function queryMovements(q, scope) {
     cond = `m.movement_type IN ('adjust', 'disposal', 'return')`;
   }
   if (scope && !scope.all) { params.push(scope.facilityId); cond += ` AND p.facility_id = $${params.length}`; }
-  if (from) { params.push(from); cond += ` AND m.created_at::date >= $${params.length}`; }
-  if (to) { params.push(to); cond += ` AND m.created_at::date <= $${params.length}`; }
+  if (from) { params.push(from); cond += ` AND COALESCE(m.movement_date, m.created_at::date) >= $${params.length}`; }
+  if (to) { params.push(to); cond += ` AND COALESCE(m.movement_date, m.created_at::date) <= $${params.length}`; }
   if (productId) { params.push(productId); cond += ` AND m.product_id = $${params.length}`; }
   params.push(limit);
   const { rows } = await pool.query(
-    `SELECT m.id, m.created_at, m.movement_type, m.product_id, p.name AS product_name,
+    `SELECT m.id, m.created_at,
+            COALESCE(m.movement_date, m.created_at::date) AS movement_date,
+            m.movement_type, m.product_id, p.name AS product_name,
             m.lot_number, m.expiry_date, m.quantity_change, m.quantity_before, m.quantity_after,
             m.reason, u.name AS user_name, m.related_id
        FROM stock_movements m
@@ -197,6 +199,7 @@ router.get('/movements/csv', async (req, res) => {
   try {
     const rows = await queryMovements(req.query, facilityScope(req));
     const data = rows.map((m) => ({
+      movement_date: m.movement_date ? String(m.movement_date).slice(0, 10) : '',
       created_at: m.created_at ? String(m.created_at).replace('T', ' ').slice(0, 19) : '',
       movement_type: MOVE_LABEL[m.movement_type] || m.movement_type,
       product_name: m.product_name,
@@ -209,7 +212,8 @@ router.get('/movements/csv', async (req, res) => {
       user_name: m.user_name || '',
     }));
     const columns = [
-      { key: 'created_at', label: '日時' },
+      { key: 'movement_date', label: '対象日' },
+      { key: 'created_at', label: '登録日時' },
       { key: 'movement_type', label: '区分' },
       { key: 'product_name', label: '商品' },
       { key: 'lot_number', label: 'ロット' },
@@ -287,7 +291,8 @@ router.get('/return-default', async (req, res) => {
 router.post('/movement', async (req, res) => {
   const userId = req.session.user.id;
   const { productId, lotNumber = '', expiryDate = null, movementType, quantity, reason, barcodeValue,
-          supplierId: bodySupplierId, unitPrice: bodyUnitPrice, quantityInput: bodyQtyInput } = req.body || {};
+          supplierId: bodySupplierId, unitPrice: bodyUnitPrice, quantityInput: bodyQtyInput,
+          movementDate: bodyMovementDate } = req.body || {};
 
   if (!productId || !['adjust', 'disposal', 'return'].includes(movementType)) {
     return res.status(400).json({ error: '商品IDと移動区分(adjust/disposal/return)は必須です' });
@@ -299,6 +304,9 @@ router.post('/movement', async (req, res) => {
   if (Number.isNaN(qty) || qty < 0) {
     return res.status(400).json({ error: '数量が不正です' });
   }
+  // 対象日(修正/廃棄/返品の記録日・集計日)。未指定・不正はNULL→集計時にcreated_at::dateを使用。
+  const movementDate = (typeof bodyMovementDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(bodyMovementDate))
+    ? bodyMovementDate : null;
 
   const scope = facilityScope(req);
   if (scope.all) return res.status(400).json({ error: '対象施設を選択してください' });
@@ -317,7 +325,7 @@ router.post('/movement', async (req, res) => {
 
     let opts = {
       productId, lotNumber, expiryDate,
-      movementType, userId, reason, relatedId: null,
+      movementType, userId, reason, relatedId: null, movementDate,
     };
     if (movementType === 'adjust') {
       opts.targetQuantity = qty;      // 絶対値へ調整
