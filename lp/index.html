@@ -194,6 +194,26 @@
   .plan li::before { content: "✓"; position: absolute; left: 0; color: var(--accent); font-weight: 700; }
   .ph { display: inline-block; background: var(--amber-tint); color: var(--amber); font-family: var(--font-mono); font-size: .68rem; padding: 1px 7px; border-radius: 5px; border: 1px solid color-mix(in srgb,var(--amber) 35%, var(--line)); }
 
+  /* プラン別料金カード + 比較表 */
+  .plans4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; align-items: stretch; }
+  @media (max-width: 900px){ .plans4 { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px){ .plans4 { grid-template-columns: 1fr; } }
+  .pcard { background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid var(--line); border-radius: 16px; padding: 24px 18px; text-align: center; display: flex; flex-direction: column; backdrop-filter: blur(3px); }
+  .pcard.hot { border-color: var(--accent); box-shadow: var(--shadow); position: relative; }
+  .pcard .pname { font-weight: 800; font-size: 1.08rem; }
+  .pcard .pprice { font-family: var(--font-mono); font-size: 1.85rem; font-weight: 700; margin: 8px 0 0; letter-spacing: -.02em; color: var(--accent-deep); }
+  .pcard .pprice small { font-size: .7rem; color: var(--muted); font-weight: 400; }
+  .pcard .pspec { color: var(--muted); font-size: .86rem; margin: 10px 0 18px; line-height: 1.5; }
+  .pcard .badge2 { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #073947; font-size: .7rem; font-weight: 700; padding: 2px 12px; border-radius: 999px; white-space: nowrap; }
+  .pcard .btn { margin-top: auto; }
+  .cmp-wrap { overflow-x: auto; margin-top: 26px; }
+  .cmp { border-collapse: collapse; width: 100%; min-width: 660px; font-size: .9rem; }
+  .cmp th, .cmp td { border: 1px solid var(--line); padding: 10px 12px; text-align: center; }
+  .cmp thead th { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+  .cmp td:first-child, .cmp th:first-child { text-align: left; background: color-mix(in srgb, var(--surface) 92%, transparent); font-weight: 600; }
+  .cmp .yes { color: var(--accent-deep); font-weight: 700; }
+  .cmp .no { color: color-mix(in srgb, var(--muted) 65%, transparent); }
+
   .faq { display: grid; gap: 10px; max-width: 780px; }
   details { background: color-mix(in srgb, var(--surface) 90%, transparent); border: 1px solid var(--line); border-radius: 12px; padding: 4px 20px; backdrop-filter: blur(3px); }
   details[open] { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
@@ -448,35 +468,57 @@
   <section id="price">
     <div class="wrap">
       <div class="sec-head reveal">
-        <span class="eyebrow">料金</span>
-        <h2>月額980円（税込）から。</h2>
-        <p>クラウド版・オフライン版をご用意しています。各種オプションは別途ご相談ください。</p>
+        <span class="eyebrow">料金・プラン</span>
+        <h2>用途に合わせて選べる4プラン。</h2>
+        <p>クラウド版は月額のみ・初期費用なし。まずはフリーから、規模に応じてアップグレードできます。（表示は税込）</p>
       </div>
-      <div class="price">
-        <div class="plan feature reveal">
-          <span class="tag">クラウド版（基本）</span>
-          <div class="amount">月額 980 <span class="u">円（税込）</span></div>
-          <p style="color:var(--muted); font-size:.92rem;">初期登録費用なし（自動登録）。インストール不要で、すぐに始められます。</p>
-          <ul>
-            <li>入出庫・発注・在庫・使用期限管理</li>
-            <li>バーコード発行・ラベル印刷</li>
-            <li>台帳・履歴・集計レポート</li>
-            <li>操作ログ・権限管理</li>
-          </ul>
-          <a href="#contact" class="btn btn-primary">申し込み・相談する</a>
-        </div>
-        <div class="plan reveal">
-          <span class="tag">オフライン版</span>
-          <div class="amount">月額 980 <span class="u">円（税込）</span></div>
-          <p style="color:var(--muted); font-size:.92rem;">＋ 初回登録費用 1,980円（税込）。院内・スタンドアロンで完結する形態です。</p>
-          <ul>
-            <li>クラウド版と同等の機能</li>
-            <li>外部にデータを出さない運用</li>
-            <li>初期設定・導入時のトレーニング</li>
-          </ul>
+
+      <div class="plans4">
+        <div class="pcard reveal">
+          <div class="pname">フリー</div>
+          <div class="pprice">¥0 <small>/月</small></div>
+          <div class="pspec">ユーザー1／商品10<br>まずはお試しに</div>
           <a href="#contact" class="btn btn-ghost">相談する</a>
         </div>
+        <div class="pcard reveal">
+          <div class="pname">ライト</div>
+          <div class="pprice">¥980 <small>/月</small></div>
+          <div class="pspec">ユーザー10／商品100<br>小規模の運用に</div>
+          <a href="#contact" class="btn btn-ghost">申し込む</a>
+        </div>
+        <div class="pcard hot reveal">
+          <span class="badge2">おすすめ</span>
+          <div class="pname">スタンダード</div>
+          <div class="pprice">¥1,980 <small>/月</small></div>
+          <div class="pspec">ユーザー100／商品1,000<br>全機能をフル活用</div>
+          <a href="#contact" class="btn btn-primary">申し込む</a>
+        </div>
+        <div class="pcard reveal">
+          <div class="pname">プロ</div>
+          <div class="pprice">¥4,980 <small>/月</small></div>
+          <div class="pspec">ユーザー1,000／商品10,000<br>大規模・履歴無制限</div>
+          <a href="#contact" class="btn btn-ghost">申し込む</a>
+        </div>
       </div>
+
+      <div class="cmp-wrap reveal">
+        <table class="cmp">
+          <thead><tr><th>機能・上限</th><th>フリー</th><th>ライト</th><th>スタンダード</th><th>プロ</th></tr></thead>
+          <tbody>
+            <tr><td>月額（税込）</td><td>¥0</td><td>¥980</td><td>¥1,980</td><td>¥4,980</td></tr>
+            <tr><td>ユーザー登録数</td><td>1</td><td>10</td><td>100</td><td>1,000</td></tr>
+            <tr><td>商品マスター登録数</td><td>10</td><td>100</td><td>1,000</td><td>10,000</td></tr>
+            <tr><td>入出庫・発注・在庫・使用期限管理</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+            <tr><td>独自バーコード発行・ラベル印刷</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+            <tr><td>試薬管理台帳</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+            <tr><td>CSV一括インポート</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+            <tr><td>棚卸し</td><td class="no">—</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+            <tr><td>集計・分析レポート</td><td class="no">—</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+            <tr><td>操作ログ保持期間</td><td>30日</td><td>90日</td><td>1年</td><td>無制限</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="color:var(--muted); font-size:.86rem; margin-top:14px;">※ オフライン版もご用意しています（月額980円＋初回登録費用1,980円、院内・スタンドアロンで完結）。各種オプションは別途ご相談ください。</p>
     </div>
   </section>
 
