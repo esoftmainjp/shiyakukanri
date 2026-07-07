@@ -158,13 +158,17 @@
     }
 
     // 選択中の商品＋ロット＋使用期限の現在庫を表示
+    // 非同期取得のため、後発の呼び出しだけを反映(古い商品の結果が上書きするのを防ぐ)。
+    let stockReq = 0;
     async function updateCurrentStock() {
       const pid = document.getElementById('product').value;
       const lot = document.getElementById('lot').value || '';
       const exp = document.getElementById('expiry').value || null;
       const el = document.getElementById('curStock');
+      const my = ++stockReq;
       if (!pid) { el.value = 0; return; }
       const { data } = await api('/api/lookup/stocks?productId=' + pid);
+      if (my !== stockReq) return; // 古い結果は破棄(レース対策)
       const row = (data.stocks || []).find((s) => (s.lot_number || '') === lot && (s.expiry_date || null) === exp);
       el.value = row ? row.stock_quantity : 0;
     }
