@@ -174,6 +174,7 @@
           `<a href="#" onclick="window.location='/api/billing/${b.id}/csv';return false;">CSV</a>`,
         ];
         if (b.status === 'confirmed') ops.unshift(`<a href="#" onclick="markPaid(${b.id});return false;">支払済</a>`);
+        if (b.status === 'paid') ops.unshift(`<a href="#" onclick="markUnpaid(${b.id});return false;">支払戻し</a>`);
         if (b.status === 'confirmed' || b.status === 'paid') ops.push(`<a href="#" class="neg" onclick="cancelBill(${b.id});return false;">取消</a>`);
         return `<tr><td>${esc(b.bill_number)}</td><td>${esc(b.supplier_name)}</td>` +
           `<td>${b.period_from}〜${b.period_to}</td>` +
@@ -210,6 +211,12 @@
     async function markPaid(id) {
       const { ok, data } = await api('/api/billing/' + id + '/paid', { method: 'POST' });
       setMsg(document.getElementById('lmsg'), ok ? '支払済にしました' : (data.error || '失敗'), ok ? 'ok' : 'error');
+      loadList();
+    }
+    async function markUnpaid(id) {
+      if (!confirm('この支払を「支払済」から「確定（未払い）」に戻します。よろしいですか？')) return;
+      const { ok, data } = await api('/api/billing/' + id + '/unpaid', { method: 'POST' });
+      setMsg(document.getElementById('lmsg'), ok ? '確定（未払い）に戻しました' : (data.error || '失敗'), ok ? 'ok' : 'error');
       loadList();
     }
     async function cancelBill(id) {

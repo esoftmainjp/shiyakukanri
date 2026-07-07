@@ -210,6 +210,22 @@ router.post('/:id/paid', async (req, res) => {
   }
 });
 
+// 支払済を戻す(paid → confirmed)
+router.post('/:id/unpaid', async (req, res) => {
+  const scope = requireFacilitySel(req, res); if (!scope) return;
+  try {
+    const bill = await loadBill(pool, req.params.id, scope.facilityId);
+    if (!bill) return res.status(404).json({ error: '支払が見つかりません' });
+    if (bill.status !== 'paid') return res.status(409).json({ error: '支払済の支払のみ戻せます' });
+    await pool.query(`UPDATE supplier_bills SET status = 'confirmed', paid_at = NULL WHERE id = $1`, [bill.id]);
+    await writeLog(pool, { userId: req.session.user.id, targetTable: 'supplier_bills', targetId: bill.id, operationType: '更新', before: { status: 'paid' }, after: { status: 'confirmed' }, facilityId: scope.facilityId });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('支払済戻しエラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 // 取消(明細削除でsource解放)
 router.post('/:id/cancel', async (req, res) => {
   const scope = requireFacilitySel(req, res); if (!scope) return;
