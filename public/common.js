@@ -151,7 +151,7 @@ function operationalMenu(includeAdmin) {
   if (includeAdmin) {
     const adminItems = [
       ['masters', '/masters.html', 'マスター編集'],
-      planAllows('feat_billing') && ['billing', '/billing.html', '問屋精算'],
+      planAllows('feat_billing') && ['billing', '/billing.html', '請求処理'],
       ['logs', '/logs.html', '操作ログ'],
       ['settings', '/settings.html', '施設設定'],
     ].filter(Boolean);

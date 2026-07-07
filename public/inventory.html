@@ -176,14 +176,26 @@
       else document.getElementById('mQty').value = 1;
       if (isReturn) prefillReturn();
     }
-    // 返品の梱包数・既定単価/問屋を商品詳細から補完
-    function prefillReturn() {
-      const p = (products || []).find((x) => String(x.productId) === String(current && current.product_id));
+    // 返品の梱包数・既定単価/問屋を「そのロット＋期限の入庫実績」から補完
+    async function prefillReturn() {
+      if (!current) return;
+      // まず商品マスターの梱包数で暫定表示
+      const p = (products || []).find((x) => String(x.productId) === String(current.product_id));
       const d = p && p.details && p.details[0];
       document.getElementById('mPack').value = d && d.packSize ? d.packSize : 1;
       document.getElementById('mUnitPrice').value = d && d.unitPrice != null ? d.unitPrice : 0;
-      const sup = document.getElementById('mSupplier');
-      sup.value = (d && d.supplierId) ? String(d.supplierId) : '';
+      document.getElementById('mSupplier').value = (d && d.supplierId) ? String(d.supplierId) : '';
+      // クリックした在庫行のロット＋期限で既定(問屋・単価・梱包数)を解決
+      const q = new URLSearchParams({ productId: current.product_id });
+      if (current.lot_number) q.set('lotNumber', current.lot_number);
+      if (current.expiry_date) q.set('expiryDate', current.expiry_date);
+      const target = current;
+      const { ok, data } = await api('/api/inventory/return-default?' + q.toString());
+      // 応答待ちの間に別行へ切替わっていたら反映しない
+      if (!ok || current !== target) return;
+      if (data.packSize) document.getElementById('mPack').value = data.packSize;
+      document.getElementById('mUnitPrice').value = data.unitPrice != null ? data.unitPrice : 0;
+      document.getElementById('mSupplier').value = data.supplierId != null ? String(data.supplierId) : '';
     }
 
     async function submitMovement() {

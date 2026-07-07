@@ -232,6 +232,53 @@ router.get('/movements/csv', async (req, res) => {
   }
 });
 
+// 返品カードの既定値(そのロット＋期限の仕入=問屋・単価、梱包数)を返す。
+// GET /api/inventory/return-default?productId=&lotNumber=&expiryDate=
+router.get('/return-default', async (req, res) => {
+  const scope = facilityScope(req);
+  const { productId, lotNumber = '', expiryDate = null } = req.query;
+  if (!productId) return res.status(400).json({ error: '商品IDが必要です' });
+  try {
+    if (!scope.all) {
+      const chk = await pool.query('SELECT facility_id FROM products WHERE id = $1', [productId]);
+      if (chk.rowCount === 0 || String(chk.rows[0].facility_id) !== String(scope.facilityId)) {
+        return res.status(404).json({ error: '対象の商品が見つかりません' });
+      }
+    }
+    let supplierId = null, unitPrice = null, packSize = 1;
+    const pd = await pool.query('SELECT pack_size, unit_price, supplier_id FROM product_details WHERE product_id = $1 ORDER BY apply_start_date DESC LIMIT 1', [productId]);
+    if (pd.rowCount) packSize = Number(pd.rows[0].pack_size) || 1;
+    // ロット＋期限を受領した入庫(問屋・単価)を最優先
+    const lotRec = await pool.query(
+      `SELECT r.supplier_id, rd.unit_price FROM receipt_details rd JOIN receipts r ON r.id = rd.receipt_id
+        WHERE rd.product_id = $1 AND rd.lot_number = $2 AND rd.expiry_date IS NOT DISTINCT FROM $3
+        ORDER BY r.receipt_date DESC, rd.id DESC LIMIT 1`,
+      [productId, lotNumber || '', expiryDate || null]
+    );
+    if (lotRec.rowCount) {
+      supplierId = lotRec.rows[0].supplier_id;
+      if (lotRec.rows[0].unit_price != null) unitPrice = Number(lotRec.rows[0].unit_price);
+    }
+    if (supplierId == null && pd.rowCount) supplierId = pd.rows[0].supplier_id;
+    if (unitPrice == null) {
+      const up = await pool.query(
+        `SELECT rd.unit_price FROM receipt_details rd JOIN receipts r ON r.id = rd.receipt_id
+          WHERE rd.product_id = $1 ORDER BY r.receipt_date DESC, rd.id DESC LIMIT 1`, [productId]);
+      if (up.rowCount) unitPrice = Number(up.rows[0].unit_price);
+      else if (pd.rowCount) unitPrice = Number(pd.rows[0].unit_price);
+    }
+    let supplierName = '';
+    if (supplierId != null) {
+      const sn = await pool.query('SELECT name FROM suppliers WHERE id = $1', [supplierId]);
+      supplierName = sn.rowCount ? sn.rows[0].name : '';
+    }
+    res.json({ supplierId, supplierName, unitPrice: unitPrice == null ? 0 : unitPrice, packSize });
+  } catch (err) {
+    console.error('返品既定取得エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 // 在庫の修正・廃棄・返品
 // body: { productId, lotNumber?, expiryDate?, movementType(adjust|disposal|return),
 //         quantity, reason, barcodeValue? }
@@ -280,25 +327,40 @@ router.post('/movement', async (req, res) => {
       opts.allowNegative = false;
     }
 
-    // 返品は精算用に問屋・単価・入力数量を保持(未指定は既定を解決)
+    // 返品は精算用に問屋・単価・入力数量を保持。既定は「そのロット＋期限を仕入れた入庫実績」
+    // (受領した問屋・単価)から解決し、無ければ商品単位でフォールバック。
     if (movementType === 'return') {
       let supplierId = bodySupplierId || null;
-      if (!supplierId) {
-        const s = await client.query(
-          `SELECT supplier_id FROM product_details
-            WHERE product_id = $1 AND supplier_id IS NOT NULL
-            ORDER BY (apply_start_date <= CURRENT_DATE
-                      AND (apply_end_date IS NULL OR apply_end_date >= CURRENT_DATE)) DESC,
-                     apply_start_date DESC LIMIT 1`,
-          [productId]
-        );
-        supplierId = s.rowCount ? s.rows[0].supplier_id : null;
-      } else {
-        // 指定問屋が操作施設のものか確認
+      if (supplierId) {
         const sc = await client.query('SELECT 1 FROM suppliers WHERE id = $1 AND facility_id = $2', [supplierId, scope.facilityId]);
         if (sc.rowCount === 0) { await client.query('ROLLBACK'); return res.status(400).json({ error: '対象施設の問屋を指定してください' }); }
       }
       let unitPrice = (bodyUnitPrice !== undefined && bodyUnitPrice !== '' && bodyUnitPrice !== null) ? Number(bodyUnitPrice) : null;
+      // 1) ロット＋期限を受領した入庫(problem: 問屋・単価) を最優先
+      if (supplierId == null || unitPrice == null) {
+        const lotRec = await client.query(
+          `SELECT r.supplier_id, rd.unit_price FROM receipt_details rd JOIN receipts r ON r.id = rd.receipt_id
+            WHERE rd.product_id = $1 AND rd.lot_number = $2 AND rd.expiry_date IS NOT DISTINCT FROM $3
+            ORDER BY r.receipt_date DESC, rd.id DESC LIMIT 1`,
+          [productId, lotNumber || '', expiryDate || null]
+        );
+        if (lotRec.rowCount) {
+          if (supplierId == null && lotRec.rows[0].supplier_id != null) supplierId = lotRec.rows[0].supplier_id;
+          if (unitPrice == null && lotRec.rows[0].unit_price != null) unitPrice = Number(lotRec.rows[0].unit_price);
+        }
+      }
+      // 2) 問屋フォールバック: 商品の主問屋
+      if (supplierId == null) {
+        const s = await client.query(
+          `SELECT supplier_id FROM product_details
+            WHERE product_id = $1 AND supplier_id IS NOT NULL
+            ORDER BY (apply_start_date <= CURRENT_DATE AND (apply_end_date IS NULL OR apply_end_date >= CURRENT_DATE)) DESC,
+                     apply_start_date DESC LIMIT 1`,
+          [productId]
+        );
+        supplierId = s.rowCount ? s.rows[0].supplier_id : null;
+      }
+      // 3) 単価フォールバック: 最新入庫→商品詳細
       if (unitPrice == null) {
         const up = await client.query(
           `SELECT rd.unit_price FROM receipt_details rd JOIN receipts r ON r.id = rd.receipt_id
