@@ -138,7 +138,8 @@
 
     function openEdit(s) {
       current = s;
-      document.getElementById('editCard').style.display = 'block';
+      const card = document.getElementById('editCard');
+      card.style.display = 'block';
       document.getElementById('editTarget').textContent =
         `${s.product_name} / ロット:${s.lot_number || '(なし)'} / 期限:${s.expiry_date || '(なし)'} / 現在庫:${s.stock_quantity}`;
       document.getElementById('mType').value = 'adjust';
@@ -146,6 +147,9 @@
       document.getElementById('mReason').value = '';
       onTypeChange();
       setMsg(document.getElementById('editMsg'), '', '');
+      // 修正入力部分まで自動スクロールして数量欄にフォーカス
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(() => { const q = document.getElementById('mQty'); q.focus(); q.select(); }, 350);
     }
     function closeEdit() { document.getElementById('editCard').style.display = 'none'; current = null; }
 
