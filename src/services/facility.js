@@ -23,4 +23,14 @@ function facilityScope(req) {
   return { facilityId: fid != null ? Number(fid) : null, all: false };
 }
 
-module.exports = { facilityScope };
+// 施設名が既に使われているか(前後空白を無視・大文字小文字を区別しない)。
+// excludeId を渡すと、その施設自身は対象外(更新時の自己重複を除外)。
+async function facilityNameTaken(db, name, excludeId = null) {
+  const params = [String(name == null ? '' : name)];
+  let sql = 'SELECT 1 FROM facilities WHERE lower(trim(name)) = lower(trim($1))';
+  if (excludeId != null) { params.push(excludeId); sql += ' AND id <> $2'; }
+  const r = await db.query(sql + ' LIMIT 1', params);
+  return r.rowCount > 0;
+}
+
+module.exports = { facilityScope, facilityNameTaken };

@@ -154,6 +154,7 @@ function operationalMenu(includeAdmin) {
       planAllows('feat_billing') && ['billing', '/billing.html', '支払管理'],
       ['logs', '/logs.html', '操作ログ'],
       ['settings', '/settings.html', '施設設定'],
+      ['plan', '/plan.html', 'ご契約・プラン'],
     ].filter(Boolean);
     m.push(mkGroup('管理', adminItems));
   }
@@ -171,6 +172,7 @@ function renderHeader(user, activeKey) {
     main.push(mkGroup('システム', [
       ['facilities', '/facilities.html', '施設管理'],
       ['dbusage', '/db-usage.html', 'DB使用量'],
+      ['payments', '/payment-config.html', '決済設定'],
     ]));
     // 施設を選択中は、その施設の管理者と同等のメニューを表示
     if (facSelected) operationalMenu(true).forEach((m) => main.push(m));

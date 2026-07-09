@@ -99,25 +99,32 @@ CREATE TABLE plans (
     feat_ledger        BOOLEAN      NOT NULL DEFAULT TRUE,
     feat_import        BOOLEAN      NOT NULL DEFAULT TRUE,
     feat_billing       BOOLEAN      NOT NULL DEFAULT TRUE,
+    price              INTEGER      NOT NULL DEFAULT 0,   -- 月額(税抜, 円)。0=無料
+    stripe_price_id    VARCHAR(64),                       -- Stripe価格ID(定期課金用。無料はNULL)
     updated_at         TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 COMMENT ON TABLE plans IS 'プランマスタ(上限NULL=無制限。feat_*=機能利用可否)';
 INSERT INTO plans (code, name, sort_order, max_users, max_products, log_retention_days,
-                   feat_stocktake, feat_barcode, feat_reports, feat_ledger, feat_import, feat_billing) VALUES
-  ('free',     'フリー',       1,    1,    10,   30,   FALSE, FALSE, FALSE, FALSE, FALSE, FALSE),
-  ('light',    'ライト',       2,   10,   100,   90,   FALSE, TRUE,  FALSE, TRUE,  TRUE,  FALSE),
-  ('standard', 'スタンダード', 3,  100,  1000,  365,   TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  TRUE),
-  ('pro',      'プロ',         4, 1000, 10000, NULL,   TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  TRUE)
+                   feat_stocktake, feat_barcode, feat_reports, feat_ledger, feat_import, feat_billing, price) VALUES
+  ('free',     'フリー',       1,    1,    10,   30,   FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,    0),
+  ('light',    'ライト',       2,   10,   100,   90,   FALSE, TRUE,  FALSE, TRUE,  TRUE,  FALSE,  980),
+  ('standard', 'スタンダード', 3,  100,  1000,  365,   TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  1980),
+  ('pro',      'プロ',         4, 1000, 10000, NULL,   TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  4980)
 ON CONFLICT (code) DO NOTHING;
 
 -- 10b. 施設マスタ (マルチテナント)
 CREATE TABLE facilities (
-    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name       VARCHAR(255) NOT NULL,
-    kana       VARCHAR(255) NOT NULL DEFAULT '',
-    is_active  BOOLEAN      NOT NULL DEFAULT TRUE,
-    plan_code  VARCHAR(16)  NOT NULL DEFAULT 'free' REFERENCES plans(code),
-    created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
+    id                     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name                   VARCHAR(255) NOT NULL,
+    kana                   VARCHAR(255) NOT NULL DEFAULT '',
+    is_active              BOOLEAN      NOT NULL DEFAULT TRUE,
+    plan_code              VARCHAR(16)  NOT NULL DEFAULT 'free' REFERENCES plans(code),
+    stripe_customer_id     VARCHAR(64),                              -- Stripe顧客ID
+    stripe_subscription_id VARCHAR(64),                              -- StripeサブスクリプションID
+    billing_status         VARCHAR(16)  NOT NULL DEFAULT 'none',     -- none/active/past_due/canceled
+    current_period_end     TIMESTAMPTZ,                              -- 課金期間の終了日
+    past_due_since         TIMESTAMPTZ,                              -- 支払失敗になった時刻(猶予起点)
+    created_at             TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 COMMENT ON TABLE  facilities           IS '施設マスタ';
 COMMENT ON COLUMN facilities.name      IS '施設名';
@@ -157,6 +164,39 @@ COMMENT ON COLUMN users.is_active      IS '有効フラグ';
 CREATE TRIGGER trg_users_updated_at
     BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- 11c. セルフ利用登録の保留(申込〜施設自動作成完了まで。Webhook/疑似決済の冪等キー)
+CREATE TABLE signup_requests (
+    id                     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    facility_name          VARCHAR(255) NOT NULL,
+    email                  VARCHAR(255) NOT NULL,
+    plan_code              VARCHAR(16)  NOT NULL REFERENCES plans(code),
+    status                 VARCHAR(16)  NOT NULL DEFAULT 'pending',  -- pending/completed/canceled/error
+    stripe_session_id      VARCHAR(128),
+    stripe_customer_id     VARCHAR(64),
+    stripe_subscription_id VARCHAR(64),
+    facility_id            BIGINT REFERENCES facilities(id),
+    created_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    completed_at           TIMESTAMPTZ,
+    expires_at             TIMESTAMPTZ  NOT NULL DEFAULT (now() + INTERVAL '1 day')
+);
+CREATE INDEX idx_signup_requests_status  ON signup_requests(status);
+CREATE INDEX idx_signup_requests_session ON signup_requests(stripe_session_id);
+COMMENT ON TABLE signup_requests IS 'LP申込〜施設自動作成完了までの保留レコード';
+
+-- 11d. パスワード設定/再設定トークン(生トークンは保存せずSHA-256ハッシュのみ)
+CREATE TABLE password_setup_tokens (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id     BIGINT      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash  VARCHAR(64) NOT NULL,
+    purpose     VARCHAR(16) NOT NULL DEFAULT 'setup',  -- setup/reset
+    expires_at  TIMESTAMPTZ NOT NULL,
+    used_at     TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX uq_pw_token_hash ON password_setup_tokens(token_hash);
+CREATE INDEX idx_pw_token_user ON password_setup_tokens(user_id);
+COMMENT ON TABLE password_setup_tokens IS 'パスワード設定/再設定リンク用トークン(ハッシュ保存)';
 
 -- 12. 商品マスター
 CREATE TABLE products (

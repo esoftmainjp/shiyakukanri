@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ご契約・プラン | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+  <style>
+    .cur { display: flex; gap: 22px; flex-wrap: wrap; align-items: baseline; }
+    .cur .big { font-size: 1.5rem; font-weight: 800; }
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .badge.active { background: #e2f6e9; color: #1c7a41; }
+    .badge.none { background: #eef1f4; color: #667; }
+    .badge.past_due { background: #fdecea; color: #b23b3b; }
+    .badge.canceled { background: #f0f0f0; color: #888; }
+    .plan { border: 1px solid var(--line, #dfe4ea); border-radius: 10px; padding: 12px 14px; margin: 8px 0; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .plan.current { border-color: #2456c9; background: #f4f8ff; }
+    .plan .pn { font-weight: 700; min-width: 120px; }
+    .plan .pp { font-weight: 800; }
+    .plan .feat { color: #667; font-size: 0.82rem; flex: 1; min-width: 200px; }
+    .plan .act { margin-left: auto; }
+  </style>
+</head>
+<body>
+  <header></header>
+  <main>
+    <div class="card">
+      <h2>ご契約・プラン</h2>
+      <div id="needFacility" style="display:none;"><p class="msg error">対象施設を選択してください。</p></div>
+      <div id="content" style="display:none;">
+        <div class="cur">
+          <div>現在のプラン：<span class="big" id="curPlan"></span></div>
+          <div>月額：<span id="curPrice"></span></div>
+          <div>状態：<span class="badge" id="curStatus"></span></div>
+          <div id="curPeriod" style="color:#667;"></div>
+        </div>
+        <p class="msg" id="msg"></p>
+        <div id="portalArea" style="margin-top:8px;"></div>
+      </div>
+    </div>
+
+    <div class="card" id="plansCard" style="display:none;">
+      <h2>プラン変更</h2>
+      <p style="font-size:0.85rem; color:#556;">
+        有料プラン同士の変更は登録済みカードで即時反映されます（日割り）。無料→有料は初回のみカード入力が必要です。無料へ変更すると解約になります。
+      </p>
+      <p id="mockNote" style="font-size:0.8rem; color:#a06;"></p>
+      <div id="plans"></div>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    const SLAB = { none: '無料 / 未課金', active: '利用中', past_due: 'お支払い確認中', canceled: '解約済み' };
+    const FEATS = [['feat_stocktake','棚卸し'],['feat_barcode','バーコード'],['feat_reports','集計'],['feat_ledger','台帳'],['feat_import','一括取込'],['feat_billing','支払管理']];
+    let paymentMode = 'mock', facility = null, plans = [];
+
+    async function boot() {
+      const user = await initPage('plan');
+      if (!user) return;
+      await load();
+    }
+
+    async function load() {
+      const { ok, data, status } = await api('/api/subscription/current');
+      if (!ok) {
+        if (status === 400) { document.getElementById('needFacility').style.display = 'block'; return; }
+        return;
+      }
+      facility = data.facility; plans = data.plans; paymentMode = data.paymentMode;
+      document.getElementById('content').style.display = 'block';
+      document.getElementById('plansCard').style.display = 'block';
+      renderCurrent();
+      renderPlans();
+      const q = new URLSearchParams(location.search);
+      if (q.get('upgraded')) setMsg(document.getElementById('msg'), 'プランを変更しました。', 'ok');
+      if (q.get('canceled')) setMsg(document.getElementById('msg'), '手続きをキャンセルしました。', 'error');
+      if (paymentMode === 'mock') document.getElementById('mockNote').textContent = '※ ローカル検証モード（Stripe未設定）。有料化・変更は疑似処理で反映されます（実際の課金は発生しません）。';
+    }
+
+    function yen(n) { return '¥' + Number(n || 0).toLocaleString(); }
+    function renderCurrent() {
+      document.getElementById('curPlan').textContent = facility.plan_name;
+      document.getElementById('curPrice').textContent = Number(facility.price) === 0 ? '¥0（無料）' : yen(facility.price) + '/月';
+      const st = document.getElementById('curStatus');
+      st.textContent = SLAB[facility.billing_status] || facility.billing_status;
+      st.className = 'badge ' + facility.billing_status;
+      const pe = facility.current_period_end ? String(facility.current_period_end).slice(0, 10) : '';
+      document.getElementById('curPeriod').textContent = pe ? '次回更新日：' + pe : '';
+      // 顧客ポータル(カード更新・解約)
+      const pa = document.getElementById('portalArea');
+      if (facility.stripe_customer_id && paymentMode === 'stripe') {
+        pa.innerHTML = '<button class="secondary" onclick="openPortal()">お支払い管理（カード更新・解約）</button>';
+      } else { pa.innerHTML = ''; }
+    }
+
+    function renderPlans() {
+      const wrap = document.getElementById('plans'); wrap.innerHTML = '';
+      plans.forEach((p) => {
+        const feats = FEATS.filter((f) => p[f[0]]).map((f) => f[1]).join('・') || '基本機能';
+        const users = p.max_users == null ? '無制限' : (p.max_users + '人');
+        const prods = p.max_products == null ? '無制限' : (p.max_products + '品');
+        const price = Number(p.price) === 0 ? '¥0（無料）' : yen(p.price) + '/月';
+        const isCur = p.code === facility.plan_code;
+        let act;
+        if (isCur) act = '<span class="badge active">ご利用中</span>';
+        else if (Number(p.price) === 0) act = `<button class="secondary" onclick="change('${p.code}','${esc(p.name)}',true)">無料に変更（解約）</button>`;
+        else act = `<button onclick="change('${p.code}','${esc(p.name)}',false)">このプランに変更</button>`;
+        const div = document.createElement('div');
+        div.className = 'plan' + (isCur ? ' current' : '');
+        div.innerHTML = `<span class="pn">${esc(p.name)}</span><span class="pp">${price}</span>` +
+          `<span class="feat">ユーザー${users} / 商品${prods} / 機能: ${esc(feats)}</span>` +
+          `<span class="act">${act}</span>`;
+        wrap.appendChild(div);
+      });
+    }
+
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+    async function change(code, name, toFree) {
+      const msg = document.getElementById('msg');
+      const confirmText = toFree
+        ? `プランを「${name}」に変更します。有料機能が使えなくなり、次回以降の課金は停止します。よろしいですか？`
+        : `プランを「${name}」に変更します。よろしいですか？`;
+      if (!confirm(confirmText)) return;
+      setMsg(msg, '処理中...', '');
+      const { ok, data } = await api('/api/subscription/change', { method: 'POST', body: JSON.stringify({ planCode: code }) });
+      if (!ok) { setMsg(msg, data.error || '変更に失敗しました', 'error'); return; }
+      if (data.mode === 'checkout' && data.checkoutUrl) { location.href = data.checkoutUrl; return; }
+      if (data.mode === 'mock') {
+        // ローカル疑似: 無料→有料を反映
+        const r2 = await api('/api/subscription/dev-apply', { method: 'POST', body: JSON.stringify({ planCode: code }) });
+        if (!r2.ok) { setMsg(msg, (r2.data && r2.data.error) || '疑似処理に失敗しました', 'error'); return; }
+      }
+      setMsg(msg, 'プランを変更しました。', 'ok');
+      await load();
+    }
+
+    async function openPortal() {
+      const { ok, data } = await api('/api/subscription/portal', { method: 'POST' });
+      if (!ok) { setMsg(document.getElementById('msg'), data.error || '開けませんでした', 'error'); return; }
+      if (data.url) location.href = data.url;
+    }
+
+    boot();
+  </script>
+</body>
+</html>

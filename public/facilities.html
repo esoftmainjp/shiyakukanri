@@ -44,7 +44,7 @@
         <p class="msg" id="msg"></p>
         <div class="scroll-x">
           <table id="tbl">
-            <thead><tr><th>ID</th><th>施設名</th><th>カナ</th><th>プラン</th><th>ユーザー</th><th>商品</th><th>状態</th><th>操作</th></tr></thead>
+            <thead><tr><th>ID</th><th>施設名</th><th>カナ</th><th>メールアドレス</th><th>プラン</th><th>ユーザー</th><th>商品</th><th>課金状態</th><th>更新/停止予定</th><th>状態</th><th>操作</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -55,7 +55,7 @@
         <p style="font-size:0.85rem; color:#555;">上限は空欄で「無制限」。チェックでプランごとの機能利用可否を切り替えます。変更は各行の「保存」で反映されます。</p>
         <div class="scroll-x">
           <table id="planTbl">
-            <thead><tr><th>プラン</th><th>ユーザー上限</th><th>商品上限</th><th>ログ保持(日)</th><th>棚卸し</th><th>バーコード</th><th>集計</th><th>台帳</th><th>CSV取込</th><th>精算</th><th>操作</th></tr></thead>
+            <thead><tr><th>プラン</th><th>料金(円/月)</th><th>Stripe価格ID</th><th>ユーザー上限</th><th>商品上限</th><th>ログ保持(日)</th><th>棚卸し</th><th>バーコード</th><th>集計</th><th>台帳</th><th>CSV取込</th><th>精算</th><th>操作</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -67,6 +67,7 @@
   <script src="/common.js"></script>
   <script>
     let PLANS = [];
+    let GRACE_DAYS = 14;
     async function boot() {
       const user = await initPage('facilities');
       if (!user) return;
@@ -74,9 +75,37 @@
       document.getElementById('area').style.display = 'block';
       const pr = await api('/api/facilities/plans');
       PLANS = (pr.data && pr.data.plans) || [];
+      const pc = await api('/api/payment-config');
+      if (pc.ok && pc.data && pc.data.graceDays != null) GRACE_DAYS = Number(pc.data.graceDays);
       document.getElementById('planCode').innerHTML = planOptions('free');
       renderPlans();
       load();
+    }
+
+    // 課金状態バッジ
+    const BILL_LABEL = { none: '無料/未課金', active: '利用中', past_due: 'お支払い確認中', canceled: '解約済み' };
+    function billingBadge(f) {
+      const s = f.billing_status || 'none';
+      const color = s === 'active' ? '#1c7a41;background:#e2f6e9'
+        : s === 'past_due' ? '#b23b3b;background:#fdecea'
+        : s === 'canceled' ? '#888;background:#f0f0f0' : '#667;background:#eef1f4';
+      return `<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;color:${color};">${BILL_LABEL[s] || s}</span>`;
+    }
+    // 更新日/停止予定日
+    function billingDate(f) {
+      const d = (v) => v ? String(v).slice(0, 10) : '';
+      if (f.billing_status === 'active' && f.current_period_end) return '更新: ' + d(f.current_period_end);
+      if (f.billing_status === 'past_due' && f.past_due_since) {
+        let suspend = '';
+        if (GRACE_DAYS > 0) {
+          const base = new Date(f.past_due_since); base.setDate(base.getDate() + GRACE_DAYS);
+          suspend = '<br><span style="color:#b23b3b;">停止予定: ' + base.toISOString().slice(0, 10) + '</span>';
+        } else {
+          suspend = '<br><span style="color:#888;">自動停止なし</span>';
+        }
+        return '失敗: ' + d(f.past_due_since) + suspend;
+      }
+      return '<span style="color:#aaa;">—</span>';
     }
 
     // プラン設定の編集テーブル
@@ -86,6 +115,8 @@
       const tb = document.querySelector('#planTbl tbody');
       tb.innerHTML = PLANS.map((p) => `<tr>
         <td><strong>${esc(p.name)}</strong><br><span style="color:#888; font-size:0.78rem;">${esc(p.code)}</span></td>
+        <td style="text-align:center;"><input type="number" min="0" id="pri_${p.code}" value="${p.price == null ? 0 : p.price}" style="width:90px;" /></td>
+        <td style="text-align:center;"><input type="text" id="spid_${p.code}" value="${p.stripe_price_id ? esc(p.stripe_price_id) : ''}" placeholder="price_xxx" style="width:150px;" /></td>
         <td style="text-align:center;">${num('pu_' + p.code, p.max_users)}</td>
         <td style="text-align:center;">${num('pp_' + p.code, p.max_products)}</td>
         <td style="text-align:center;">${num('pr_' + p.code, p.log_retention_days)}</td>
@@ -103,6 +134,7 @@
       const val = (id) => document.getElementById(id).value;
       const chk = (id) => document.getElementById(id).checked;
       const body = {
+        price: val('pri_' + code), stripe_price_id: val('spid_' + code),
         max_users: val('pu_' + code), max_products: val('pp_' + code), log_retention_days: val('pr_' + code),
         feat_stocktake: chk('fs_' + code), feat_barcode: chk('fb_' + code), feat_reports: chk('fr_' + code),
         feat_ledger: chk('fl_' + code), feat_import: chk('fi_' + code), feat_billing: chk('fbi_' + code),
@@ -134,16 +166,19 @@
         <td>${f.id}</td>
         <td><input value="${esc(f.name)}" id="nm_${f.id}" style="width:200px;" /></td>
         <td><input value="${esc(f.kana)}" id="kn_${f.id}" style="width:120px;" /></td>
+        <td style="white-space:nowrap;">${f.admin_email ? esc(f.admin_email) : '<span style="color:#aaa;">—</span>'}</td>
         <td><select id="pl_${f.id}" style="width:auto;">${planOptions(f.plan_code)}</select></td>
         <td style="text-align:right; white-space:nowrap;">${f.user_count} / ${lim(f.max_users)}</td>
         <td style="text-align:right; white-space:nowrap;">${f.product_count} / ${lim(f.max_products)}</td>
+        <td style="white-space:nowrap;">${billingBadge(f)}</td>
+        <td style="white-space:nowrap; font-size:0.82rem;">${billingDate(f)}</td>
         <td>${f.is_active
           ? '<span class="statusbadge on">有効</span>'
           : '<span class="statusbadge off">無効</span>'}</td>
         <td style="white-space:nowrap;">
           <button class="secondary" style="padding:4px 10px; font-size:0.82rem;" onclick="saveFacility(${f.id})">保存</button>
           <button class="secondary" style="padding:4px 10px; font-size:0.82rem;" onclick="toggleFacility(${f.id}, ${f.is_active ? 'false' : 'true'})">${f.is_active ? '無効化' : '有効化'}</button>
-        </td></tr>`).join('') || '<tr><td colspan="8">施設がありません。</td></tr>';
+        </td></tr>`).join('') || '<tr><td colspan="11">施設がありません。</td></tr>';
     }
 
     async function createFacility() {

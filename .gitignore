@@ -9,3 +9,7 @@ Backup/
 商品マスタ インポート用.csv
 商品マスタ インポート用*.csv
 *.import.csv
+
+# ロリポップ送信設定(機密: トークン/SMTPパスワード)。公開リポジトリにコミットしない
+deploy/lolipop/mailconfig.php
+

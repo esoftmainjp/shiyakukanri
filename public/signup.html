@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>利用登録 | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+  <style>
+    main { max-width: 760px; margin: 0 auto; }
+    .plan { display: block; border: 1px solid var(--line, #dfe4ea); border-radius: 10px; padding: 12px 14px; margin: 8px 0; cursor: pointer; }
+    .plan:hover { background: #f6fbff; }
+    .plan input { width: auto; margin-right: 8px; }
+    .plan .price { font-weight: 800; font-size: 1.15rem; }
+    .plan .feat { color: #667; font-size: 0.82rem; margin-top: 4px; }
+    .plan.sel { border-color: #2456c9; background: #f4f8ff; box-shadow: 0 0 0 2px rgba(36,86,201,0.15); }
+    .hidden { display: none; }
+    .ok-box { border: 1px solid #bfe3cd; background: #eefaf1; border-radius: 10px; padding: 16px; }
+  </style>
+</head>
+<body>
+  <header></header>
+  <main>
+    <div class="card">
+      <h2>利用登録</h2>
+      <p style="color:#556; font-size:0.9rem;">施設名称とメールアドレスをご入力ください。ログインIDはこのメールアドレスになります。パスワードは登録後にメールのリンクから設定します。</p>
+
+      <div id="formArea">
+        <div class="row">
+          <div style="flex:2;"><label>施設名称（必須）</label><input id="facilityName" placeholder="例）○○クリニック 検査室" /></div>
+          <div style="flex:2;"><label>メールアドレス（必須・ログインID）</label><input id="email" type="email" placeholder="you@example.com" /></div>
+        </div>
+        <input type="text" id="website" autocomplete="off" tabindex="-1" style="position:absolute; left:-9999px;" aria-hidden="true" />
+
+        <label style="margin-top:10px;">プランを選択</label>
+        <div id="plans"></div>
+
+        <p class="msg" id="msg"></p>
+        <div style="margin-top:10px;">
+          <button id="submitBtn" onclick="submitSignup()">この内容で登録する</button>
+        </div>
+        <p id="mockNote" style="font-size:0.8rem; color:#a06; margin-top:8px;"></p>
+      </div>
+
+      <div id="doneArea" class="hidden">
+        <div class="ok-box">
+          <h3 style="margin-top:0;">お申し込みを受け付けました</h3>
+          <p id="doneMsg"></p>
+          <p style="font-size:0.88rem; color:#556;">数分待っても届かない場合は、<strong>迷惑メールフォルダ</strong>をご確認ください。それでも届かないときは下のボタンから再送できます（何度でも可能）。</p>
+          <div style="margin-top:8px;">
+            <button class="secondary" id="resendBtn" onclick="resend()">パスワード設定メールを再送する</button>
+          </div>
+          <p class="msg" id="resendMsg"></p>
+          <p id="devLink"></p>
+          <p style="margin-top:10px; font-size:0.88rem;">設定が完了したら <a href="/">ログイン画面へ</a></p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]);});}
+    function setMsg(el,t,cls){el.textContent=t||'';el.className='msg'+(cls?(' '+cls):'');}
+    function yen(n){return '¥'+Number(n||0).toLocaleString();}
+    var PLANS=[], selected=null, paymentMode='mock';
+    var FEATS=[['feat_stocktake','棚卸し'],['feat_barcode','バーコード'],['feat_reports','集計'],['feat_ledger','台帳'],['feat_import','一括取込'],['feat_billing','支払管理']];
+
+    async function boot(){
+      var r = await fetch('/api/signup/plans');
+      var d = await r.json();
+      PLANS = d.plans||[]; paymentMode = d.paymentMode;
+      var pre = new URLSearchParams(location.search).get('plan');
+      renderPlans(pre);
+      if (new URLSearchParams(location.search).get('canceled')) {
+        setMsg(document.getElementById('msg'),'決済がキャンセルされました。もう一度お試しください。','error');
+      }
+      if (paymentMode==='mock') document.getElementById('mockNote').textContent='※ ローカル検証モード（Stripe未設定）。有料プランは疑似決済で登録されます（実際の課金は発生しません）。';
+    }
+    function renderPlans(preselect){
+      var wrap=document.getElementById('plans'); wrap.innerHTML='';
+      PLANS.forEach(function(p){
+        var feats = FEATS.filter(function(f){return p[f[0]];}).map(function(f){return f[1];}).join('・')||'基本機能';
+        var users = p.max_users==null?'無制限':(p.max_users+'人');
+        var prods = p.max_products==null?'無制限':(p.max_products+'品');
+        var priceLabel = Number(p.price)===0?'¥0（無料・カード不要）':(yen(p.price)+'/月');
+        var lab=document.createElement('label'); lab.className='plan'; lab.dataset.code=p.code;
+        lab.innerHTML='<input type="radio" name="plan" value="'+p.code+'" />'+
+          '<span class="price">'+esc(p.name)+'　'+priceLabel+'</span>'+
+          '<div class="feat">ユーザー'+users+' / 商品'+prods+' / 機能: '+esc(feats)+'</div>';
+        lab.querySelector('input').addEventListener('change', function(){ selectPlan(p.code); });
+        lab.addEventListener('click', function(){ lab.querySelector('input').checked=true; selectPlan(p.code); });
+        wrap.appendChild(lab);
+      });
+      if (preselect) { var el=document.querySelector('.plan input[value="'+preselect+'"]'); if(el){el.checked=true; selectPlan(preselect);} }
+    }
+    function selectPlan(code){ selected=code; document.querySelectorAll('.plan').forEach(function(l){ l.classList.toggle('sel', l.dataset.code===code); }); }
+
+    async function submitSignup(){
+      var msg=document.getElementById('msg');
+      var facilityName=document.getElementById('facilityName').value.trim();
+      var email=document.getElementById('email').value.trim();
+      if(!facilityName){setMsg(msg,'施設名称を入力してください','error');return;}
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){setMsg(msg,'メールアドレスの形式が正しくありません','error');return;}
+      if(!selected){setMsg(msg,'プランを選択してください','error');return;}
+      setMsg(msg,'送信中...','');
+      document.getElementById('submitBtn').disabled=true;
+      try{
+        var r=await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({facilityName:facilityName,email:email,planCode:selected,website:document.getElementById('website').value})});
+        var d=await r.json();
+        if(!r.ok){
+          var html=esc(d.error||'登録に失敗しました');
+          if(d.reason==='already_registered'){ html+=' <a href="/">ログイン画面へ</a>'; }
+          document.getElementById('msg').innerHTML=html; document.getElementById('msg').className='msg error';
+          document.getElementById('submitBtn').disabled=false;return;
+        }
+        if(d.mode==='checkout' && d.checkoutUrl){ location.href=d.checkoutUrl; return; }
+        if(d.mode==='mock'){
+          // ローカル疑似決済: 完了APIを叩いてパスワード設定へ
+          setMsg(msg,'疑似決済を実行中...','');
+          var r2=await fetch('/api/signup/dev-complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signupRequestId:d.signupRequestId})});
+          var d2=await r2.json();
+          if(!r2.ok){setMsg(msg,d2.error||'疑似決済に失敗しました','error');document.getElementById('submitBtn').disabled=false;return;}
+          showDone(email, d2.setPasswordUrl);
+          return;
+        }
+        // 無料プラン
+        showDone(email, d.setPasswordUrl);
+      }catch(e){ setMsg(msg,'通信エラーが発生しました','error'); document.getElementById('submitBtn').disabled=false; }
+    }
+    let doneEmail = '';
+    function showDone(email, devUrl){
+      doneEmail = email;
+      document.getElementById('formArea').classList.add('hidden');
+      document.getElementById('doneArea').classList.remove('hidden');
+      document.getElementById('doneMsg').innerHTML='ログインID <strong>'+esc(email)+'</strong> 宛にパスワード設定メールを送信しました。メール内のリンクからパスワードを設定してご利用を開始してください。';
+      if(devUrl){ document.getElementById('devLink').innerHTML='<span style="color:#a06;">（ローカル検証用リンク）</span> <a href="'+esc(devUrl)+'">パスワードを設定する</a>'; }
+    }
+    async function resend(){
+      const msg=document.getElementById('resendMsg');
+      document.getElementById('resendBtn').disabled=true;
+      setMsg(msg,'再送信中...','');
+      const res = await fetch('/api/signup/resend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:doneEmail})});
+      const data = await res.json().catch(()=>({}));
+      let html = esc(data.message || data.error || (res.ok?'再送しました':'再送に失敗しました'));
+      // 既に設定完了(409)ならログインへ誘導
+      if(res.status===409){ html += ' <a href="/">ログイン画面へ</a>'; }
+      msg.innerHTML = html; msg.className = 'msg ' + (res.ok?'ok':'error');
+      document.getElementById('resendBtn').disabled=false;
+      if(res.ok && data.setPasswordUrl){ document.getElementById('devLink').innerHTML='<span style="color:#a06;">（ローカル検証用リンク）</span> <a href="'+esc(data.setPasswordUrl)+'">パスワードを設定する</a>'; }
+    }
+    boot();
+  </script>
+</body>
+</html>

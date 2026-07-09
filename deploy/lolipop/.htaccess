@@ -1,0 +1,20 @@
+# mailconfig.php(認証情報)への直接アクセスを禁止する。
+# send.php からの include は影響を受けない。
+<Files "mailconfig.php">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</Files>
+<Files "mailconfig.sample.php">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</Files>

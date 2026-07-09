@@ -10,6 +10,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { pool } = require('./db');
 const { writeLog } = require('./services/log');
+const { sendMail, activeProvider: activeMailProvider } = require('./services/mail');
 const { getSetting } = require('./routes/settings');
 const { facilityScope } = require('./services/facility');
 const { als } = require('./services/context');
@@ -21,6 +22,12 @@ const isProd = process.env.NODE_ENV === 'production';
 // セキュリティHTTPヘッダ(クリックジャッキング防止・MIMEスニッフィング防止など)。
 // 本アプリはインラインscript/onclick属性を多用するため、CSPは無効化して他ヘッダのみ有効化する。
 app.use(helmet({ contentSecurityPolicy: false }));
+
+// 決済プロバイダのWebhook。署名検証に生ボディが必要なため express.json より前に登録する。
+const { handleWebhook } = require('./routes/stripe-webhook');
+app.post('/api/webhooks/:provider', express.raw({ type: '*/*' }), handleWebhook);
+// 後方互換: Stripeの既存Webフックパス
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => { req.params.provider = 'stripe'; return handleWebhook(req, res); });
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -154,15 +161,22 @@ const contactLimiter = rateLimit({
   message: { error: '送信が多すぎます。しばらくしてから再度お試しください。' },
 });
 const contactOneLine = (s) => String(s == null ? '' : s).replace(/[\r\n]+/g, ' ').trim();
-async function sendContactMail({ from, to, replyTo, subject, text }) {
-  const r = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from, to, reply_to: replyTo, subject, text }),
-  });
-  if (!r.ok) { const b = await r.text().catch(() => ''); const e = new Error(`Resend ${r.status}: ${b}`); e.status = r.status; throw e; }
-  return r.json();
+// LPからのセルフ利用登録(公開)。許可オリジンは SIGNUP_ORIGINS(無ければ CONTACT_ORIGINS)。
+const SIGNUP_ORIGINS = (process.env.SIGNUP_ORIGINS || process.env.CONTACT_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+function signupCors(req, res, next) {
+  const origin = req.headers.origin;
+  if (origin && (SIGNUP_ORIGINS.length === 0 || SIGNUP_ORIGINS.includes(origin))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
 }
+app.use('/api/signup', signupCors, require('./routes/signup'));
+
 app.options('/api/contact', contactCors);
 app.post('/api/contact', contactCors, contactLimiter, async (req, res) => {
   const b = req.body || {};
@@ -173,12 +187,11 @@ app.post('/api/contact', contactCors, contactLimiter, async (req, res) => {
   if (!org || !name || !email || !body) return res.status(400).json({ error: '必須項目が未入力です。' });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'メールアドレスの形式が正しくありません。' });
   if (body.length > 5000) return res.status(400).json({ error: 'お問い合わせ内容が長すぎます。' });
-  if (!process.env.RESEND_API_KEY) { console.error('RESEND_API_KEY 未設定'); return res.status(500).json({ error: '送信設定が未構成です。お手数ですがお電話ください。' }); }
+  if (activeMailProvider() === 'none') { console.error('メール送信プロバイダ未設定'); return res.status(500).json({ error: '送信設定が未構成です。お手数ですがお電話ください。' }); }
   const to = process.env.MAIL_TO || 'info@e-soft.jp';
-  const from = process.env.MAIL_FROM || 'onboarding@resend.dev';
   try {
-    await sendContactMail({
-      from: from, to: to, replyTo: email,
+    await sendMail({
+      to: to, replyTo: email,
       subject: `【試薬在庫管理システム】お問い合わせ（${type || '—'}）: ${org}`,
       text:
         `試薬在庫管理システムのLPからお問い合わせがありました。\n\n` +
@@ -420,6 +433,8 @@ app.use('/api/barcodes',  requireLogin, requireRole('admin', 'general', 'superad
 app.use('/api/ledger',    requireLogin, requireRole('admin', 'general', 'superadmin'), requireFeature('feat_ledger'), require('./routes/ledger'));
 app.use('/api/reports',   requireLogin, requireRole('admin', 'general', 'superadmin'), requireFeature('feat_reports'), require('./routes/reports'));
 app.use('/api/billing',   requireLogin, requireRole('admin', 'superadmin'), requireFeature('feat_billing'), require('./routes/billing'));
+app.use('/api/subscription', requireLogin, requireRole('admin', 'superadmin'), require('./routes/subscription'));
+app.use('/api/payment-config', requireLogin, requireRole('superadmin'), require('./routes/payment-config'));
 app.use('/api/facilities', requireLogin, requireRole('superadmin'), require('./routes/facilities'));
 app.use('/api/db-usage',  requireLogin, requireRole('superadmin'), require('./routes/db-usage'));
 app.use('/api/masters',   requireLogin, requireRole('admin', 'superadmin'), require('./routes/masters'));
@@ -465,6 +480,19 @@ async function start() {
   // プランの保持日数を超えた操作ログを定期削除(起動時＋24時間毎)。無制限(NULL)は対象外。
   pruneOldLogs();
   setInterval(pruneOldLogs, 24 * 60 * 60 * 1000);
+  // 支払失敗(past_due)の猶予超過施設を停止(起動時＋24時間毎)。
+  enforcePastDueJob();
+  setInterval(enforcePastDueJob, 24 * 60 * 60 * 1000);
+}
+
+// 支払失敗の猶予超過施設を停止する定期処理。
+async function enforcePastDueJob() {
+  try {
+    const { enforcePastDue } = require('./services/billing-enforce');
+    await enforcePastDue(pool);
+  } catch (err) {
+    console.error('[billing] 猶予超過の停止処理に失敗:', err.message);
+  }
 }
 
 // プラン(施設)の log_retention_days を超えた operation_logs を削除する。

@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const { pool, getClient } = require('../db');
 const { writeLog } = require('../services/log');
 const { isEmail } = require('../services/validate');
+const { facilityNameTaken } = require('../services/facility');
 
 const router = express.Router();
 
@@ -15,7 +16,10 @@ router.get('/', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT f.id, f.name, f.kana, f.is_active, f.created_at, f.plan_code,
-              pl.name AS plan_name, pl.max_users, pl.max_products,
+              f.billing_status, f.current_period_end, f.past_due_since,
+              (f.stripe_subscription_id IS NOT NULL) AS has_subscription,
+              pl.name AS plan_name, pl.max_users, pl.max_products, pl.price,
+              (SELECT u3.login_id FROM users u3 WHERE u3.facility_id = f.id AND u3.user_type = 'admin' ORDER BY u3.id LIMIT 1) AS admin_email,
               (SELECT COUNT(*) FROM users u WHERE u.facility_id = f.id AND u.is_active = TRUE) AS user_count,
               (SELECT COUNT(*) FROM products p WHERE p.facility_id = f.id) AS product_count
          FROM facilities f
@@ -46,7 +50,7 @@ router.put('/plans/:code', async (req, res) => {
   const b = req.body || {};
   const LIMIT_COLS = ['max_users', 'max_products', 'log_retention_days'];
   const FEAT_COLS = ['feat_stocktake', 'feat_barcode', 'feat_reports', 'feat_ledger', 'feat_import', 'feat_billing'];
-  const allowed = ['name', 'sort_order', ...LIMIT_COLS, ...FEAT_COLS];
+  const allowed = ['name', 'sort_order', 'price', 'stripe_price_id', ...LIMIT_COLS, ...FEAT_COLS];
   const sets = [];
   const params = [];
   for (const k of allowed) {
@@ -59,6 +63,11 @@ router.put('/plans/:code', async (req, res) => {
       v = !!v;
     } else if (k === 'sort_order') {
       v = Number(v) || 0;
+    } else if (k === 'price') {
+      v = Number(v) || 0;
+      if (!Number.isFinite(v) || v < 0) return res.status(400).json({ error: '料金は0以上の数値で入力してください' });
+    } else if (k === 'stripe_price_id') {
+      v = (v === '' || v === null) ? null : String(v);   // 空=NULL
     } else {
       v = String(v);
     }
@@ -99,6 +108,11 @@ router.post('/', async (req, res) => {
     if (dup.rowCount > 0) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'このログインID(メール)は既に使用されています' });
+    }
+    // 施設名の重複チェック
+    if (await facilityNameTaken(client, name)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'この施設名は既に使用されています。別の施設名を入力してください。' });
     }
     // プラン(未指定/不明なら free)
     let plan = 'free';
@@ -143,6 +157,13 @@ router.post('/', async (req, res) => {
 // PUT /:id  body: { name?, kana?, isActive? }
 router.put('/:id', async (req, res) => {
   const { name, kana, isActive, planCode } = req.body || {};
+  // 施設名を変更する場合は重複チェック(自分自身は除外)
+  if (name !== undefined) {
+    if (!String(name).trim()) return res.status(400).json({ error: '施設名は必須です' });
+    if (await facilityNameTaken(pool, name, req.params.id)) {
+      return res.status(409).json({ error: 'この施設名は既に使用されています。別の施設名を入力してください。' });
+    }
+  }
   const sets = [];
   const params = [];
   if (name !== undefined) { params.push(String(name)); sets.push(`name = $${params.length}`); }
