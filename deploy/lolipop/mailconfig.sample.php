@@ -16,5 +16,6 @@ return [
 
     // 差出人(メインドメインのアカウント。DKIM/SPFが自動で効き、到達性・信頼性が高い)
     'from_email' => 'no-reply@e-soft.jp',
-    'from_name'  => '試薬在庫管理システム',
+    // from_name は表示名の既定(フォールバック)。各システムはリクエストの fromName で上書きする。
+    'from_name'  => 'e-soft',
 ];

@@ -15,7 +15,10 @@ function activeProvider() {
   return 'none';
 }
 
-// ロリポップ自作PHPエンドポイント経由
+// 差出人の表示名(共有send.phpで fromName として渡す。システムごとに自分の名前を指定)
+function fromName() { return process.env.MAIL_FROM_NAME || '試薬在庫管理システム'; }
+
+// ロリポップ自作PHPエンドポイント経由(複数システム共有。fromNameで表示名を上書き)
 async function sendViaLolipop({ to, subject, text, replyTo }) {
   const endpoint = process.env.LOLIPOP_MAIL_ENDPOINT;
   const token = process.env.LOLIPOP_MAIL_TOKEN;
@@ -26,7 +29,7 @@ async function sendViaLolipop({ to, subject, text, replyTo }) {
   const r = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token },
-    body: JSON.stringify({ to, subject, text, replyTo }),
+    body: JSON.stringify({ to, subject, text, replyTo, fromName: fromName() }),
   });
   if (!r.ok) {
     const b = await r.text().catch(() => '');
@@ -38,7 +41,8 @@ async function sendViaLolipop({ to, subject, text, replyTo }) {
 // Resend HTTPS API 経由
 async function sendViaResend({ to, subject, text, replyTo }) {
   const key = process.env.RESEND_API_KEY;
-  const from = process.env.MAIL_FROM || 'onboarding@resend.dev';
+  const fromEmail = process.env.MAIL_FROM || 'onboarding@resend.dev';
+  const from = `${fromName()} <${fromEmail}>`;
   if (!key) {
     console.warn('[mail] RESEND_API_KEY 未設定のため送信をスキップ:', subject, '→', to);
     return { sent: false };

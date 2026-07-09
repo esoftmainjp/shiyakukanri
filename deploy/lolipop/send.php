@@ -1,15 +1,18 @@
 <?php
 /**
- * 試薬在庫管理システム — メール送信エンドポイント(ロリポップ設置用)
+ * 共有メール送信エンドポイント(ロリポップ設置用)
+ *   ※ 試薬在庫管理システム・アンケートシステム等、複数システムで共有して利用する。
  *
- * Renderアプリの services/mail.js から HTTPS POST(JSON) で呼び出し、
+ * 各アプリから HTTPS POST(JSON) で呼び出し、
  * ロリポップのSMTP(smtp.lolipop.jp:465 SSL, SMTP AUTH)で送信する。
  * 依存ライブラリ不要(自己完結SMTPクライアント)。
  *
  * 設置: このファイルと mailconfig.php を sendmail.e-soft.jp の公開領域に置く。
  * 認証: 共有トークン(mailconfig.php の token)を X-Auth-Token ヘッダで照合。
  *
- * リクエスト(JSON): { "to": "...", "subject": "...", "text": "...", "replyTo": "..."? }
+ * リクエスト(JSON): { "to": "...", "subject": "...", "text": "...", "replyTo": "..."?, "fromName": "..."? }
+ *   fromName を指定すると差出人の表示名を上書きできる(送信元アドレスは設定に固定)。
+ *   共有のため、各システムは自分の表示名を fromName で渡すこと。
  * レスポンス(JSON): { "ok": true } / { "ok": false, "error": "..." }
  */
 
@@ -52,6 +55,7 @@ $strip = function ($s) { return str_replace(["\r", "\n"], '', $s); };
 $to      = $strip($to);
 $subject = $strip($subject);
 $replyTo = $strip($replyTo);
+$reqFromName = $strip(trim((string)($body['fromName'] ?? ''))); // 差出人表示名の上書き(任意)
 if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
     respond(400, ['ok' => false, 'error' => '宛先メールアドレスが不正です']);
 }
@@ -63,9 +67,9 @@ if (mb_strlen($text) > 100000) {
     respond(400, ['ok' => false, 'error' => '本文が長すぎます']);
 }
 
-// 送信元は設定に固定(なりすまし防止)
+// 送信元アドレスは設定に固定(なりすまし防止)。表示名はリクエスト指定があれば上書き。
 $fromEmail = $cfg['from_email'];
-$fromName  = $cfg['from_name'] ?? '';
+$fromName  = $reqFromName !== '' ? $reqFromName : ($cfg['from_name'] ?? '');
 
 try {
     smtp_send($cfg, $fromEmail, $fromName, $to, $subject, $text, $replyTo);
