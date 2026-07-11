@@ -85,6 +85,21 @@ COMMENT ON COLUMN categories.kana IS 'カナ名称';
 COMMENT ON COLUMN categories.note IS '備考';
 COMMENT ON COLUMN categories.is_active IS '有効フラグ';
 
+-- 9b. 棚マスタ (保管場所。商品が参照)
+CREATE TABLE shelves (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name        VARCHAR(255) NOT NULL,
+    kana        VARCHAR(255) NOT NULL DEFAULT '',
+    note        TEXT         NOT NULL DEFAULT '',
+    is_active   BOOLEAN      NOT NULL DEFAULT TRUE,
+    facility_id BIGINT
+);
+COMMENT ON TABLE  shelves      IS '棚マスタ(保管場所)';
+COMMENT ON COLUMN shelves.name IS '名称';
+COMMENT ON COLUMN shelves.kana IS 'カナ名称';
+COMMENT ON COLUMN shelves.note IS '備考';
+COMMENT ON COLUMN shelves.is_active IS '有効フラグ';
+
 -- 10a. プランマスタ (施設ごとの上限・機能差別化)
 CREATE TABLE plans (
     code               VARCHAR(16)  PRIMARY KEY,
@@ -207,7 +222,7 @@ CREATE TABLE products (
     category_id         BIGINT       REFERENCES categories(id),
     management_code     VARCHAR(64)  NOT NULL DEFAULT '',
     qc_target_flag      BOOLEAN      NOT NULL DEFAULT FALSE,
-    storage_location    VARCHAR(255) NOT NULL DEFAULT '',
+    shelf_id            BIGINT,
     note                TEXT         NOT NULL DEFAULT '',
     is_active           BOOLEAN      NOT NULL DEFAULT TRUE,
     facility_id         BIGINT
@@ -219,7 +234,7 @@ COMMENT ON COLUMN products.department_id   IS '部門ID';
 COMMENT ON COLUMN products.category_id     IS '分類ID';
 COMMENT ON COLUMN products.management_code IS '管理コード';
 COMMENT ON COLUMN products.qc_target_flag  IS '試薬管理対象フラグ';
-COMMENT ON COLUMN products.storage_location IS '保管場所/棚番';
+COMMENT ON COLUMN products.shelf_id        IS '棚ID(保管場所。棚マスター参照)';
 COMMENT ON COLUMN products.note            IS '備考';
 COMMENT ON COLUMN products.is_active       IS '有効フラグ';
 
@@ -273,10 +288,13 @@ ALTER TABLE departments     ADD CONSTRAINT fk_departments_facility     FOREIGN K
 ALTER TABLE categories      ADD CONSTRAINT fk_categories_facility      FOREIGN KEY (facility_id) REFERENCES facilities(id);
 ALTER TABLE products        ADD CONSTRAINT fk_products_facility        FOREIGN KEY (facility_id) REFERENCES facilities(id);
 ALTER TABLE product_details ADD CONSTRAINT fk_product_details_facility FOREIGN KEY (facility_id) REFERENCES facilities(id);
+ALTER TABLE shelves         ADD CONSTRAINT fk_shelves_facility         FOREIGN KEY (facility_id) REFERENCES facilities(id);
+ALTER TABLE products        ADD CONSTRAINT fk_products_shelf           FOREIGN KEY (shelf_id)    REFERENCES shelves(id);
 CREATE INDEX idx_suppliers_facility       ON suppliers(facility_id);
 CREATE INDEX idx_makers_facility          ON makers(facility_id);
 CREATE INDEX idx_departments_facility     ON departments(facility_id);
 CREATE INDEX idx_categories_facility      ON categories(facility_id);
+CREATE INDEX idx_shelves_facility         ON shelves(facility_id);
 CREATE INDEX idx_products_facility        ON products(facility_id);
 CREATE INDEX idx_product_details_facility ON product_details(facility_id);
 

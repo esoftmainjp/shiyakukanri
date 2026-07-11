@@ -19,6 +19,7 @@
             <option value="makers">メーカー</option>
             <option value="departments">部門</option>
             <option value="categories">分類</option>
+            <option value="shelves">棚</option>
             <option value="users">ユーザー</option>
             <option value="products">商品</option>
             <option value="product-details">商品詳細</option>
@@ -67,6 +68,7 @@
       makers:      [f('name','名称'), f('kana','カナ'), f('jan_maker_code','JANメーカーコード'), f('note','備考')],
       departments: [f('name','名称'), f('kana','カナ'), f('note','備考')],
       categories:  [f('name','名称'), f('kana','カナ'), f('note','備考')],
+      shelves:     [f('name','名称'), f('kana','カナ'), f('note','備考')],
       users: [
         sel('user_type','タイプ',[['admin','管理者'],['general','一般'],['supplier','問屋']]),
         f('name','氏名'), f('kana','カナ'), f('login_id','ログインID'),
@@ -77,7 +79,7 @@
         ref('department_id','部門','departments'),
         ref('category_id','分類','categories'),
         f('management_code','管理コード'),
-        chk('qc_target_flag','試薬管理対象'), f('storage_location','保管場所'), f('note','備考'),
+        chk('qc_target_flag','試薬管理対象'), ref('shelf_id','棚（必須）','shelves'), f('note','備考'),
       ],
       'product-details': [
         ref('product_id','商品','products'),
@@ -97,15 +99,15 @@
     function chk(key, label) { return { key, label, type: 'checkbox' }; }
 
     const IMPORT_HINTS = {
-      products: 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,保管場所',
+      products: 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚',
     };
-    const COMBINED_HINT = 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,保管場所,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行';
+    const COMBINED_HINT = 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行';
 
     // 一覧ヘッダーの日本語ラベル(全マスター共通)
     const COL_LABELS = {
       id: 'ID', name: '名称', kana: 'カナ', note: '備考', is_active: '有効',
       jan_maker_code: 'JANメーカーコード',
-      department_id: '部門', category_id: '分類', management_code: '管理コード', qc_target_flag: '試薬管理対象', storage_location: '保管場所',
+      department_id: '部門', category_id: '分類', management_code: '管理コード', qc_target_flag: '試薬管理対象', shelf_id: '棚',
       product_id: '商品', apply_start_date: '適用開始日', apply_end_date: '適用終了日',
       quantity_unit: '数量単位', pack_size: '梱包数', pack_unit: '梱包単位', spec: '規格',
       unit_price: '単価', test_count: 'テスト数', min_quantity: '最低個数', order_quantity: '発注個数',
@@ -114,7 +116,7 @@
       user_type: 'タイプ', login_id: 'ログインID', password_updated_at: 'パスワード更新日時',
     };
     // ID列 → 参照マスター種別(名称表示に使う)
-    const REF_COLS = { department_id: 'departments', category_id: 'categories', maker_id: 'makers', supplier_id: 'suppliers', product_id: 'products' };
+    const REF_COLS = { department_id: 'departments', category_id: 'categories', shelf_id: 'shelves', maker_id: 'makers', supplier_id: 'suppliers', product_id: 'products' };
     const USER_TYPE_LABEL = { admin: '管理者', general: '一般', supplier: '問屋' };
 
     let editId = null;

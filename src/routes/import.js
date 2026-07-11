@@ -59,7 +59,7 @@ function requireFacility(req, res) {
 }
 
 // 商品マスターCSVインポート
-// ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,保管場所
+// ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚
 router.post('/products', async (req, res) => {
   const fid = requireFacility(req, res); if (fid == null) return;
   const rows = parseCsv(req.body && req.body.csv);
@@ -73,6 +73,7 @@ router.post('/products', async (req, res) => {
     let skipped = 0;
     let departmentsCreated = 0;
     let categoriesCreated = 0;
+    let shelvesCreated = 0;
     const { max: maxProducts, existing: existingProducts } = await productLimit(client, fid);
 
     for (let i = 0; i < rows.length; i++) {
@@ -101,11 +102,14 @@ router.post('/products', async (req, res) => {
         catId = c.id; if (c.created) categoriesCreated++;
       }
 
+      // 棚(保管場所)は必須。空欄は「棚１」を既定として使う(無ければ自動追加)。
+      const shelf = await resolveNamed(client, 'shelves', r['棚'] || '棚１', fid);
+      if (shelf.created) shelvesCreated++;
       // 管理コードは顧客用の任意コード(システムキーではない)
       await client.query(
-        `INSERT INTO products (name, kana, department_id, category_id, management_code, qc_target_flag, storage_location, facility_id)
+        `INSERT INTO products (name, kana, department_id, category_id, management_code, qc_target_flag, shelf_id, facility_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [name, r['カナ'] || '', deptId, catId, r['管理コード'] || '', truthy(r['試薬管理対象'] || r['精度管理対象']), r['保管場所'] || '', fid]
+        [name, r['カナ'] || '', deptId, catId, r['管理コード'] || '', truthy(r['試薬管理対象'] || r['精度管理対象']), shelf.id, fid]
       );
       inserted++;
     }
@@ -118,9 +122,9 @@ router.post('/products', async (req, res) => {
     await writeLog(pool, {
       userId: req.session.user && req.session.user.id,
       targetTable: 'products', operationType: 'CSV取込', facilityId: fid,
-      after: { inserted, skipped, departmentsCreated, categoriesCreated },
+      after: { inserted, skipped, departmentsCreated, categoriesCreated, shelvesCreated },
     });
-    res.json({ ok: true, inserted, skipped, departmentsCreated, categoriesCreated });
+    res.json({ ok: true, inserted, skipped, departmentsCreated, categoriesCreated, shelvesCreated });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('商品インポートエラー:', err.message);
@@ -215,7 +219,7 @@ router.post('/product-details', async (req, res) => {
 });
 
 // 商品＋商品詳細 同時インポート
-// ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,保管場所,
+// ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚,
 //           適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行
 // 各行: 商品名で商品を検索(あれば再利用/なければ新規作成)し、続けて商品詳細を1件作成する。
 // 商品と商品詳細は商品ID(内部)で紐付ける。管理コードは顧客用の任意コードで、システムキーではない。
@@ -234,6 +238,7 @@ router.post('/products-combined', async (req, res) => {
     let departmentsCreated = 0;
     let categoriesCreated = 0;
     let suppliersCreated = 0;
+    let shelvesCreated = 0;
     const { max: maxProducts, existing: existingProducts } = await productLimit(client, fid);
 
     for (let i = 0; i < rows.length; i++) {
@@ -277,10 +282,13 @@ router.post('/products-combined', async (req, res) => {
           errors.push({ line, error: `商品マスター登録数の上限(${maxProducts}件)を超えます。上位プランへの変更をご検討ください。` });
           break;
         }
+        // 棚(保管場所)は必須。空欄は「棚１」を既定として使う(無ければ自動追加)。
+        const shelf = await resolveNamed(client, 'shelves', r['棚'] || '棚１', fid);
+        if (shelf.created) shelvesCreated++;
         const ins = await client.query(
-          `INSERT INTO products (name, kana, department_id, category_id, management_code, qc_target_flag, storage_location, facility_id)
+          `INSERT INTO products (name, kana, department_id, category_id, management_code, qc_target_flag, shelf_id, facility_id)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-          [name, r['カナ'] || '', deptId, catId, code, truthy(r['試薬管理対象'] || r['精度管理対象']), r['保管場所'] || '', fid]
+          [name, r['カナ'] || '', deptId, catId, code, truthy(r['試薬管理対象'] || r['精度管理対象']), shelf.id, fid]
         );
         productId = ins.rows[0].id;
         productsCreated++;
@@ -323,9 +331,9 @@ router.post('/products-combined', async (req, res) => {
     await writeLog(pool, {
       userId: req.session.user && req.session.user.id,
       targetTable: 'products', operationType: 'CSV取込', facilityId: fid,
-      after: { productsCreated, detailsCreated, makersCreated, departmentsCreated, categoriesCreated, suppliersCreated },
+      after: { productsCreated, detailsCreated, makersCreated, departmentsCreated, categoriesCreated, suppliersCreated, shelvesCreated },
     });
-    res.json({ ok: true, productsCreated, detailsCreated, makersCreated, departmentsCreated, categoriesCreated, suppliersCreated });
+    res.json({ ok: true, productsCreated, detailsCreated, makersCreated, departmentsCreated, categoriesCreated, suppliersCreated, shelvesCreated });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('商品＋詳細インポートエラー:', err.message);
@@ -336,16 +344,17 @@ router.post('/products-combined', async (req, res) => {
 });
 
 // 商品マスタCSVエクスポート(商品のみ。インポートと同じ形式)
-// ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,保管場所
+// ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚
 router.get('/products/export', async (req, res) => {
   const fid = requireFacility(req, res); if (fid == null) return;
   try {
     const { rows } = await pool.query(
       `SELECT p.name, p.kana, d.name AS dept, c.name AS cat, p.management_code,
-              CASE WHEN p.qc_target_flag THEN '1' ELSE '' END AS qc, p.storage_location
+              CASE WHEN p.qc_target_flag THEN '1' ELSE '' END AS qc, sh.name AS shelf
          FROM products p
          LEFT JOIN departments d ON d.id = p.department_id
          LEFT JOIN categories c ON c.id = p.category_id
+         LEFT JOIN shelves sh ON sh.id = p.shelf_id
         WHERE p.facility_id = $1
         ORDER BY p.name`,
       [fid]
@@ -354,7 +363,7 @@ router.get('/products/export', async (req, res) => {
       { key: 'name', label: '名称' }, { key: 'kana', label: 'カナ' },
       { key: 'dept', label: '部門' }, { key: 'cat', label: '分類' },
       { key: 'management_code', label: '管理コード' }, { key: 'qc', label: '試薬管理対象' },
-      { key: 'storage_location', label: '保管場所' },
+      { key: 'shelf', label: '棚' },
     ];
     await writeLog(pool, {
       userId: req.session.user && req.session.user.id,
@@ -376,7 +385,7 @@ router.get('/products-combined/export', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT p.name, p.kana, d.name AS dept, c.name AS cat, p.management_code,
-              CASE WHEN p.qc_target_flag THEN '1' ELSE '' END AS qc, p.storage_location,
+              CASE WHEN p.qc_target_flag THEN '1' ELSE '' END AS qc, sh.name AS shelf,
               to_char(pd.apply_start_date, 'YYYY-MM-DD') AS apply_start_date,
               to_char(pd.apply_end_date, 'YYYY-MM-DD')   AS apply_end_date,
               pd.quantity_unit, pd.pack_size, pd.pack_unit, pd.spec, pd.unit_price,
@@ -387,6 +396,7 @@ router.get('/products-combined/export', async (req, res) => {
          JOIN product_details pd ON pd.product_id = p.id
          LEFT JOIN departments d ON d.id = p.department_id
          LEFT JOIN categories c ON c.id = p.category_id
+         LEFT JOIN shelves sh ON sh.id = p.shelf_id
          LEFT JOIN makers mk ON mk.id = pd.maker_id
          LEFT JOIN suppliers s ON s.id = pd.supplier_id
         WHERE p.facility_id = $1
@@ -397,7 +407,7 @@ router.get('/products-combined/export', async (req, res) => {
       { key: 'name', label: '名称' }, { key: 'kana', label: 'カナ' },
       { key: 'dept', label: '部門' }, { key: 'cat', label: '分類' },
       { key: 'management_code', label: '管理コード' }, { key: 'qc', label: '試薬管理対象' },
-      { key: 'storage_location', label: '保管場所' },
+      { key: 'shelf', label: '棚' },
       { key: 'apply_start_date', label: '適用開始日' }, { key: 'apply_end_date', label: '適用終了日' },
       { key: 'quantity_unit', label: '数量単位' }, { key: 'pack_size', label: '梱包数' }, { key: 'pack_unit', label: '梱包単位' },
       { key: 'spec', label: '規格' }, { key: 'unit_price', label: '単価' }, { key: 'test_count', label: 'テスト数' },

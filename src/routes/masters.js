@@ -16,7 +16,8 @@ const TYPES = {
   makers:      { table: 'makers',      cols: ['name', 'kana', 'jan_maker_code', 'note', 'is_active'], hasActive: true },
   departments: { table: 'departments', cols: ['name', 'kana', 'note', 'is_active'], hasActive: true },
   categories:  { table: 'categories',  cols: ['name', 'kana', 'note', 'is_active'], hasActive: true },
-  products:    { table: 'products',    cols: ['name', 'kana', 'department_id', 'category_id', 'management_code', 'qc_target_flag', 'storage_location', 'note', 'is_active'], hasActive: true },
+  shelves:     { table: 'shelves',     cols: ['name', 'kana', 'note', 'is_active'], hasActive: true },
+  products:    { table: 'products',    cols: ['name', 'kana', 'department_id', 'category_id', 'management_code', 'qc_target_flag', 'shelf_id', 'note', 'is_active'], hasActive: true },
   'product-details': {
     table: 'product_details',
     cols: ['product_id', 'apply_start_date', 'apply_end_date', 'quantity_unit', 'pack_size', 'pack_unit',
@@ -67,6 +68,9 @@ const REFERENCES = {
   ],
   categories: [
     { table: 'products', col: 'category_id', label: '商品' },
+  ],
+  shelves: [
+    { table: 'products', col: 'shelf_id', label: '商品' },
   ],
   products: [
     { table: 'product_details', col: 'product_id', label: '商品詳細' },
@@ -119,6 +123,10 @@ router.post('/:type', async (req, res) => {
   if (scope.all) return res.status(400).json({ error: '対象施設を選択してから登録してください' });
   const body = req.body || {};
   try {
+    // 商品は棚(保管場所)が必須。
+    if (t.table === 'products' && (body.shelf_id == null || String(body.shelf_id).trim() === '')) {
+      return res.status(400).json({ error: '棚（保管場所）は必須です。棚マスターで棚を登録し、商品に棚を設定してください。' });
+    }
     // プラン上限チェック(ユーザー/商品の新規登録)
     if (t.table === 'users' || t.table === 'products') {
       const plan = await getFacilityPlan(pool, scope.facilityId);
@@ -191,6 +199,10 @@ router.put('/:type/:id', async (req, res) => {
   const scope = facilityScope(req);
   const body = req.body || {};
   try {
+    // 商品の棚は必須(送られてきた場合は空にできない)。
+    if (t.table === 'products' && body.shelf_id !== undefined && (body.shelf_id == null || String(body.shelf_id).trim() === '')) {
+      return res.status(400).json({ error: '棚（保管場所）は必須です。棚を選択してください。' });
+    }
     if (t.table === 'users' && body.user_type !== undefined && !ASSIGNABLE_USER_TYPES.includes(String(body.user_type))) {
       return res.status(400).json({ error: 'ユーザー種別が不正です（管理者・一般・問屋のみ設定できます）' });
     }

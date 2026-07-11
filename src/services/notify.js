@@ -48,7 +48,7 @@ async function resolveRecipients(db, facilityId, notifyEmail) {
 async function queryExpiry(db, facilityId, warnDays) {
   const { rows } = await db.query(
     `WITH base AS (
-       SELECT p.name AS product_name, p.storage_location,
+       SELECT p.name AS product_name, sh.name AS shelf,
               s.lot_number, s.expiry_date, s.stock_quantity,
               (s.expiry_date - CURRENT_DATE) AS days_left,
               COALESCE(NULLIF((
@@ -60,6 +60,7 @@ async function queryExpiry(db, facilityId, warnDays) {
                   LIMIT 1), 0), $2) AS warn_days
          FROM product_stocks s
          JOIN products p ON p.id = s.product_id
+         LEFT JOIN shelves sh ON sh.id = p.shelf_id
         WHERE s.stock_quantity > 0 AND s.expiry_date IS NOT NULL AND p.facility_id = $1
      )
      SELECT *, CASE WHEN expiry_date < CURRENT_DATE THEN 'expired' ELSE 'warning' END AS status
@@ -90,7 +91,7 @@ async function queryLowStock(db, facilityId, fallbackThreshold) {
         WHERE p.facility_id = $1
         GROUP BY ps.product_id
      )
-     SELECT p.name AS product_name, p.storage_location,
+     SELECT p.name AS product_name, sh.name AS shelf,
             COALESCE(t.total, 0) AS total,
             GREATEST(COALESCE(NULLIF(cp.min_quantity, 0), $2), 0) AS threshold,
             COALESCE(cp.order_quantity, 0) AS order_quantity,
@@ -99,6 +100,7 @@ async function queryLowStock(db, facilityId, fallbackThreshold) {
        LEFT JOIN tot t ON t.product_id = p.id
        LEFT JOIN cur_pd cp ON cp.product_id = p.id
        LEFT JOIN suppliers s ON s.id = cp.supplier_id
+       LEFT JOIN shelves sh ON sh.id = p.shelf_id
       WHERE p.facility_id = $1 AND p.is_active = TRUE
         AND GREATEST(COALESCE(NULLIF(cp.min_quantity, 0), $2), 0) > 0
         AND COALESCE(t.total, 0) < GREATEST(COALESCE(NULLIF(cp.min_quantity, 0), $2), 0)
@@ -127,7 +129,7 @@ function buildEmail(facilityName, baseUrl, expiry, lowStock) {
       lines.push('　該当なし');
     } else {
       expiry.forEach((r) => {
-        const loc = r.storage_location ? `［${r.storage_location}］` : '';
+        const loc = r.shelf ? `［${r.shelf}］` : '';
         const lot = r.lot_number ? ` ロット:${r.lot_number}` : '';
         const days = Number(r.days_left);
         const state = r.status === 'expired' ? `期限切れ(${-days}日超過)` : `残${days}日`;
@@ -142,7 +144,7 @@ function buildEmail(facilityName, baseUrl, expiry, lowStock) {
       lines.push('　該当なし');
     } else {
       lowStock.forEach((r) => {
-        const loc = r.storage_location ? `［${r.storage_location}］` : '';
+        const loc = r.shelf ? `［${r.shelf}］` : '';
         const sup = r.supplier ? `　問屋:${r.supplier}` : '';
         lines.push(`　・${r.product_name}${loc}　在庫:${r.total} < 発注点:${r.threshold}${sup}`);
       });

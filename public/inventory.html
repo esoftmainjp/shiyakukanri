@@ -46,7 +46,7 @@
         <table id="tbl">
           <thead><tr>
             <th class="sticky-l">商品名</th><th>問屋</th><th>メーカー</th><th>部門</th><th>分類</th>
-            <th>保管場所</th><th>ロット</th><th>使用期限</th><th>入庫日</th><th>在庫数</th><th>備考</th><th class="sticky-r">操作</th>
+            <th>棚</th><th>ロット</th><th>使用期限</th><th>入庫日</th><th>在庫数</th><th>備考</th><th class="sticky-r">操作</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -134,7 +134,7 @@
         tr.innerHTML =
           `<td class="sticky-l">${esc(s.product_name)}</td>` +
           `<td>${esc(s.supplier)}</td><td>${esc(s.maker)}</td><td>${esc(s.department)}</td><td>${esc(s.category)}</td>` +
-          `<td>${esc(s.storage_location)}</td>` +
+          `<td>${esc(s.shelf)}</td>` +
           `<td>${esc(s.lot_number) || '(なし)'}</td><td>${s.expiry_date || '(なし)'}</td>` +
           `<td>${s.last_receipt_date || '(なし)'}</td>` +
           `<td style="text-align:right;">${s.stock_quantity}</td><td>${esc(s.note)}</td>` +
