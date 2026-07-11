@@ -3,9 +3,29 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="description" content="試薬の在庫・使用期限・発注をロット単位で正確に管理するクラウド在庫管理システム。臨床検査室・病院向け。クラウド版/オフライン版。" />
+<meta name="description" content="試薬の在庫・使用期限・発注をロット単位で正確に管理するクラウド在庫管理システム。臨床検査室・病院向け。無料プランあり・初期費用0円で今すぐ開始。クラウド版/オフライン版。" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E🧪%3C/text%3E%3C/svg%3E" />
-<title>試薬在庫管理システム｜ロット単位で正確な在庫・使用期限管理</title>
+<title>試薬在庫管理システム｜無料で始めるロット単位の在庫・使用期限管理</title>
+<meta property="og:title" content="試薬在庫管理システム｜無料で始めるロット単位の在庫・使用期限管理" />
+<meta property="og:description" content="試薬の在庫・使用期限・発注をロット単位で正確に管理。無料プランあり・初期費用0円で今すぐ開始できるクラウド在庫管理システム。" />
+<meta property="og:type" content="website" />
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "試薬在庫管理システム",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web",
+  "description": "試薬の在庫・使用期限・発注をロット単位で正確に管理するクラウド在庫管理システム。臨床検査室・病院向け。",
+  "offers": [
+    { "@type": "Offer", "name": "フリー", "price": "0", "priceCurrency": "JPY", "description": "無料プラン（ユーザー1・商品10）" },
+    { "@type": "Offer", "name": "ライト", "price": "980", "priceCurrency": "JPY" },
+    { "@type": "Offer", "name": "スタンダード", "price": "1980", "priceCurrency": "JPY" },
+    { "@type": "Offer", "name": "プロ", "price": "4980", "priceCurrency": "JPY" }
+  ],
+  "publisher": { "@type": "Organization", "name": "株式会社イーソフト", "telephone": "092-515-7923", "email": "info@e-soft.jp" }
+}
+</script>
 <style>
   :root {
     --paper: #F2FBFF;
@@ -82,8 +102,10 @@
   .btn-ghost:hover { border-color: var(--accent); color: var(--accent-deep); }
   .btn:active { transform: translateY(1px); }
   .nav .btn { padding: 8px 15px; }
+  .nav .btn + .btn { margin-left: 10px; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
   @media (max-width: 760px) { .nav .links { display: none; } }
+  @media (max-width: 460px) { .nav .btn-ghost { display: none; } .nav .btn + .btn { margin-left: 0; } }
 
   .hero { position: relative; }
   .hero-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 52px; align-items: center; padding: 78px 0 84px; }
@@ -288,7 +310,8 @@
       <a href="#faq">FAQ</a>
     </nav>
     <span class="spacer"></span>
-    <a href="#contact" class="btn btn-primary">資料請求・お問い合わせ</a>
+    <a href="#contact" class="btn btn-ghost">資料請求・お問い合わせ</a>
+    <a href="https://reagent-inventory-1wu2.onrender.com/signup.html?plan=free" class="btn btn-primary">無料で始める</a>
   </div>
 </header>
 
@@ -300,8 +323,8 @@
         <h1 class="head" style="margin-top:18px;">試薬の在庫と使用期限を、<br><span class="hl">ロット単位で正確に。</span></h1>
         <p class="lede">入庫・出庫・発注・使用期限までを一元管理。先入れ先出し（FEFO）で<b>期限切れ</b>を防ぎ、発注点の自動判定で<b>欠品</b>を防ぐ。棚卸しと転記の手間をなくす、試薬のための在庫管理システムです。</p>
         <div class="hero-cta">
-          <a href="#contact" class="btn btn-primary">資料請求・お問い合わせ →</a>
-          <a href="#features" class="btn btn-ghost">機能を見る</a>
+          <a href="https://reagent-inventory-1wu2.onrender.com/signup.html?plan=free" class="btn btn-primary">無料で始める →</a>
+          <a href="#contact" class="btn btn-ghost">資料請求・お問い合わせ</a>
         </div>
         <div class="trust">
           <span><i class="dot"></i>クラウド版・オフライン版に対応</span>
@@ -470,15 +493,16 @@
       <div class="sec-head reveal">
         <span class="eyebrow">料金・プラン</span>
         <h2>用途に合わせて選べる4プラン。</h2>
-        <p>クラウド版は月額のみ・初期費用なし。まずはフリーから、規模に応じてアップグレードできます。（表示は税込）</p>
+        <p>クラウド版は月額のみ・初期費用0円。<b>フリープランはクレジットカード登録不要で、今すぐ無料で始められます。</b>規模に応じてアップグレードも簡単。（金額はすべて税抜・別途消費税）</p>
       </div>
 
       <div class="plans4">
-        <div class="pcard reveal">
+        <div class="pcard reveal" style="border-color: color-mix(in srgb, var(--accent) 42%, var(--line));">
+          <span class="badge2" style="background: var(--accent-deep);">ずっと無料</span>
           <div class="pname">フリー</div>
           <div class="pprice">¥0 <small>/月</small></div>
-          <div class="pspec">ユーザー1／商品10<br>まずはお試しに</div>
-          <a href="https://reagent-inventory-1wu2.onrender.com/signup.html?plan=free" class="btn btn-ghost">無料で始める</a>
+          <div class="pspec">ユーザー1／商品10<br>クレジットカード登録不要</div>
+          <a href="https://reagent-inventory-1wu2.onrender.com/signup.html?plan=free" class="btn btn-primary">無料で始める</a>
         </div>
         <div class="pcard reveal">
           <div class="pname">ライト</div>
@@ -505,7 +529,7 @@
         <table class="cmp">
           <thead><tr><th>機能・上限</th><th>フリー</th><th>ライト</th><th>スタンダード</th><th>プロ</th></tr></thead>
           <tbody>
-            <tr><td>月額（税込）</td><td>¥0</td><td>¥980</td><td>¥1,980</td><td>¥4,980</td></tr>
+            <tr><td>月額（税抜）</td><td>¥0</td><td>¥980</td><td>¥1,980</td><td>¥4,980</td></tr>
             <tr><td>ユーザー登録数</td><td>1</td><td>10</td><td>100</td><td>1,000</td></tr>
             <tr><td>商品マスター登録数</td><td>10</td><td>100</td><td>1,000</td><td>10,000</td></tr>
             <tr><td>入出庫・発注・在庫・使用期限管理</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
@@ -518,7 +542,7 @@
           </tbody>
         </table>
       </div>
-      <p style="color:var(--muted); font-size:.86rem; margin-top:14px;">※ オフライン版もご用意しています（月額980円＋初回登録費用1,980円、院内・スタンドアロンで完結）。各種オプションは別途ご相談ください。</p>
+      <p style="color:var(--muted); font-size:.86rem; margin-top:14px;">※ 表示価格はすべて税抜です（別途消費税）。オフライン版もご用意しています（月額980円＋初回登録費用1,980円／いずれも税抜、院内・スタンドアロンで完結）。各種オプションは別途ご相談ください。</p>
     </div>
   </section>
 
@@ -552,7 +576,8 @@
           <a class="big-tel" href="tel:092-515-7923">092-515-7923</a>
           <div class="rows">
             <div><span class="lbl">会社</span><span>株式会社イーソフト</span></div>
-            <div><span class="lbl">所在地</span><span>福岡県福岡市西区石丸１丁目</span></div>
+            <div><span class="lbl">所在地</span><span>福岡県福岡市西区石丸１丁目４－９－７０１</span></div>
+            <div><span class="lbl">責任者</span><span>増本　寛</span></div>
             <div><span class="lbl">Mail</span><span><a href="mailto:info@e-soft.jp">info@e-soft.jp</a></span></div>
             <div><span class="lbl">営業</span><span>平日 9:00〜18:00</span></div>
           </div>
@@ -590,8 +615,9 @@
     <div>
       <div class="brand"><span class="mark">🧪</span> 試薬在庫管理システム</div>
       <div style="margin-top:8px; line-height:1.7;">
-        株式会社イーソフト　／　福岡県福岡市西区石丸１丁目<br>
-        TEL 092-515-7923　／　info@e-soft.jp
+        株式会社イーソフト（運営統括責任者：増本　寛）<br>
+        福岡県福岡市西区石丸１丁目４－９－７０１<br>
+        TEL 092-515-7923　／　info@e-soft.jp　／　法人番号 3290001112886
       </div>
       <div style="margin-top:10px; line-height:1.9;">
         <a href="https://reagent-inventory-1wu2.onrender.com/terms.html">利用規約</a>
