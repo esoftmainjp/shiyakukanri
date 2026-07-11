@@ -16,7 +16,7 @@ const TYPES = {
   makers:      { table: 'makers',      cols: ['name', 'kana', 'jan_maker_code', 'note', 'is_active'], hasActive: true },
   departments: { table: 'departments', cols: ['name', 'kana', 'note', 'is_active'], hasActive: true },
   categories:  { table: 'categories',  cols: ['name', 'kana', 'note', 'is_active'], hasActive: true },
-  products:    { table: 'products',    cols: ['name', 'kana', 'department_id', 'category_id', 'management_code', 'qc_target_flag', 'note', 'is_active'], hasActive: true },
+  products:    { table: 'products',    cols: ['name', 'kana', 'department_id', 'category_id', 'management_code', 'qc_target_flag', 'storage_location', 'note', 'is_active'], hasActive: true },
   'product-details': {
     table: 'product_details',
     cols: ['product_id', 'apply_start_date', 'apply_end_date', 'quantity_unit', 'pack_size', 'pack_unit',

@@ -28,7 +28,7 @@ function buildStockQuery(q, scope) {
   if (String(q.includeZero) !== 'true') where.push('s.stock_quantity > 0');
 
   const sql =
-    `SELECT s.id, p.id AS product_id, p.name AS product_name,
+    `SELECT s.id, p.id AS product_id, p.name AS product_name, p.storage_location,
             d.name AS department, c.name AS category, p.note AS note,
             (SELECT string_agg(DISTINCT s2.name, ', ') FROM product_details pd2
                JOIN suppliers s2 ON s2.id = pd2.supplier_id WHERE pd2.product_id = p.id) AS supplier,
@@ -68,6 +68,7 @@ router.get('/csv', async (req, res) => {
       { key: 'maker', label: 'メーカー' },
       { key: 'department', label: '部門' },
       { key: 'category', label: '分類' },
+      { key: 'storage_location', label: '保管場所' },
       { key: 'lot_number', label: 'ロット番号' },
       { key: 'expiry_date', label: '使用期限' },
       { key: 'stock_quantity', label: '在庫数(バラ)' },
@@ -109,7 +110,7 @@ router.get('/expiry', async (req, res) => {
     // 商品詳細は「本日適用中」を優先し、無ければ最新の適用開始日のものを採用。
     const { rows } = await pool.query(
       `WITH base AS (
-         SELECT s.id, p.id AS product_id, p.name AS product_name,
+         SELECT s.id, p.id AS product_id, p.name AS product_name, p.storage_location,
                 s.lot_number, s.expiry_date, s.stock_quantity,
                 (SELECT COALESCE(SUM(ps.stock_quantity), 0) FROM product_stocks ps WHERE ps.product_id = p.id) AS product_total,
                 EXISTS (SELECT 1 FROM order_details od JOIN orders o ON o.id = od.order_id

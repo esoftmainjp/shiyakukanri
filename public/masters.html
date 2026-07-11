@@ -77,7 +77,7 @@
         ref('department_id','部門','departments'),
         ref('category_id','分類','categories'),
         f('management_code','管理コード'),
-        chk('qc_target_flag','試薬管理対象'), f('note','備考'),
+        chk('qc_target_flag','試薬管理対象'), f('storage_location','保管場所'), f('note','備考'),
       ],
       'product-details': [
         ref('product_id','商品','products'),
@@ -97,15 +97,15 @@
     function chk(key, label) { return { key, label, type: 'checkbox' }; }
 
     const IMPORT_HINTS = {
-      products: 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象',
+      products: 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,保管場所',
     };
-    const COMBINED_HINT = 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行';
+    const COMBINED_HINT = 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,保管場所,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行';
 
     // 一覧ヘッダーの日本語ラベル(全マスター共通)
     const COL_LABELS = {
       id: 'ID', name: '名称', kana: 'カナ', note: '備考', is_active: '有効',
       jan_maker_code: 'JANメーカーコード',
-      department_id: '部門', category_id: '分類', management_code: '管理コード', qc_target_flag: '試薬管理対象',
+      department_id: '部門', category_id: '分類', management_code: '管理コード', qc_target_flag: '試薬管理対象', storage_location: '保管場所',
       product_id: '商品', apply_start_date: '適用開始日', apply_end_date: '適用終了日',
       quantity_unit: '数量単位', pack_size: '梱包数', pack_unit: '梱包単位', spec: '規格',
       unit_price: '単価', test_count: 'テスト数', min_quantity: '最低個数', order_quantity: '発注個数',

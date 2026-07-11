@@ -423,6 +423,7 @@ app.get('/api/stocks', requireLogin, async (req, res) => {
 //   supplier : 入庫・発注のみ
 app.use('/api/lookup',    requireLogin, require('./routes/lookup'));
 app.use('/api/settings',  requireLogin, require('./routes/settings'));
+app.use('/api/notify',    requireLogin, requireRole('admin', 'superadmin'), require('./routes/notify'));
 // 全体管理者(superadmin)は施設を選択している間、その施設の管理者と同等に操作できる。
 app.use('/api/receipts',  requireLogin, requireRole('admin', 'general', 'supplier', 'superadmin'), require('./routes/receipts'));
 app.use('/api/orders',    requireLogin, requireRole('admin', 'general', 'supplier', 'superadmin'), require('./routes/orders'));
@@ -483,6 +484,19 @@ async function start() {
   // 支払失敗(past_due)の猶予超過施設を停止(起動時＋24時間毎)。
   enforcePastDueJob();
   setInterval(enforcePastDueJob, 24 * 60 * 60 * 1000);
+  // 期限接近・在庫僅少の能動通知メール(起動時＋24時間毎。1施設1日1通)。
+  notifyJob();
+  setInterval(notifyJob, 24 * 60 * 60 * 1000);
+}
+
+// 期限接近・在庫僅少の能動通知メールを送る定期処理。
+async function notifyJob() {
+  try {
+    const { runDaily } = require('./services/notify');
+    await runDaily(pool);
+  } catch (err) {
+    console.error('[notify] 能動通知の定期処理に失敗:', err.message);
+  }
 }
 
 // 支払失敗の猶予超過施設を停止する定期処理。

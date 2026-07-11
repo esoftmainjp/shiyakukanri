@@ -207,6 +207,7 @@ CREATE TABLE products (
     category_id         BIGINT       REFERENCES categories(id),
     management_code     VARCHAR(64)  NOT NULL DEFAULT '',
     qc_target_flag      BOOLEAN      NOT NULL DEFAULT FALSE,
+    storage_location    VARCHAR(255) NOT NULL DEFAULT '',
     note                TEXT         NOT NULL DEFAULT '',
     is_active           BOOLEAN      NOT NULL DEFAULT TRUE,
     facility_id         BIGINT
@@ -218,6 +219,7 @@ COMMENT ON COLUMN products.department_id   IS '部門ID';
 COMMENT ON COLUMN products.category_id     IS '分類ID';
 COMMENT ON COLUMN products.management_code IS '管理コード';
 COMMENT ON COLUMN products.qc_target_flag  IS '試薬管理対象フラグ';
+COMMENT ON COLUMN products.storage_location IS '保管場所/棚番';
 COMMENT ON COLUMN products.note            IS '備考';
 COMMENT ON COLUMN products.is_active       IS '有効フラグ';
 
@@ -671,6 +673,15 @@ CREATE INDEX idx_app_settings_facility ON app_settings(facility_id);
 CREATE TRIGGER trg_app_settings_updated_at
     BEFORE UPDATE ON app_settings
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- 能動通知(期限接近・在庫僅少のメール)の送信状態。1日1回の重複送信を防ぐ。
+CREATE TABLE notification_state (
+    facility_id    BIGINT      PRIMARY KEY REFERENCES facilities(id),
+    last_sent_date DATE,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE  notification_state                IS '能動通知の送信状態(施設単位。日次重複送信の抑止)';
+COMMENT ON COLUMN notification_state.last_sent_date IS '最後に通知メールを送信した日付';
 
 -- ============================================================
 -- 棚卸し系 (実地棚卸・在庫実数照合)

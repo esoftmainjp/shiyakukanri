@@ -35,6 +35,31 @@
       </div>
 
       <div class="card">
+        <h2>通知メール（期限接近・在庫僅少）</h2>
+        <div style="margin-top:4px;">
+          <label style="display:inline-flex; align-items:center; gap:8px; margin:0; font-weight:700; color:var(--ink);">
+            <input type="checkbox" id="notify_expiry_enabled" style="width:auto;" />使用期限（期限接近・期限切れ）をメール通知する
+          </label>
+        </div>
+        <div style="margin-top:10px;">
+          <label style="display:inline-flex; align-items:center; gap:8px; margin:0; font-weight:700; color:var(--ink);">
+            <input type="checkbox" id="notify_low_stock_enabled" style="width:auto;" />在庫僅少（発注点割れ）をメール通知する
+          </label>
+        </div>
+        <div class="row" style="margin-top:12px;">
+          <div style="flex:3;"><label>通知先メールアドレス（空欄なら施設管理者へ／複数はカンマ区切り）</label><input id="notify_email" placeholder="例：lab@example.com, sub@example.com" /></div>
+        </div>
+        <p style="color:#6b7280; font-size:0.83rem;">
+          毎日1回、対象がある場合のみ自動送信します（対象0件のときは送信しません）。<br>
+          期限の判定日数は上の「使用期限の警告日数」（商品詳細の警告日数があれば優先）、在庫僅少は各商品の「最低個数（発注点）」を基準にします（0の商品は上の「在庫僅少しきい値」を使用）。
+        </p>
+        <div style="margin-top:8px;">
+          <button type="button" class="secondary" onclick="notifyNow()">今すぐ送信（テスト）</button>
+          <span class="msg" id="notifyMsg" style="margin-left:10px;"></span>
+        </div>
+      </div>
+
+      <div class="card">
         <h2>パスワード</h2>
         <div class="row">
           <div style="flex:0;"><label>パスワード有効期限（日）</label><input type="number" id="password_expiry_days" min="0" style="width:140px;" /></div>
@@ -77,6 +102,9 @@
       expiry_warn_days:   { type: 'num',  def: 30 },
       low_stock_threshold:{ type: 'num',  def: 0 },
       allow_expired_issue:{ type: 'bool', def: false },
+      notify_expiry_enabled:   { type: 'bool', def: false },
+      notify_low_stock_enabled:{ type: 'bool', def: false },
+      notify_email:            { type: 'text', def: '' },
       password_expiry_days:{ type: 'num', def: 0 },
       tax_rate:           { type: 'num',  def: 10 },
       company_name:       { type: 'text', def: '' },
@@ -114,6 +142,29 @@
       }
       const { ok, data } = await api('/api/settings', { method: 'PUT', body: JSON.stringify(body) });
       setMsg(document.getElementById('msg'), ok ? '保存しました' : (data.error || '保存に失敗しました'), ok ? 'ok' : 'error');
+    }
+
+    // 通知を即時テスト送信(重複抑止・有効化フラグを無視)。まず現在の設定を保存してから実行する。
+    async function notifyNow() {
+      const el = document.getElementById('notifyMsg');
+      setMsg(el, '送信中…', 'ok');
+      await save();
+      const { ok, data } = await api('/api/notify/run', { method: 'POST' });
+      if (!ok) { setMsg(el, (data && data.error) || '送信に失敗しました', 'error'); return; }
+      const r = (data && data.result) || {};
+      const c = r.counts || { expiry: 0, lowStock: 0 };
+      if (r.sent) {
+        setMsg(el, `送信しました（期限${c.expiry}件・在庫僅少${c.lowStock}件 → ${(r.recipients || []).join(', ')}）`, 'ok');
+      } else {
+        const reason = {
+          no_items: '対象0件のため送信しませんでした',
+          no_recipient: '通知先メールが未設定です（管理者メールも見つかりません）',
+          mail_not_configured: 'メール送信が未構成です',
+          disabled: '通知が無効です',
+          send_failed: '送信に失敗しました',
+        }[r.reason] || ('送信されませんでした（' + (r.reason || '不明') + '）');
+        setMsg(el, `${reason}（期限${c.expiry}件・在庫僅少${c.lowStock}件）`, 'error');
+      }
     }
 
     boot();
