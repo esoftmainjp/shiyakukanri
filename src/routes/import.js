@@ -135,7 +135,7 @@ router.post('/products', async (req, res) => {
 });
 
 // 商品詳細マスターCSVインポート
-// ヘッダー: 商品名,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行
+// ヘッダー: 商品名,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行,開封後有効日数
 // 商品は「商品名」で特定する(管理コードは使わない)。同名商品が複数ある場合はエラー。
 router.post('/product-details', async (req, res) => {
   const fid = requireFacility(req, res); if (fid == null) return;
@@ -174,8 +174,8 @@ router.post('/product-details', async (req, res) => {
         `INSERT INTO product_details
            (product_id, apply_start_date, apply_end_date, quantity_unit, pack_size, pack_unit,
             spec, unit_price, test_count, min_quantity, order_quantity, jan_code,
-            maker_id, supplier_id, barcode_issue_flag, facility_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+            maker_id, supplier_id, barcode_issue_flag, open_life_days, facility_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
         [
           p.rows[0].id,
           r['適用開始日'] || null,
@@ -192,6 +192,7 @@ router.post('/product-details', async (req, res) => {
           makerId,
           supplierId,
           truthy(r['バーコード発行']),
+          Number(r['開封後有効日数']) || 0,
           fid,
         ]
       );
@@ -220,7 +221,7 @@ router.post('/product-details', async (req, res) => {
 
 // 商品＋商品詳細 同時インポート
 // ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚,
-//           適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行
+//           適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行,開封後有効日数
 // 各行: 商品名で商品を検索(あれば再利用/なければ新規作成)し、続けて商品詳細を1件作成する。
 // 商品と商品詳細は商品ID(内部)で紐付ける。管理コードは顧客用の任意コードで、システムキーではない。
 router.post('/products-combined', async (req, res) => {
@@ -299,8 +300,8 @@ router.post('/products-combined', async (req, res) => {
         `INSERT INTO product_details
            (product_id, apply_start_date, apply_end_date, quantity_unit, pack_size, pack_unit,
             spec, unit_price, test_count, min_quantity, order_quantity, jan_code,
-            maker_id, supplier_id, barcode_issue_flag, facility_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+            maker_id, supplier_id, barcode_issue_flag, open_life_days, facility_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
         [
           productId,
           r['適用開始日'] || null,
@@ -317,6 +318,7 @@ router.post('/products-combined', async (req, res) => {
           makerId,
           supplierId,
           truthy(r['バーコード発行']),
+          Number(r['開封後有効日数']) || 0,
           fid,
         ]
       );
@@ -379,7 +381,7 @@ router.get('/products/export', async (req, res) => {
 
 // 商品＋商品詳細CSVエクスポート(インポートの「商品＋商品詳細」と同じ形式)
 // ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,適用開始日,適用終了日,
-//           数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行
+//           数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行,開封後有効日数
 router.get('/products-combined/export', async (req, res) => {
   const fid = requireFacility(req, res); if (fid == null) return;
   try {
@@ -391,7 +393,8 @@ router.get('/products-combined/export', async (req, res) => {
               pd.quantity_unit, pd.pack_size, pd.pack_unit, pd.spec, pd.unit_price,
               pd.test_count, pd.min_quantity, pd.order_quantity, pd.jan_code,
               mk.name AS maker, s.name AS supplier,
-              CASE WHEN pd.barcode_issue_flag THEN '1' ELSE '' END AS bc
+              CASE WHEN pd.barcode_issue_flag THEN '1' ELSE '' END AS bc,
+              pd.open_life_days
          FROM products p
          JOIN product_details pd ON pd.product_id = p.id
          LEFT JOIN departments d ON d.id = p.department_id
@@ -413,6 +416,7 @@ router.get('/products-combined/export', async (req, res) => {
       { key: 'spec', label: '規格' }, { key: 'unit_price', label: '単価' }, { key: 'test_count', label: 'テスト数' },
       { key: 'min_quantity', label: '最低個数' }, { key: 'order_quantity', label: '発注個数' }, { key: 'jan_code', label: 'JANコード' },
       { key: 'maker', label: 'メーカー' }, { key: 'supplier', label: '問屋' }, { key: 'bc', label: 'バーコード発行' },
+      { key: 'open_life_days', label: '開封後有効日数' },
     ];
     await writeLog(pool, {
       userId: req.session.user && req.session.user.id,

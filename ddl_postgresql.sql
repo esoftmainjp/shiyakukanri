@@ -257,11 +257,13 @@ CREATE TABLE product_details (
     supplier_id         BIGINT      REFERENCES suppliers(id),
     barcode_issue_flag  BOOLEAN     NOT NULL DEFAULT FALSE,
     expiry_warn_days    INTEGER     NOT NULL DEFAULT 0,  -- 使用期限警告日数(0=未設定→施設設定。0超で優先)
+    open_life_days      INTEGER     NOT NULL DEFAULT 0,  -- 開封後有効日数(0=無効。使用開始日からの使用可能日数)
     note                TEXT        NOT NULL DEFAULT '',
     facility_id         BIGINT
 );
 COMMENT ON TABLE  product_details                    IS '商品詳細マスター(日付管理で1商品に複数設定)';
 COMMENT ON COLUMN product_details.expiry_warn_days   IS '使用期限警告日数(0=未設定→施設設定を使用。0超なら商品詳細を優先)';
+COMMENT ON COLUMN product_details.open_life_days      IS '開封後有効日数(0=無効。開封日=使用開始日からの使用可能日数)';
 COMMENT ON COLUMN product_details.product_id         IS '商品ID';
 COMMENT ON COLUMN product_details.apply_start_date   IS '適用開始日';
 COMMENT ON COLUMN product_details.apply_end_date     IS '適用終了日';

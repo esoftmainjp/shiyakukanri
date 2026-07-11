@@ -151,6 +151,29 @@ router.get('/expiry', async (req, res) => {
   }
 });
 
+// 開封後期限管理: 開封中(使用開始済・未終了)で、開封後有効期限が近い/超過のアイテム一覧
+// GET /api/inventory/open-life?warnDays=30
+router.get('/open-life', async (req, res) => {
+  try {
+    const { queryOpenLife } = require('../services/notify');
+    const scope = facilityScope(req);
+    let warnDays = parseInt(req.query.warnDays, 10);
+    if (Number.isNaN(warnDays)) {
+      const { rows } = await pool.query(
+        `SELECT value FROM app_settings WHERE key = 'expiry_warn_days' AND facility_id IS NOT DISTINCT FROM $1`,
+        [scope.all ? null : scope.facilityId]
+      );
+      warnDays = rows.length ? parseInt(rows[0].value, 10) : 30;
+    }
+    if (Number.isNaN(warnDays) || warnDays < 0) warnDays = 30;
+    const rows = await queryOpenLife(pool, scope.all ? null : scope.facilityId, warnDays);
+    res.json({ warnDays, rows });
+  } catch (err) {
+    console.error('開封後期限管理エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 // 在庫調整・廃棄・返品などの在庫移動履歴
 // GET /api/inventory/movements?from=&to=&productId=&type=
 //   type未指定は手動調整系(adjust/disposal/return)を表示。receipt/issue等も個別指定可。

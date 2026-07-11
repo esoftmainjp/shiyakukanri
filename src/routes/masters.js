@@ -22,7 +22,7 @@ const TYPES = {
     table: 'product_details',
     cols: ['product_id', 'apply_start_date', 'apply_end_date', 'quantity_unit', 'pack_size', 'pack_unit',
       'spec', 'unit_price', 'test_count', 'min_quantity', 'order_quantity', 'jan_code',
-      'maker_id', 'supplier_id', 'barcode_issue_flag', 'expiry_warn_days', 'note'],
+      'maker_id', 'supplier_id', 'barcode_issue_flag', 'expiry_warn_days', 'open_life_days', 'note'],
     hasActive: false,
   },
   users: { table: 'users', cols: ['user_type', 'name', 'kana', 'login_id', 'note', 'is_active'], hasActive: true },
@@ -37,7 +37,7 @@ function getType(req, res) {
 // 空欄("")の扱い: 日付列は NULL に、数値列は列を省略(DB既定/現状維持)する。
 // 文字列列の "" はそのまま(有効値)。これで空の適用終了日等でdate型エラーを防ぐ。
 const DATE_COLS = new Set(['apply_start_date', 'apply_end_date']);
-const NUM_COLS = new Set(['pack_size', 'unit_price', 'test_count', 'min_quantity', 'order_quantity', 'expiry_warn_days']);
+const NUM_COLS = new Set(['pack_size', 'unit_price', 'test_count', 'min_quantity', 'order_quantity', 'expiry_warn_days', 'open_life_days']);
 // 保存対象の [col, value] を返す。value===undefined は「この列は省略」を意味する。
 function coerceCol(col, v) {
   if (v === '') {

@@ -110,6 +110,58 @@ async function queryLowStock(db, facilityId, fallbackThreshold) {
   return rows;
 }
 
+// 開封後有効期限が近い/超過の「開封中」アイテム(施設別)。
+// 開封中 = 使用開始日あり かつ 使用終了日なし。usage_records(非バーコード)+ barcodes(バーコード)を統合。
+// 実効の開封後期限 = 使用開始日 + open_life_days(現行商品詳細。0は無効=対象外)。
+async function queryOpenLife(db, facilityId, warnDays) {
+  const params = [warnDays];
+  let fc1 = '', fc2 = '', fc3 = '';
+  if (facilityId != null) {
+    params.push(facilityId);
+    const n = '$' + params.length;
+    fc1 = ` AND pd.facility_id = ${n}`;
+    fc2 = ` AND p.facility_id = ${n}`;
+    fc3 = ` AND p.facility_id = ${n}`;
+  }
+  const { rows } = await db.query(
+    `WITH cur_pd AS (
+       SELECT DISTINCT ON (pd.product_id) pd.product_id, pd.open_life_days
+         FROM product_details pd
+        WHERE TRUE${fc1}
+        ORDER BY pd.product_id,
+                 (pd.apply_start_date <= CURRENT_DATE
+                  AND (pd.apply_end_date IS NULL OR pd.apply_end_date >= CURRENT_DATE)) DESC,
+                 pd.apply_start_date DESC
+     ),
+     opened AS (
+       SELECT ur.product_id, ur.lot_number, ur.expiry_date AS labeled_expiry, ur.use_start_date
+         FROM usage_records ur JOIN products p ON p.id = ur.product_id
+        WHERE ur.use_start_date IS NOT NULL AND ur.use_end_date IS NULL${fc2}
+       UNION ALL
+       SELECT b.product_id, rd.lot_number, rd.expiry_date AS labeled_expiry, b.use_start_date
+         FROM barcodes b JOIN products p ON p.id = b.product_id
+         LEFT JOIN receipt_details rd ON rd.id = b.receipt_detail_id
+        WHERE b.voided_flag = FALSE AND b.use_start_date IS NOT NULL AND b.use_end_date IS NULL${fc3}
+     )
+     SELECT pr.name AS product_name, sh.name AS shelf, o.lot_number,
+            to_char(o.use_start_date, 'YYYY-MM-DD') AS use_start_date,
+            to_char(o.labeled_expiry, 'YYYY-MM-DD') AS labeled_expiry,
+            cp.open_life_days,
+            to_char(o.use_start_date + cp.open_life_days, 'YYYY-MM-DD') AS open_expiry,
+            ((o.use_start_date + cp.open_life_days) - CURRENT_DATE) AS days_left,
+            CASE WHEN (o.use_start_date + cp.open_life_days) < CURRENT_DATE THEN 'expired' ELSE 'warning' END AS status
+       FROM opened o
+       JOIN cur_pd cp ON cp.product_id = o.product_id
+       JOIN products pr ON pr.id = o.product_id
+       LEFT JOIN shelves sh ON sh.id = pr.shelf_id
+      WHERE cp.open_life_days > 0
+        AND (o.use_start_date + cp.open_life_days) <= CURRENT_DATE + ($1 || ' days')::interval
+      ORDER BY open_expiry`,
+    params
+  );
+  return rows;
+}
+
 function fmtDate(d) {
   if (!d) return '';
   const s = (d instanceof Date) ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
@@ -117,7 +169,7 @@ function fmtDate(d) {
 }
 
 // メール本文(プレーンテキスト)を組み立てる。
-function buildEmail(facilityName, baseUrl, expiry, lowStock) {
+function buildEmail(facilityName, baseUrl, expiry, lowStock, openLife) {
   const lines = [];
   lines.push(`${facilityName} の在庫状況をお知らせします。`);
   lines.push('');
@@ -134,6 +186,23 @@ function buildEmail(facilityName, baseUrl, expiry, lowStock) {
         const days = Number(r.days_left);
         const state = r.status === 'expired' ? `期限切れ(${-days}日超過)` : `残${days}日`;
         lines.push(`　・${r.product_name}${loc}${lot}　期限:${fmtDate(r.expiry_date)}　${state}　在庫:${r.stock_quantity}`);
+      });
+    }
+    lines.push('');
+  }
+  if (openLife) {
+    const expired = openLife.filter((r) => r.status === 'expired');
+    const soon = openLife.filter((r) => r.status !== 'expired');
+    lines.push(`■ 開封後期限（超過 ${expired.length}件 / 接近 ${soon.length}件）`);
+    if (openLife.length === 0) {
+      lines.push('　該当なし');
+    } else {
+      openLife.forEach((r) => {
+        const loc = r.shelf ? `［${r.shelf}］` : '';
+        const lot = r.lot_number ? ` ロット:${r.lot_number}` : '';
+        const days = Number(r.days_left);
+        const state = r.status === 'expired' ? `期限切れ(${-days}日超過)` : `残${days}日`;
+        lines.push(`　・${r.product_name}${loc}${lot}　開封:${fmtDate(r.use_start_date)}→期限:${fmtDate(r.open_expiry)}（開封後${r.open_life_days}日）　${state}`);
       });
     }
     lines.push('');
@@ -187,14 +256,17 @@ async function runForFacility(db, facilityId, opts = {}) {
   if (Number.isNaN(lowThreshold) || lowThreshold < 0) lowThreshold = 0;
 
   const expiry = expiryEnabled ? await queryExpiry(db, facilityId, warnDays) : null;
+  // 開封後期限は「使用期限」通知の一部として扱う(expiryEnabled と同じON/OFF)。
+  const openLife = expiryEnabled ? await queryOpenLife(db, facilityId, warnDays) : null;
   const lowStock = lowEnabled ? await queryLowStock(db, facilityId, lowThreshold) : null;
 
   const expiryCount = expiry ? expiry.length : 0;
+  const openLifeCount = openLife ? openLife.length : 0;
   const lowCount = lowStock ? lowStock.length : 0;
-  const counts = { expiry: expiryCount, lowStock: lowCount };
+  const counts = { expiry: expiryCount, openLife: openLifeCount, lowStock: lowCount };
 
   // 送るものが無ければ送信しない(空メールを避ける)。
-  if (expiryCount === 0 && lowCount === 0) return { sent: false, reason: 'no_items', counts };
+  if (expiryCount === 0 && openLifeCount === 0 && lowCount === 0) return { sent: false, reason: 'no_items', counts };
 
   if (activeProvider() === 'none') return { sent: false, reason: 'mail_not_configured', counts };
 
@@ -203,9 +275,10 @@ async function runForFacility(db, facilityId, opts = {}) {
   if (recipients.length === 0) return { sent: false, reason: 'no_recipient', counts };
 
   const baseUrl = process.env.APP_BASE_URL || '';
-  const text = buildEmail(facility.name, baseUrl, expiry, lowStock);
+  const text = buildEmail(facility.name, baseUrl, expiry, lowStock, openLife);
   const parts = [];
   if (expiryEnabled) parts.push(`期限${expiryCount}件`);
+  if (expiryEnabled && openLifeCount > 0) parts.push(`開封後${openLifeCount}件`);
   if (lowEnabled) parts.push(`在庫僅少${lowCount}件`);
   const subject = `【試薬在庫】要確認: ${parts.join('・')}（${facility.name}）`;
 
@@ -256,4 +329,4 @@ async function runDaily(db) {
   }
 }
 
-module.exports = { runDaily, runForFacility, queryExpiry, queryLowStock, buildEmail };
+module.exports = { runDaily, runForFacility, queryExpiry, queryLowStock, queryOpenLife, buildEmail };

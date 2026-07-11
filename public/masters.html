@@ -90,7 +90,8 @@
         f('jan_code','JANコード'),
         ref('maker_id','メーカー','makers'), ref('supplier_id','問屋','suppliers'),
         chk('barcode_issue_flag','バーコード発行'),
-        f('expiry_warn_days','警告日数(0=未設定)','number'), f('note','備考'),
+        f('expiry_warn_days','警告日数(0=未設定)','number'),
+        f('open_life_days','開封後有効日数(0=無効)','number'), f('note','備考'),
       ],
     };
     function f(key, label, type='text') { return { key, label, type }; }
@@ -101,7 +102,7 @@
     const IMPORT_HINTS = {
       products: 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚',
     };
-    const COMBINED_HINT = 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行';
+    const COMBINED_HINT = 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行,開封後有効日数';
 
     // 一覧ヘッダーの日本語ラベル(全マスター共通)
     const COL_LABELS = {
@@ -112,7 +113,7 @@
       quantity_unit: '数量単位', pack_size: '梱包数', pack_unit: '梱包単位', spec: '規格',
       unit_price: '単価', test_count: 'テスト数', min_quantity: '最低個数', order_quantity: '発注個数',
       jan_code: 'JANコード', maker_id: 'メーカー', supplier_id: '問屋', barcode_issue_flag: 'バーコード発行',
-      expiry_warn_days: '警告日数',
+      expiry_warn_days: '警告日数', open_life_days: '開封後有効日数',
       user_type: 'タイプ', login_id: 'ログインID', password_updated_at: 'パスワード更新日時',
     };
     // ID列 → 参照マスター種別(名称表示に使う)

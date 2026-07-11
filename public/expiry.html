@@ -54,6 +54,24 @@
         <tbody></tbody>
       </table>
     </div>
+
+    <div class="card">
+      <h2>開封後期限管理</h2>
+      <p style="font-size:0.85rem; color:#555; margin-top:0;">
+        開封中（使用開始済・未終了）で、<strong>開封後有効期限</strong>が近い/超過のアイテムです。
+        商品詳細マスターの「開封後有効日数」を設定した商品が対象で、<strong>開封後期限＝使用開始日＋開封後有効日数</strong>で判定します（警告日数は上と同じ設定）。
+      </p>
+      <p style="font-size:0.85rem;">
+        <span class="legend expired">期限切れ</span>
+        <span class="legend warning">期限接近</span>
+      </p>
+      <table id="tblOpen">
+        <thead><tr>
+          <th>状態</th><th>商品名</th><th>棚</th><th>ロット</th><th>開封日</th><th>開封後期限</th><th>残日数</th><th>開封後日数</th><th>ラベル期限</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </main>
 
   <script src="/common.js"></script>
@@ -79,6 +97,7 @@
     }
 
     async function load() {
+      loadOpenLife();
       const wd = document.getElementById('warnDays').value;
       const { data } = await api('/api/inventory/expiry?warnDays=' + encodeURIComponent(wd));
       const tbody = document.querySelector('#tbl tbody');
@@ -99,6 +118,28 @@
           `<td style="text-align:right;">${r.warn_days != null ? r.warn_days + '日' : ''}</td>` +
           `<td style="text-align:right;">${r.stock_quantity}</td><td style="text-align:right;">${r.product_total}</td>` +
           `<td class="nowrap">${planBadges(r)}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // 開封後期限の一覧を読み込む
+    async function loadOpenLife() {
+      const wd = document.getElementById('warnDays').value;
+      const { data } = await api('/api/inventory/open-life?warnDays=' + encodeURIComponent(wd));
+      const tbody = document.querySelector('#tblOpen tbody');
+      tbody.innerHTML = '';
+      const rows = (data && data.rows) || [];
+      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="9">該当する開封中アイテムはありません。</td></tr>'; return; }
+      rows.forEach((r) => {
+        const tr = document.createElement('tr');
+        tr.className = r.status;
+        const label = r.status === 'expired' ? '期限切れ' : '期限接近';
+        const days = r.days_left < 0 ? `${-r.days_left}日超過` : `残${r.days_left}日`;
+        tr.innerHTML =
+          `<td>${label}</td><td>${esc(r.product_name)}</td><td>${esc(r.shelf || '')}</td>` +
+          `<td>${esc(r.lot_number) || '(なし)'}</td><td>${r.use_start_date || ''}</td>` +
+          `<td>${r.open_expiry || ''}</td><td>${days}</td>` +
+          `<td style="text-align:right;">${r.open_life_days}日</td><td>${r.labeled_expiry || ''}</td>`;
         tbody.appendChild(tr);
       });
     }
