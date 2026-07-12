@@ -16,6 +16,13 @@
     .num { text-align: right; }
     .toolbar { max-width: 760px; margin: 12px auto; text-align: right; }
     .note-line { margin-top: 12px; font-size: 0.9rem; }
+    /* 試薬管理台帳: 1商品1行。列幅固定・小さめフォント・はみ出しは切り取り(…) */
+    .sheet.ledger { max-width: 1100px; }
+    .sheet.ledger table { table-layout: fixed; width: 100%; }
+    .sheet.ledger th, .sheet.ledger td {
+      font-size: 0.62rem; padding: 2px 3px; line-height: 1.25;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
     @media print {
       .toolbar, header { display: none !important; }
       body { background: #fff; }
@@ -23,6 +30,8 @@
       @page { size: A4 portrait; margin: 14mm; }
     }
   </style>
+  <!-- 台帳など横長帳票のときだけ用紙を横向きにする(renderで設定) -->
+  <style id="pageOrient"></style>
 </head>
 <body>
   <header></header>
@@ -135,7 +144,13 @@
       else if (type === 'monthly_report') html += monthlyReportBody(data);
       else if (type === 'billing_detail') html += billingDetailBody(data);
       else html += orderBody(data);
-      document.getElementById('sheet').innerHTML = html;
+      const sheet = document.getElementById('sheet');
+      // 試薬管理台帳は列が多いため、横向き・固定列幅・小フォントで1商品1行に収める。
+      if (type === 'ledger') {
+        sheet.classList.add('ledger');
+        document.getElementById('pageOrient').textContent = '@media print { @page { size: A4 landscape; margin: 10mm; } }';
+      }
+      sheet.innerHTML = html;
     }
 
     function metaRow(pairs) {
@@ -248,7 +263,11 @@
       const to = q.get('to') || '';
       let h = metaRow([['期間', `${from || '—'} ～ ${to || '—'}`]]);
       h += `<div style="font-size:0.8rem; color:#333; margin:2px 0 6px;">ISO15189／医療法（体外診断用医薬品の管理）対応　試薬管理台帳</div>`;
-      h += `<table><thead><tr><th>入庫日</th><th>商品名</th><th>メーカー</th><th>販売元</th><th>保管場所</th>` +
+      h += `<table><colgroup>` +
+        `<col style="width:7%"><col style="width:14%"><col style="width:11%"><col style="width:11%"><col style="width:7%">` +
+        `<col style="width:9%"><col style="width:6%"><col style="width:7%"><col style="width:7%"><col style="width:7%">` +
+        `<col style="width:4%"><col style="width:6%"><col style="width:4%"></colgroup>` +
+        `<thead><tr><th>入庫日</th><th>商品名</th><th>メーカー</th><th>販売元</th><th>保管場所</th>` +
         `<th>ロット</th><th>内容物コード</th><th>有効期限</th><th>使用開始日</th><th>使用終了日</th><th>状態</th>` +
         `<th>記録者</th><th>確認印</th></tr></thead><tbody>`;
       const rows = data.rows || [];
