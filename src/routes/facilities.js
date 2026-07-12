@@ -169,9 +169,13 @@ router.put('/:id', async (req, res) => {
   if (name !== undefined) { params.push(String(name)); sets.push(`name = $${params.length}`); }
   if (kana !== undefined) { params.push(String(kana)); sets.push(`kana = $${params.length}`); }
   if (isActive !== undefined) { params.push(!!isActive); sets.push(`is_active = $${params.length}`); }
+  let beforePlan;
   if (planCode !== undefined) {
     const chk = await pool.query('SELECT 1 FROM plans WHERE code = $1', [planCode]);
     if (chk.rowCount === 0) return res.status(400).json({ error: '不明なプランです' });
+    // 変更前プランを記録用に取得
+    const cur = await pool.query('SELECT plan_code FROM facilities WHERE id = $1', [req.params.id]);
+    beforePlan = cur.rowCount ? cur.rows[0].plan_code : null;
     params.push(String(planCode)); sets.push(`plan_code = $${params.length}`);
   }
   if (sets.length === 0) return res.status(400).json({ error: '変更項目がありません' });
@@ -183,6 +187,13 @@ router.put('/:id', async (req, res) => {
       userId: req.session.user.id, targetTable: 'facilities', targetId: req.params.id, operationType: '更新',
       after: { name, kana, is_active: isActive },
     });
+    // プラン変更は専用ログに残す(全体管理者による変更)
+    if (planCode !== undefined && String(planCode) !== String(beforePlan)) {
+      await writeLog(pool, {
+        userId: req.session.user.id, targetTable: 'facilities', targetId: req.params.id, operationType: 'プラン変更',
+        before: { plan: beforePlan }, after: { plan: String(planCode), by: '全体管理者' }, facilityId: req.params.id,
+      });
+    }
     res.json({ ok: true });
   } catch (err) {
     console.error('施設更新エラー:', err.message);

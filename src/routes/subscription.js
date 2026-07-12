@@ -79,7 +79,7 @@ router.post('/change', async (req, res) => {
       await pool.query(
         `UPDATE facilities SET plan_code = 'free', billing_status = 'none', stripe_subscription_id = NULL WHERE id = $1`,
         [facilityId]);
-      await writeLog(pool, { userId: req.session.user.id, targetTable: 'facilities', targetId: facilityId, operationType: '更新', before: { plan: facility.plan_code }, after: { plan: 'free', action: 'downgrade_free' }, facilityId });
+      await writeLog(pool, { userId: req.session.user.id, targetTable: 'facilities', targetId: facilityId, operationType: 'プラン変更', before: { plan: facility.plan_code }, after: { plan: 'free', action: 'downgrade_free', by: '施設管理者' }, facilityId });
       return res.json({ ok: true, mode: 'downgraded' });
     }
 
@@ -90,7 +90,7 @@ router.post('/change', async (req, res) => {
       }
       // 楽観反映(実プロバイダ構成時もWebフックで再同期される)
       await pool.query(`UPDATE facilities SET plan_code = $2, billing_status = 'active' WHERE id = $1`, [facilityId, target.code]);
-      await writeLog(pool, { userId: req.session.user.id, targetTable: 'facilities', targetId: facilityId, operationType: '更新', before: { plan: facility.plan_code }, after: { plan: target.code, action: 'update_subscription' }, facilityId });
+      await writeLog(pool, { userId: req.session.user.id, targetTable: 'facilities', targetId: facilityId, operationType: 'プラン変更', before: { plan: facility.plan_code }, after: { plan: target.code, action: 'update_subscription', by: '施設管理者' }, facilityId });
       return res.json({ ok: true, mode: 'updated' });
     }
 
@@ -129,13 +129,15 @@ router.post('/dev-apply', async (req, res) => {
   try {
     const pl = await pool.query('SELECT code, price FROM plans WHERE code = $1', [planCode]);
     if (pl.rowCount === 0 || Number(pl.rows[0].price) === 0) return res.status(400).json({ error: 'プランが不正です' });
+    const cur = await pool.query('SELECT plan_code FROM facilities WHERE id = $1', [facilityId]);
+    const beforePlan = cur.rowCount ? cur.rows[0].plan_code : null;
     await pool.query(
       `UPDATE facilities SET plan_code = $2, billing_status = 'active',
               stripe_customer_id = COALESCE(stripe_customer_id, $3),
               stripe_subscription_id = COALESCE(stripe_subscription_id, $4)
         WHERE id = $1`,
       [facilityId, planCode, 'sim_cus_fac_' + facilityId, 'sim_sub_fac_' + facilityId]);
-    await writeLog(pool, { userId: req.session.user.id, targetTable: 'facilities', targetId: facilityId, operationType: '更新', after: { plan: planCode, action: 'mock_upgrade' }, facilityId });
+    await writeLog(pool, { userId: req.session.user.id, targetTable: 'facilities', targetId: facilityId, operationType: 'プラン変更', before: { plan: beforePlan }, after: { plan: planCode, action: 'mock_upgrade', by: '施設管理者' }, facilityId });
     res.json({ ok: true, mode: 'upgraded' });
   } catch (err) {
     res.status(500).json({ error: 'サーバーエラー' });

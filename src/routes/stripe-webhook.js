@@ -33,11 +33,12 @@ async function syncSubscriptionToFacility(sub, statusOverride) {
 
   // 対象施設: subscription_id か customer_id で特定
   const f = await pool.query(
-    `SELECT id FROM facilities WHERE stripe_subscription_id = $1 OR stripe_customer_id = $2 LIMIT 1`,
+    `SELECT id, plan_code FROM facilities WHERE stripe_subscription_id = $1 OR stripe_customer_id = $2 LIMIT 1`,
     [subId, customerId]
   );
   if (f.rowCount === 0) return null;
   const facilityId = f.rows[0].id;
+  const beforePlan = f.rows[0].plan_code;
 
   const sets = ['stripe_subscription_id = $2', 'stripe_customer_id = COALESCE($3, stripe_customer_id)', 'billing_status = $4', 'current_period_end = $5'];
   const params = [facilityId, subId, customerId, status, periodEnd];
@@ -58,6 +59,11 @@ async function syncSubscriptionToFacility(sub, statusOverride) {
   await pool.query(`UPDATE facilities SET ${sets.join(', ')} WHERE id = $1`, params);
   await writeLog(pool, { userId: null, targetTable: 'facilities', targetId: facilityId, operationType: '更新',
     after: { billing_status: status, plan: planCode || undefined, subscription: subId }, facilityId });
+  // プランが実際に変わった場合は専用ログ(決済側の自動同期による変更)
+  if (planCode && status !== 'canceled' && String(planCode) !== String(beforePlan)) {
+    await writeLog(pool, { userId: null, targetTable: 'facilities', targetId: facilityId, operationType: 'プラン変更',
+      before: { plan: beforePlan }, after: { plan: planCode, by: '決済同期(Stripe)' }, facilityId });
+  }
   return facilityId;
 }
 
@@ -84,10 +90,17 @@ async function handleWebhook(req, res) {
           }, { req });
         } else if (md.facilityId) {
           // 既存施設の無料→有料アップグレード → 施設にサブスクを紐付け
+          const fid = Number(md.facilityId);
+          const before = await pool.query('SELECT plan_code FROM facilities WHERE id = $1', [fid]);
+          const beforePlan = before.rowCount ? before.rows[0].plan_code : null;
           const sets = ['stripe_customer_id = $2', 'stripe_subscription_id = $3', "billing_status = 'active'"];
-          const params = [Number(md.facilityId), s.customer, s.subscription];
+          const params = [fid, s.customer, s.subscription];
           if (md.planCode) { params.push(md.planCode); sets.push(`plan_code = $${params.length}`); }
           await pool.query(`UPDATE facilities SET ${sets.join(', ')} WHERE id = $1`, params);
+          if (md.planCode && String(md.planCode) !== String(beforePlan)) {
+            await writeLog(pool, { userId: null, targetTable: 'facilities', targetId: fid, operationType: 'プラン変更',
+              before: { plan: beforePlan }, after: { plan: md.planCode, by: '決済完了(Stripe)' }, facilityId: fid });
+          }
         }
         break;
       }
