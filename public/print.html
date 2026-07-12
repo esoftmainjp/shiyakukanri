@@ -247,19 +247,24 @@
       const from = q.get('from') || '';
       const to = q.get('to') || '';
       let h = metaRow([['期間', `${from || '—'} ～ ${to || '—'}`]]);
-      h += `<table><thead><tr><th>入庫日</th><th>商品名</th><th>ロット</th><th>内容物コード</th>` +
-        `<th>有効期限</th><th>使用開始日</th><th>使用終了日</th></tr></thead><tbody>`;
+      h += `<div style="font-size:0.8rem; color:#333; margin:2px 0 6px;">ISO15189／医療法（体外診断用医薬品の管理）対応　試薬管理台帳</div>`;
+      h += `<table><thead><tr><th>入庫日</th><th>商品名</th><th>メーカー</th><th>販売元</th><th>保管場所</th>` +
+        `<th>ロット</th><th>内容物コード</th><th>有効期限</th><th>使用開始日</th><th>使用終了日</th><th>状態</th>` +
+        `<th>記録者</th><th>確認印</th></tr></thead><tbody>`;
       const rows = data.rows || [];
       if (rows.length === 0) {
-        h += `<tr><td colspan="7" style="text-align:center;">該当データがありません。</td></tr>`;
+        h += `<tr><td colspan="13" style="text-align:center;">該当データがありません。</td></tr>`;
       } else {
         rows.forEach((r) => {
-          h += `<tr><td>${r.receipt_date || ''}</td><td>${esc(r.product_name)}</td><td>${esc(r.lot_number) || '(なし)'}</td>` +
+          h += `<tr><td>${r.receipt_date || ''}</td><td>${esc(r.product_name)}</td>` +
+            `<td>${esc(r.maker) || ''}</td><td>${esc(r.supplier) || ''}</td><td>${esc(r.shelf) || ''}</td>` +
+            `<td>${esc(r.lot_number) || '(なし)'}</td>` +
             `<td>${esc(r.content_code)}</td><td>${r.expiry_date || ''}</td><td>${r.use_start_date || ''}</td>` +
-            `<td>${r.use_end_date || ''}</td></tr>`;
+            `<td>${r.use_end_date || ''}</td><td>${esc(r.status) || ''}</td><td></td><td></td></tr>`;
         });
       }
       h += `</tbody></table>`;
+      h += `<div style="font-size:0.78rem; color:#444; margin-top:8px;">作成者: ＿＿＿＿＿＿＿＿　　管理責任者(確認): ＿＿＿＿＿＿＿＿　　作成日: ＿＿＿＿年＿＿月＿＿日</div>`;
       return h;
     }
 

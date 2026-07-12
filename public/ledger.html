@@ -12,6 +12,7 @@
     <div class="card">
       <h2>試薬管理台帳</h2>
       <p>試薬管理対象商品で、入庫日～出庫日（使用開始日）が指定期間と重なるものを出力します。</p>
+      <p style="font-size:0.83rem; color:#556;">ISO15189／医療法（体外診断用医薬品の管理）に対応。ロットごとに受入→開封（使用開始）→使用終了の履歴と、メーカー・販売元・保管場所・有効期限・状態を記録します。印刷では施設名・記録者／確認印欄付きの帳票として出力できます。</p>
       <div class="row">
         <div><label>期間(開始)</label><input type="date" id="from" /></div>
         <div><label>期間(終了)</label><input type="date" id="to" /></div>
@@ -20,13 +21,16 @@
         <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="printLedger()">印刷</button></div>
       </div>
       <p class="msg" id="msg"></p>
+      <div style="overflow-x:auto;">
       <table id="tbl">
         <thead><tr>
-          <th>入庫日</th><th>商品名</th><th>ロット</th><th>内容物コード</th>
-          <th>有効期限</th><th>使用開始日</th><th>使用終了日</th>
+          <th>入庫日</th><th>商品名</th><th>メーカー</th><th>販売元</th><th>保管場所</th>
+          <th>ロット</th><th>内容物コード</th>
+          <th>有効期限</th><th>使用開始日</th><th>使用終了日</th><th>状態</th>
         </tr></thead>
         <tbody></tbody>
       </table>
+      </div>
     </div>
   </main>
 
@@ -54,13 +58,15 @@
       const tbody = document.querySelector('#tbl tbody');
       tbody.innerHTML = '';
       const rows = data.rows || [];
-      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="7">該当データがありません。</td></tr>'; return; }
+      if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="11">該当データがありません。</td></tr>'; return; }
       rows.forEach((r) => {
         const tr = document.createElement('tr');
         tr.innerHTML =
-          `<td>${r.receipt_date || ''}</td><td>${esc(r.product_name)}</td><td>${esc(r.lot_number || '(なし)')}</td>` +
+          `<td>${r.receipt_date || ''}</td><td>${esc(r.product_name)}</td>` +
+          `<td>${esc(r.maker || '')}</td><td>${esc(r.supplier || '')}</td><td>${esc(r.shelf || '')}</td>` +
+          `<td>${esc(r.lot_number || '(なし)')}</td>` +
           `<td>${esc(r.content_code)}</td><td>${r.expiry_date || ''}</td><td>${r.use_start_date || ''}</td>` +
-          `<td>${r.use_end_date || ''}</td>`;
+          `<td>${r.use_end_date || ''}</td><td>${esc(r.status || '')}</td>`;
         tbody.appendChild(tr);
       });
     }
