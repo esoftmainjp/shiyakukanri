@@ -11,12 +11,16 @@ const router = express.Router();
 // テーブル名の和名(表示用)。未登録は英語名のまま。
 const TABLE_LABELS = {
   products: '商品', product_details: '商品詳細', suppliers: '問屋', makers: 'メーカー',
-  departments: '部門', categories: '分類', users: 'ユーザー', app_settings: '設定',
+  departments: '部門', categories: '分類', shelves: '棚', users: 'ユーザー', app_settings: '設定',
   operation_logs: '操作ログ', facilities: '施設', barcodes: 'バーコード',
   product_stocks: '在庫', stock_movements: '在庫変動', usage_records: '使用記録',
   receipts: '入庫', receipt_details: '入庫明細', issues: '出庫', issue_details: '出庫明細',
   orders: '発注', order_details: '発注明細', order_plans: '発注予定', receipt_plans: '入庫予定',
-  schema_migrations: 'マイグレーション履歴',
+  stocktakes: '棚卸', stocktake_lines: '棚卸明細', stocktake_scans: '棚卸スキャン',
+  plans: 'プラン', supplier_bills: '支払書', supplier_bill_lines: '支払明細',
+  signup_requests: '利用登録申請', password_setup_tokens: 'パスワード設定トークン',
+  notification_state: '通知送信状態', system_settings: 'システム設定',
+  schema_migrations: 'マイグレーション履歴', _automigrate_test: 'マイグレーション検証(テスト)',
 };
 
 // 各テーブルの「施設帰属」の求め方(施設別レコード数の集計用)。
