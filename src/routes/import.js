@@ -22,6 +22,9 @@ function truthy(v) {
   return s === '1' || s === 'true' || s === '○' || s === 'yes' || s === 'y' || s === 'はい';
 }
 
+// 本日(日本時間)の YYYY-MM-DD。適用開始日が空のときの既定に使う(NOT NULL回避)。
+function todayJst() { return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' }); }
+
 // メーカーJANコードの桁数(商品JANの先頭何桁をメーカーコードとするか)
 const MAKER_CODE_LEN = 7;
 
@@ -178,7 +181,7 @@ router.post('/product-details', async (req, res) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
         [
           p.rows[0].id,
-          r['適用開始日'] || null,
+          r['適用開始日'] || todayJst(),
           r['適用終了日'] || null,
           r['数量単位'] || '',
           Number(r['梱包数']) || 1,
@@ -304,7 +307,7 @@ router.post('/products-combined', async (req, res) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
         [
           productId,
-          r['適用開始日'] || null,
+          r['適用開始日'] || todayJst(),
           r['適用終了日'] || null,
           r['数量単位'] || '',
           Number(r['梱包数']) || 1,

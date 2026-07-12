@@ -36,6 +36,9 @@ function getType(req, res) {
 
 // 空欄("")の扱い: 日付列は NULL に、数値列は列を省略(DB既定/現状維持)する。
 // 文字列列の "" はそのまま(有効値)。これで空の適用終了日等でdate型エラーを防ぐ。
+// 本日(日本時間)の YYYY-MM-DD。適用開始日など日付の既定値に使う。
+function todayJst() { return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' }); }
+
 const DATE_COLS = new Set(['apply_start_date', 'apply_end_date']);
 const NUM_COLS = new Set(['pack_size', 'unit_price', 'test_count', 'min_quantity', 'order_quantity', 'expiry_warn_days', 'open_life_days']);
 // 保存対象の [col, value] を返す。value===undefined は「この列は省略」を意味する。
@@ -127,6 +130,10 @@ router.post('/:type', async (req, res) => {
     if (t.table === 'products' && (body.shelf_id == null || String(body.shelf_id).trim() === '')) {
       return res.status(400).json({ error: '棚（保管場所）は必須です。棚マスターで棚を登録し、商品に棚を設定してください。' });
     }
+    // 商品詳細の適用開始日は必須(NOT NULL)。空欄なら本日を既定にする。
+    if (t.table === 'product_details' && (body.apply_start_date == null || String(body.apply_start_date).trim() === '')) {
+      body.apply_start_date = todayJst();
+    }
     // プラン上限チェック(ユーザー/商品の新規登録)
     if (t.table === 'users' || t.table === 'products') {
       const plan = await getFacilityPlan(pool, scope.facilityId);
@@ -202,6 +209,10 @@ router.put('/:type/:id', async (req, res) => {
     // 商品の棚は必須(送られてきた場合は空にできない)。
     if (t.table === 'products' && body.shelf_id !== undefined && (body.shelf_id == null || String(body.shelf_id).trim() === '')) {
       return res.status(400).json({ error: '棚（保管場所）は必須です。棚を選択してください。' });
+    }
+    // 商品詳細の適用開始日は必須。空で更新しようとした場合は変更しない(NOT NULL維持)。
+    if (t.table === 'product_details' && body.apply_start_date !== undefined && String(body.apply_start_date).trim() === '') {
+      delete body.apply_start_date;
     }
     if (t.table === 'users' && body.user_type !== undefined && !ASSIGNABLE_USER_TYPES.includes(String(body.user_type))) {
       return res.status(400).json({ error: 'ユーザー種別が不正です（管理者・一般・問屋のみ設定できます）' });

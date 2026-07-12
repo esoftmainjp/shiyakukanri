@@ -192,6 +192,11 @@
         div.innerHTML = inner;
         area.appendChild(div);
       }
+      // 商品詳細は適用開始日を本日で既定表示(必須のため。未入力時の登録エラー防止)
+      if (t === 'product-details') {
+        const el = document.getElementById('fld_apply_start_date');
+        if (el && !el.value) el.value = localDateStr();
+      }
     }
 
     function resetForm() {
@@ -202,6 +207,11 @@
         if (!el) return;
         if (def.type === 'checkbox') el.checked = false; else el.value = '';
       });
+      // 商品詳細の適用開始日は本日を既定表示(必須)
+      if (curType() === 'product-details') {
+        const el = document.getElementById('fld_apply_start_date');
+        if (el) el.value = localDateStr();
+      }
       setMsg(document.getElementById('formMsg'), '', '');
     }
 
