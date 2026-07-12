@@ -120,7 +120,7 @@ header .facility { font-size: 0.9rem; color: #375; margin-right: 6px; }
 .navmenu a:hover, .navmenu .navitem-btn:hover { background: var(--th-bg); }
 .navmenu a.active { background: var(--th-bg); font-weight: 700; color: #2f4a68; }
 
-main { max-width: 980px; margin: 24px auto; padding: 0 18px; }
+main { max-width: var(--content-max, 980px); margin: 24px auto; padding: 0 18px; }
 
 /* ===== カード ===== */
 .card {

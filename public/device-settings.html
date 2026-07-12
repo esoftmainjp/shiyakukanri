@@ -34,6 +34,21 @@
       </div>
 
       <div class="card">
+        <h2>画面の幅</h2>
+        <div>
+          <label>操作画面の最大幅</label>
+          <select id="content_width" onchange="applyContentWidth(this.value)" style="min-width:260px; display:block;">
+            <option value="980px">標準（980px）</option>
+            <option value="1200px">広め（1200px）</option>
+            <option value="1400px">さらに広め（1400px）</option>
+            <option value="1600px">最大（1600px）</option>
+            <option value="100%">画面いっぱい（可変）</option>
+          </select>
+        </div>
+        <p style="color:#6b7280; font-size:0.83rem; margin-top:10px;">選ぶと即座にこの端末の全画面に反映されます。初期値は「標準（980px）」です。一覧や表を広く見たいときに広げてください。</p>
+      </div>
+
+      <div class="card">
         <h2>バーコードラベル（この端末の既定）</h2>
         <div class="row">
           <div style="flex:0;"><label>ラベル幅(mm)</label><input type="number" id="label_width_mm" min="10" max="200" style="width:110px;" /></div>
@@ -72,12 +87,16 @@
       let theme = 'blue';
       try { theme = localStorage.getItem('appTheme') || 'blue'; } catch (e) { /* ignore */ }
       document.getElementById('theme').value = theme;
+      // 画面の幅(端末別)。現在値を選択状態に。
+      document.getElementById('content_width').value = getDeviceSetting('content_width', '980px');
       // ラベル設定(端末別)
       LABEL_KEYS.forEach((k) => { document.getElementById(k).value = getDeviceSetting(k); });
     }
 
     function save() {
       applyTheme(document.getElementById('theme').value); // テーマは端末に保存
+      const cw = document.getElementById('content_width').value;
+      setDeviceSetting('content_width', cw); applyContentWidth(cw); // 画面の幅は端末に保存
       LABEL_KEYS.forEach((k) => { setDeviceSetting(k, document.getElementById(k).value); });
       setMsg(document.getElementById('msg'), 'この端末に保存しました', 'ok');
     }
@@ -85,6 +104,9 @@
     function resetDefaults() {
       applyTheme('blue');
       document.getElementById('theme').value = 'blue';
+      try { localStorage.removeItem('dev_content_width'); } catch (e) { /* ignore */ }
+      document.getElementById('content_width').value = '980px';
+      applyContentWidth('980px');
       LABEL_KEYS.forEach((k) => {
         try { localStorage.removeItem('dev_' + k); } catch (e) { /* ignore */ }
         document.getElementById(k).value = getDeviceSetting(k);

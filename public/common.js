@@ -13,6 +13,21 @@ function applyTheme(name) {
     if (t) document.documentElement.setAttribute('data-theme', t);
   } catch (e) { /* ignore */ }
 })();
+// ===== 操作画面の最大幅(端末別。CSS変数 --content-max で全ページに適用) =====
+// 値は '980px'(標準) / '1200px' / '1400px' / '1600px' / '100%'(画面いっぱい) 等のCSS長さ。
+// 未設定なら app.css の既定(980px)が使われる。
+function applyContentWidth(v) {
+  let val = v;
+  if (!val) { try { val = localStorage.getItem('dev_content_width'); } catch (e) { /* ignore */ } }
+  if (!val) val = '980px';
+  document.documentElement.style.setProperty('--content-max', val);
+}
+(function () {
+  try {
+    const v = localStorage.getItem('dev_content_width');
+    if (v) document.documentElement.style.setProperty('--content-max', v);
+  } catch (e) { /* ignore */ }
+})();
 // ===== 端末別設定(この端末のブラウザ=localStorageに保存) =====
 // テーマ(画面カラー)とバーコードラベルの既定サイズは端末ごとに保持する。
 // 全ユーザーが「端末設定」画面から変更できる(施設共通設定とは別)。
