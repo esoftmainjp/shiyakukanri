@@ -215,6 +215,21 @@ app.post('/api/contact', contactCors, contactLimiter, async (req, res) => {
 // ------------------------------------------------------------
 // ログイン / ログアウト / 現在ユーザー
 // ------------------------------------------------------------
+// ログイン失敗を操作ログに記録する。パスワードは記録しない。
+//   reason: no_user(該当なし) / wrong_password / locked(ロック中) / facility_inactive
+async function logLoginFailure(req, user, reason, loginId) {
+  try {
+    const ip = req.ip || (String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || '';
+    await writeLog(pool, {
+      userId: user ? user.id : null,
+      facilityId: user ? user.facility_id : null,
+      targetTable: 'users', targetId: user ? user.id : null,
+      operationType: 'ログイン失敗',
+      after: { login_id: String(loginId || '').slice(0, 255), reason, ip, ua: String(req.headers['user-agent'] || '').slice(0, 200) },
+    });
+  } catch (e) { console.error('ログイン失敗ログ記録エラー:', e.message); }
+}
+
 app.post('/api/login', loginLimiter, async (req, res) => {
   const { loginId, password } = req.body || {};
   if (!loginId || !password) {
@@ -233,10 +248,13 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     // アカウントロック中はパスワード照合前に拒否する
     if (user && user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
       const mins = Math.max(1, Math.ceil((new Date(user.locked_until).getTime() - Date.now()) / 60000));
+      await logLoginFailure(req, user, 'locked', loginId);
       return res.status(403).json({ error: `アカウントが一時的にロックされています。約${mins}分後に再度お試しください。` });
     }
 
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+      // 失敗を記録(存在しないIDも記録。パスワードは記録しない)
+      await logLoginFailure(req, user, user ? 'wrong_password' : 'no_user', loginId);
       // 連続失敗を加算(存在するユーザーのみ)。しきい値でアカウントをロック。
       if (user) {
         const nextCount = (user.failed_login_count || 0) + 1;
@@ -262,6 +280,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     if (user.facility_id != null) {
       const f = await pool.query('SELECT is_active FROM facilities WHERE id = $1', [user.facility_id]);
       if (f.rowCount === 0 || f.rows[0].is_active === false) {
+        await logLoginFailure(req, user, 'facility_inactive', loginId);
         return res.status(403).json({ error: 'この施設は現在利用できません（無効化されています）。管理者にお問い合わせください。' });
       }
     }
