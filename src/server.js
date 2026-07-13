@@ -11,6 +11,7 @@ const rateLimit = require('express-rate-limit');
 const { pool } = require('./db');
 const { writeLog } = require('./services/log');
 const { sendMail, activeProvider: activeMailProvider } = require('./services/mail');
+const { getSystemSetting } = require('./services/system-settings');
 const { getSetting } = require('./routes/settings');
 const { facilityScope } = require('./services/facility');
 const { als } = require('./services/context');
@@ -230,6 +231,43 @@ async function logLoginFailure(req, user, reason, loginId) {
   } catch (e) { console.error('ログイン失敗ログ記録エラー:', e.message); }
 }
 
+// ロックのしきい値・時間はシステム設定(全体管理者が変更可)。未設定は環境変数/既定。
+async function loginMaxFailed() {
+  const v = parseInt(await getSystemSetting('login_max_failed', String(LOGIN_MAX_FAILED)), 10);
+  return (Number.isFinite(v) && v >= 1) ? v : LOGIN_MAX_FAILED;
+}
+async function loginLockMinutes() {
+  const v = parseInt(await getSystemSetting('login_lock_minutes', String(LOGIN_LOCK_MINUTES)), 10);
+  return (Number.isFinite(v) && v >= 1) ? v : LOGIN_LOCK_MINUTES;
+}
+// アカウントロック発生時、全体管理者(superadmin)へ注意喚起メール(不正アクセスの疑い)。
+// 非同期(fire-and-forget)。既定はON。notify_lockout_enabled='0'で無効化。
+function notifyLockout(req, user, loginId, failed, lockMin) {
+  (async () => {
+    try {
+      if ((await getSystemSetting('notify_lockout_enabled', '1')) !== '1') return;
+      if (activeMailProvider() === 'none') return;
+      const admins = await pool.query(`SELECT login_id FROM users WHERE user_type = 'superadmin' AND is_active = TRUE`);
+      const to = admins.rows.map((r) => r.login_id).filter((x) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x));
+      if (!to.length) return;
+      const ip = req.ip || (String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || '-';
+      const ua = String(req.headers['user-agent'] || '-').slice(0, 200);
+      const when = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+      const base = process.env.APP_BASE_URL || '';
+      const subject = '【試薬在庫】アカウントロック通知（不正アクセスの疑い）';
+      const text =
+        `ログインの連続失敗により、アカウントを一時ロックしました。\n\n` +
+        `ログインID: ${loginId}\n` +
+        `施設ID: ${user.facility_id != null ? user.facility_id : '(なし/全体管理者)'}\n` +
+        `連続失敗回数: ${failed}\nロック時間: ${lockMin}分\n` +
+        `発生IP: ${ip}\n端末(UA): ${ua}\n日時: ${when}\n\n` +
+        `心当たりが無い場合、不正アクセスの可能性があります。操作ログ（ログイン失敗／アカウントロック）もご確認ください。` +
+        (base ? `\n\n${base}` : '');
+      for (const t of to) { try { await sendMail({ to: t, subject, text }); } catch (e) { /* 個別失敗は無視 */ } }
+    } catch (e) { console.error('ロック通知メールエラー:', e.message); }
+  })();
+}
+
 app.post('/api/login', loginLimiter, async (req, res) => {
   const { loginId, password } = req.body || {};
   if (!loginId || !password) {
@@ -257,14 +295,17 @@ app.post('/api/login', loginLimiter, async (req, res) => {
       await logLoginFailure(req, user, user ? 'wrong_password' : 'no_user', loginId);
       // 連続失敗を加算(存在するユーザーのみ)。しきい値でアカウントをロック。
       if (user) {
+        const maxFailed = await loginMaxFailed();
+        const lockMin = await loginLockMinutes();
         const nextCount = (user.failed_login_count || 0) + 1;
-        if (nextCount >= LOGIN_MAX_FAILED) {
+        if (nextCount >= maxFailed) {
           await pool.query(
             `UPDATE users SET failed_login_count = 0, locked_until = now() + ($2 || ' minutes')::interval WHERE id = $1`,
-            [user.id, String(LOGIN_LOCK_MINUTES)]);
+            [user.id, String(lockMin)]);
           await writeLog(pool, { userId: user.id, facilityId: user.facility_id, targetTable: 'users', targetId: user.id,
-            operationType: 'アカウントロック', after: { reason: 'ログイン連続失敗', failed: nextCount, lock_minutes: LOGIN_LOCK_MINUTES } });
-          return res.status(403).json({ error: `ログインに${LOGIN_MAX_FAILED}回失敗したため、アカウントを${LOGIN_LOCK_MINUTES}分間ロックしました。しばらくしてから再度お試しください。` });
+            operationType: 'アカウントロック', after: { reason: 'ログイン連続失敗', failed: nextCount, lock_minutes: lockMin } });
+          notifyLockout(req, user, loginId, nextCount, lockMin); // 全体管理者へメール通知(非同期)
+          return res.status(403).json({ error: `ログインに${maxFailed}回失敗したため、アカウントを${lockMin}分間ロックしました。しばらくしてから再度お試しください。` });
         }
         await pool.query(`UPDATE users SET failed_login_count = $2 WHERE id = $1`, [user.id, nextCount]);
       }
@@ -488,6 +529,7 @@ app.use('/api/reports',   requireLogin, requireRole('admin', 'general', 'superad
 app.use('/api/billing',   requireLogin, requireRole('admin', 'superadmin'), requireFeature('feat_billing'), require('./routes/billing'));
 app.use('/api/subscription', requireLogin, requireRole('admin', 'superadmin'), require('./routes/subscription'));
 app.use('/api/payment-config', requireLogin, requireRole('superadmin'), require('./routes/payment-config'));
+app.use('/api/security-config', requireLogin, requireRole('superadmin'), require('./routes/security-config'));
 app.use('/api/facilities', requireLogin, requireRole('superadmin'), require('./routes/facilities'));
 app.use('/api/db-usage',  requireLogin, requireRole('superadmin'), require('./routes/db-usage'));
 app.use('/api/masters',   requireLogin, requireRole('admin', 'superadmin'), require('./routes/masters'));

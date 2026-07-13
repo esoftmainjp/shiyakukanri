@@ -191,6 +191,7 @@ function renderHeader(user, activeKey) {
       ['facilities', '/facilities.html', '施設管理'],
       ['dbusage', '/db-usage.html', 'DB使用量'],
       ['payments', '/payment-config.html', '決済設定'],
+      ['security', '/security-config.html', 'セキュリティ設定'],
     ]));
     // 施設を選択中は、その施設の管理者と同等のメニューを表示
     if (facSelected) operationalMenu(true).forEach((m) => main.push(m));
