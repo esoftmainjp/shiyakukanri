@@ -157,6 +157,8 @@ CREATE TABLE users (
     password_hash   VARCHAR(255) NOT NULL,
     password_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     must_change_password BOOLEAN    NOT NULL DEFAULT FALSE,
+    failed_login_count INTEGER    NOT NULL DEFAULT 0,   -- 連続ログイン失敗回数(成功でリセット)
+    locked_until    TIMESTAMPTZ,                        -- アカウントロック解除時刻(NULL=ロックなし)
     note            TEXT         NOT NULL DEFAULT '',
     is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),

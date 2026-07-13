@@ -63,14 +63,20 @@ app.use(
   })
 );
 
-// ログイン試行のレート制限(ブルートフォース対策)。IP単位で一定回数まで。
+// ログイン試行のレート制限(ブルートフォース対策)。
+//   二段構え(C): (1) IP単位のスロットリング + (2) アカウント単位のロック。
+// (1) IP単位: 失敗のみカウント(成功は除外)し、一定回数でそのIPを一時ブロック。
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15分
-  max: 20,
+  max: Number(process.env.LOGIN_IP_MAX_FAILED) || 10, // 失敗10回/15分でIPブロック
+  skipSuccessfulRequests: true, // 成功(2xx/3xx)はカウントしない=失敗のみ
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'ログイン試行が多すぎます。しばらくしてから再度お試しください。' },
 });
+// (2) アカウント単位: 同一ログインIDで連続失敗がしきい値に達したら一定時間ロック(成功でリセット)。
+const LOGIN_MAX_FAILED = Number(process.env.LOGIN_MAX_FAILED) || 5;      // 連続失敗の上限
+const LOGIN_LOCK_MINUTES = Number(process.env.LOGIN_LOCK_MINUTES) || 15; // ロック時間(分)
 
 // リクエスト単位の操作施設をコンテキストに保持(操作ログの施設付与に使用)。
 // ここでは現在のセッションの操作施設を格納する(未ログインや未選択はNULL)。
@@ -216,15 +222,42 @@ app.post('/api/login', loginLimiter, async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT id, user_type, name, login_id, password_hash, must_change_password, facility_id
+      `SELECT id, user_type, name, login_id, password_hash, must_change_password, facility_id,
+              failed_login_count, locked_until
          FROM users
         WHERE login_id = $1 AND is_active = TRUE`,
       [loginId]
     );
     const user = rows[0];
+
+    // アカウントロック中はパスワード照合前に拒否する
+    if (user && user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
+      const mins = Math.max(1, Math.ceil((new Date(user.locked_until).getTime() - Date.now()) / 60000));
+      return res.status(403).json({ error: `アカウントが一時的にロックされています。約${mins}分後に再度お試しください。` });
+    }
+
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+      // 連続失敗を加算(存在するユーザーのみ)。しきい値でアカウントをロック。
+      if (user) {
+        const nextCount = (user.failed_login_count || 0) + 1;
+        if (nextCount >= LOGIN_MAX_FAILED) {
+          await pool.query(
+            `UPDATE users SET failed_login_count = 0, locked_until = now() + ($2 || ' minutes')::interval WHERE id = $1`,
+            [user.id, String(LOGIN_LOCK_MINUTES)]);
+          await writeLog(pool, { userId: user.id, facilityId: user.facility_id, targetTable: 'users', targetId: user.id,
+            operationType: 'アカウントロック', after: { reason: 'ログイン連続失敗', failed: nextCount, lock_minutes: LOGIN_LOCK_MINUTES } });
+          return res.status(403).json({ error: `ログインに${LOGIN_MAX_FAILED}回失敗したため、アカウントを${LOGIN_LOCK_MINUTES}分間ロックしました。しばらくしてから再度お試しください。` });
+        }
+        await pool.query(`UPDATE users SET failed_login_count = $2 WHERE id = $1`, [user.id, nextCount]);
+      }
       return res.status(401).json({ error: 'ログインIDまたはパスワードが違います' });
     }
+
+    // 認証成功: 失敗回数・ロックをリセット
+    if (user.failed_login_count || user.locked_until) {
+      await pool.query(`UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE id = $1`, [user.id]);
+    }
+
     // 所属施設が無効化されている利用者はログイン不可(全体管理者=施設なしは対象外)
     if (user.facility_id != null) {
       const f = await pool.query('SELECT is_active FROM facilities WHERE id = $1', [user.facility_id]);
