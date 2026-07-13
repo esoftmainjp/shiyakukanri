@@ -35,9 +35,21 @@
         <div id="plans"></div>
 
         <p class="msg" id="msg"></p>
-        <p style="font-size:0.82rem; color:#667; margin:6px 0 0;">「この内容で登録する」を押すと、<a href="/terms.html" target="_blank">利用規約</a>および<a href="/privacy.html" target="_blank">プライバシーポリシー</a>に同意したものとみなします。</p>
+        <div style="margin:12px 0 4px; border:1px solid var(--line,#dfe4ea); border-radius:10px; padding:10px 12px; background:#fafcff;">
+          <label style="display:flex; align-items:flex-start; gap:8px; margin:0; font-weight:600;">
+            <input type="checkbox" id="agreeChk" style="width:auto; margin-top:3px;" onchange="updateSubmit()" />
+            <span><a href="/terms.html" target="_blank">利用規約</a>・<a href="/privacy.html" target="_blank">プライバシーポリシー</a>・<a href="/tokusho.html" target="_blank">特定商取引法に基づく表記</a> に同意します（必須）。</span>
+          </label>
+          <div id="subsBlock" class="hidden" style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--line,#dfe4ea);">
+            <p style="font-size:0.84rem; color:#556; margin:0 0 6px;">有料プランは<strong>月額サブスクリプション（自動更新）</strong>です。解約するまで毎月自動で更新・課金されます。解約はいつでも可能です。</p>
+            <label style="display:flex; align-items:flex-start; gap:8px; margin:0; font-weight:600;">
+              <input type="checkbox" id="subsChk" style="width:auto; margin-top:3px;" onchange="updateSubmit()" />
+              <span>月額サブスクリプション（自動更新）であることに同意します（有料プラン必須）。</span>
+            </label>
+          </div>
+        </div>
         <div style="margin-top:10px;">
-          <button id="submitBtn" onclick="submitSignup()">この内容で登録する</button>
+          <button id="submitBtn" onclick="submitSignup()" disabled>この内容で登録する</button>
         </div>
         <p id="mockNote" style="font-size:0.8rem; color:#a06; margin-top:8px;"></p>
       </div>
@@ -96,7 +108,17 @@
       });
       if (preselect) { var el=document.querySelector('.plan input[value="'+preselect+'"]'); if(el){el.checked=true; selectPlan(preselect);} }
     }
-    function selectPlan(code){ selected=code; document.querySelectorAll('.plan').forEach(function(l){ l.classList.toggle('sel', l.dataset.code===code); }); }
+    function isPaidSelected(){ var p=PLANS.find(function(x){return x.code===selected;}); return !!(p && Number(p.price)>0); }
+    function updateSubmit(){
+      var ok = document.getElementById('agreeChk').checked && (!isPaidSelected() || document.getElementById('subsChk').checked);
+      document.getElementById('submitBtn').disabled = !ok;
+    }
+    function selectPlan(code){
+      selected=code;
+      document.querySelectorAll('.plan').forEach(function(l){ l.classList.toggle('sel', l.dataset.code===code); });
+      document.getElementById('subsBlock').classList.toggle('hidden', !isPaidSelected()); // 有料プラン選択時のみ自動更新の同意を表示
+      updateSubmit();
+    }
 
     async function submitSignup(){
       var msg=document.getElementById('msg');
@@ -105,11 +127,13 @@
       if(!facilityName){setMsg(msg,'施設名称を入力してください','error');return;}
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){setMsg(msg,'メールアドレスの形式が正しくありません','error');return;}
       if(!selected){setMsg(msg,'プランを選択してください','error');return;}
+      if(!document.getElementById('agreeChk').checked){setMsg(msg,'利用規約・プライバシーポリシー等への同意が必要です','error');return;}
+      if(isPaidSelected() && !document.getElementById('subsChk').checked){setMsg(msg,'有料プランは月額サブスクリプション（自動更新）への同意が必要です','error');return;}
       setMsg(msg,'送信中...','');
       document.getElementById('submitBtn').disabled=true;
       try{
         var r=await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({facilityName:facilityName,email:email,planCode:selected,website:document.getElementById('website').value})});
+          body:JSON.stringify({facilityName:facilityName,email:email,planCode:selected,website:document.getElementById('website').value, agreed:true, subscriptionAck:isPaidSelected()})});
         var d=await r.json();
         if(!r.ok){
           var html=esc(d.error||'登録に失敗しました');

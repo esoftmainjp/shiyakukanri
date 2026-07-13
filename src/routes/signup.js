@@ -49,11 +49,17 @@ router.post('/', signupLimiter, async (req, res) => {
   if (!facilityName) return res.status(400).json({ error: '施設名称を入力してください' });
   if (!isEmail(email)) return res.status(400).json({ error: 'メールアドレスの形式が正しくありません' });
   if (facilityName.length > 255) return res.status(400).json({ error: '施設名称が長すぎます' });
+  // 規約・プライバシー等への同意は必須(画面のチェックを回避されないようサーバーでも必須化)
+  if (b.agreed !== true) return res.status(400).json({ error: '利用規約・プライバシーポリシー等への同意が必要です' });
 
   try {
     const pl = await pool.query('SELECT code, price, stripe_price_id FROM plans WHERE code = $1', [planCode]);
     if (pl.rowCount === 0) return res.status(400).json({ error: 'プランを選択してください' });
     const plan = pl.rows[0];
+    // 有料プランは月額サブスクリプション(自動更新)への同意を必須にする
+    if (Number(plan.price) > 0 && b.subscriptionAck !== true) {
+      return res.status(400).json({ error: '有料プランは月額サブスクリプション（自動更新）です。ご同意のうえお申し込みください' });
+    }
 
     // 既存ログインID(メール)の扱い(resendSetupLinkの判定に一本化):
     //   未完了(パスワード未設定) → 重複施設を作らず、設定メールを再送(何度でも可)
