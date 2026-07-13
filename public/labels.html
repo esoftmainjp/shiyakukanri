@@ -44,8 +44,8 @@
   <main>
     <div class="card no-print">
       <h2>バーコード印刷</h2>
-      <p>発行済みの独自バーコード（Code128）を検索し、Brother QL 等の感熱ラベルプリンタで印刷します。<br>
-        プリンタのDKラベルに合わせて<b>ラベルサイズ(mm)</b>を設定し、ブラウザの印刷（1ラベル＝1枚）で出力してください。</p>
+      <p>発行済みの独自バーコードを検索し、Brother QL 等の感熱ラベルプリンタで印刷します。<br>
+        バーコードの種別（1次元 CODE128／2次元 QRコード）は下の「種別」で切り替えられます（既定は「端末設定」に従います）。</p>
       <div class="row">
         <div><label>発行日(自)</label><input type="date" id="from" /></div>
         <div><label>発行日(至)</label><input type="date" id="to" /></div>
@@ -60,11 +60,18 @@
         </div>
       </div>
       <p class="msg" id="msg"></p>
-      <p style="color:#6b7280; font-size:0.83rem; margin:6px 0 0;">ラベルサイズ・バーコードの大きさは「設定」画面で変更できます。</p>
+      <p style="color:#6b7280; font-size:0.83rem; margin:6px 0 0;">ラベルサイズ・バーコードの大きさ・文字サイズは「端末設定」画面で変更できます（1次元・2次元それぞれ別に設定できます）。</p>
     </div>
 
     <!-- 操作バー: バーコード一覧のすぐ上に配置 -->
     <div class="no-print" style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:8px; padding:8px 12px; background:#fff; border:1px solid var(--line); border-radius:12px;">
+      <label style="display:inline-flex; align-items:center; gap:6px; margin:0; font-weight:700;">種別
+        <select id="kindSel" onchange="onKindChange()" style="min-width:180px;">
+          <option value="device">端末設定に従う</option>
+          <option value="1d">1次元（CODE128）</option>
+          <option value="2d">2次元（QRコード）</option>
+        </select>
+      </label>
       <label style="display:inline-flex; align-items:center; gap:6px; margin:0; font-weight:700;">
         <input type="checkbox" id="checkAll" checked style="width:auto;" onchange="toggleAll(this.checked)" />全てチェック
       </label>
@@ -76,20 +83,22 @@
   </main>
 
   <script src="/common.js"></script>
-  <!-- Code128描画: JsBarcode(CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+  <script src="/barcode-render.js"></script>
   <script>
     let items = [];
-    // ラベルサイズは設定画面(サーバー)から取得。未設定は既定値。
-    let cfg = { lw: 52, lh: 29, bh: 60, bwmm: 45, bcFont: 6, nameFont: 13, subFont: 13 };
-    function num(v, def) { return (v !== undefined && v !== null && v !== '') ? Number(v) : def; }
+
+    // 選択中の種別('device'は端末設定に従う)
+    function currentKind() {
+      const v = document.getElementById('kindSel').value;
+      return v === 'device' ? barcodeKind() : v;
+    }
+    function currentCfg() { return getBarcodeConfigFor(currentKind()); }
 
     async function boot() {
       const user = await initPage('labels');
       if (!user) return;
-      if (typeof JsBarcode === 'undefined') {
-        setMsg(document.getElementById('msg'), 'バーコード描画ライブラリの読込に失敗しました（ネット接続をご確認ください）', 'error');
-      }
       const sel = document.getElementById('productId');
       const products = await getProducts();
       products.forEach((p) => {
@@ -97,17 +106,16 @@
         o.value = p.productId; o.textContent = p.productName;
         sel.appendChild(o);
       });
-      // ラベル設定は端末別(端末設定画面/localStorage)から取得
-      cfg = {
-        lw: num(getDeviceSetting('label_width_mm'), 52),
-        lh: num(getDeviceSetting('label_height_mm'), 29),
-        bh: num(getDeviceSetting('barcode_height_px'), 60),
-        bwmm: num(getDeviceSetting('barcode_width_mm'), 45),
-        bcFont: num(getDeviceSetting('label_barcode_font'), 6),
-        nameFont: num(getDeviceSetting('label_name_font'), 13),
-        subFont: num(getDeviceSetting('label_sub_font'), 13),
-      };
       setToday();
+      applySize();
+    }
+
+    function onKindChange() {
+      if (!barcodeLibReady(currentKind())) {
+        setMsg(document.getElementById('msg'), 'バーコード描画ライブラリの読込に失敗しました（ネット接続をご確認ください）', 'error');
+      } else {
+        setMsg(document.getElementById('msg'), '', '');
+      }
       applySize();
     }
 
@@ -132,27 +140,21 @@
       const { ok, data } = await api('/api/barcodes/list?' + qs.toString());
       if (!ok) { setMsg(document.getElementById('msg'), data.error || '取得失敗', 'error'); return; }
       items = data.items || [];
-      setMsg(document.getElementById('msg'), '', '');
       render();
     }
 
     function applySize() {
-      const w = cfg.lw || 52;
-      const h = cfg.lh || 29;
+      const cfg = currentCfg();
       let st = document.getElementById('pageStyle');
       if (!st) { st = document.createElement('style'); st.id = 'pageStyle'; document.head.appendChild(st); }
-      // 画面プレビュー・印刷ページの両方にサイズを反映
-      st.textContent =
-        `.label{width:${w}mm;height:${h}mm;}` +
-        `@media print{@page{size:${w}mm ${h}mm;margin:0;}}`;
+      st.textContent = labelPageStyleText(cfg);
       render();
     }
 
     function render() {
+      const cfg = currentCfg();
       const box = document.getElementById('labels');
       box.innerHTML = '';
-      const bh = cfg.bh || 60;
-      const bwmm = cfg.bwmm || 45;
       document.getElementById('count').textContent = `${items.length} 件`;
       if (items.length === 0) { box.innerHTML = '<p style="color:#888;">対象がありません。</p>'; return; }
       items.forEach((b, i) => {
@@ -169,38 +171,10 @@
         }
         const label = document.createElement('div');
         label.className = 'label';
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        label.appendChild(svg);
-        const txt = document.createElement('div');
-        txt.className = 'txt';
-        const exp = b.expiry_date ? `期限:${b.expiry_date}` : '';
-        const lot = b.lot_number ? `Lot:${b.lot_number}` : '';
-        txt.innerHTML =
-          `<div class="pname" style="font-size:${cfg.nameFont}px;">${escapeHtml(b.product_name)}</div>` +
-          `<div class="sub" style="font-size:${cfg.subFont}px;">${[lot, exp].filter(Boolean).map(escapeHtml).join('　')}</div>` +
-          `<div class="sub" style="font-size:${cfg.subFont}px;">No.${b.content_code}</div>`;
-        label.appendChild(txt);
         wrap.appendChild(cb);
         wrap.appendChild(label);
         box.appendChild(wrap);
-        try {
-          JsBarcode(svg, b.barcode_value, {
-            format: 'CODE128', displayValue: true, fontSize: cfg.bcFont || 6, textMargin: 0,
-            height: bh, margin: 0, width: 2,
-          });
-          // バー個々の幅ではなく「バーコード全体の幅(mm)」を指定するため、
-          // 生成後のSVGをviewBoxで横方向に伸縮させる(高さはbhのまま)。
-          const natW = Number(svg.getAttribute('width'));
-          const natH = Number(svg.getAttribute('height'));
-          if (natW && natH) {
-            svg.setAttribute('viewBox', `0 0 ${natW} ${natH}`);
-            svg.setAttribute('preserveAspectRatio', 'none');
-            svg.removeAttribute('width');
-            svg.removeAttribute('height');
-            svg.style.width = bwmm + 'mm';
-            svg.style.height = natH + 'px';
-          }
-        } catch (e) { svg.outerHTML = `<div style="color:red;">描画失敗:${b.barcode_value}</div>`; }
+        renderLabelInner(label, b, cfg);
       });
       syncCheckAll();
     }
@@ -229,11 +203,6 @@
       await api('/api/barcodes/mark-printed', { method: 'POST', body: JSON.stringify({ values }) });
       setMsg(document.getElementById('msg'), `${values.length} 件を印刷済みにしました`, 'ok');
       load();
-    }
-
-    function escapeHtml(s) {
-      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
-        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
     boot();

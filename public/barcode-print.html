@@ -35,7 +35,7 @@
     <div class="card no-print">
       <h2>バーコード印刷（入庫分）</h2>
       <p id="info">読み込み中…</p>
-      <p style="color:#666; font-size:0.85rem;">ラベルサイズ等は「バーコード印刷」画面の設定を使用します。</p>
+      <p style="color:#666; font-size:0.85rem;">バーコードの種別（1次元／2次元）・ラベルサイズ等は「端末設定」の設定を使用します。</p>
       <button onclick="window.print()">印刷</button>
       <button class="secondary" onclick="window.close()">閉じる</button>
       <p class="msg" id="msg"></p>
@@ -45,28 +45,25 @@
 
   <script src="/common.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+  <script src="/barcode-render.js"></script>
   <script>
-    // ラベル設定: 端末別(端末設定画面/localStorage)→既定値。
-    const SKEY = {
-      lw: 'label_width_mm', lh: 'label_height_mm', bh: 'barcode_height_px', bwmm: 'barcode_width_mm',
-      bcFont: 'label_barcode_font', nameFont: 'label_name_font', subFont: 'label_sub_font',
-    };
-    function setting(k, def) {
-      return Number(getDeviceSetting(SKEY[k], def));
-    }
+    let CFG = null;
 
     async function boot() {
       const user = await initPage('');
       if (!user) return;
+      CFG = getBarcodeConfig(); // 端末設定(1次元/2次元)に従う
       const receiptId = new URLSearchParams(location.search).get('receiptId');
       if (!receiptId) { document.getElementById('info').textContent = '入庫が指定されていません。'; return; }
-      if (typeof JsBarcode === 'undefined') {
+      if (!barcodeLibReady(CFG.kind)) {
         setMsg(document.getElementById('msg'), 'バーコード描画ライブラリの読込に失敗しました（ネット接続をご確認ください）', 'error');
         return;
       }
       const { ok, data } = await api('/api/barcodes/list?receiptId=' + encodeURIComponent(receiptId));
       const items = (ok && data.items) ? data.items : [];
-      document.getElementById('info').textContent = `入庫ID:${receiptId} / バーコード ${items.length} 件`;
+      document.getElementById('info').textContent =
+        `入庫ID:${receiptId} / バーコード ${items.length} 件（${CFG.kind === '2d' ? '2次元(QR)' : '1次元(CODE128)'}）`;
       if (items.length === 0) {
         document.getElementById('labels').innerHTML = '<p style="color:#888;" class="no-print">この入庫にバーコード発行対象はありません。</p>';
         return;
@@ -75,61 +72,26 @@
       render(items);
       setTimeout(async () => {
         window.print();
-        // 印刷済みに記録
         const values = items.map((b) => b.barcode_value);
         await api('/api/barcodes/mark-printed', { method: 'POST', body: JSON.stringify({ values }) });
       }, 400);
     }
 
     function applyPageStyle() {
-      const w = setting('lw', 52), h = setting('lh', 29);
       let st = document.getElementById('pageStyle');
       if (!st) { st = document.createElement('style'); st.id = 'pageStyle'; document.head.appendChild(st); }
-      st.textContent = `.label{width:${w}mm;height:${h}mm;}@media print{@page{size:${w}mm ${h}mm;margin:0;}}`;
+      st.textContent = labelPageStyleText(CFG);
     }
 
     function render(items) {
-      const bh = setting('bh', 60), bwmm = setting('bwmm', 45);
-      const bcFont = setting('bcFont', 6), nameFont = setting('nameFont', 13), subFont = setting('subFont', 13);
       const box = document.getElementById('labels');
       box.innerHTML = '';
       items.forEach((b) => {
         const label = document.createElement('div');
         label.className = 'label';
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        label.appendChild(svg);
-        const txt = document.createElement('div');
-        txt.className = 'txt';
-        const exp = b.expiry_date ? `期限:${b.expiry_date}` : '';
-        const lot = b.lot_number ? `Lot:${b.lot_number}` : '';
-        txt.innerHTML =
-          `<div class="pname" style="font-size:${nameFont}px;">${escapeHtml(b.product_name)}</div>` +
-          `<div class="sub" style="font-size:${subFont}px;">${[lot, exp].filter(Boolean).map(escapeHtml).join('　')}</div>` +
-          `<div class="sub" style="font-size:${subFont}px;">No.${b.content_code}</div>`;
-        label.appendChild(txt);
         box.appendChild(label);
-        try {
-          JsBarcode(svg, b.barcode_value, {
-            format: 'CODE128', displayValue: true, fontSize: bcFont || 6, textMargin: 0,
-            height: bh, margin: 0, width: 2,
-          });
-          const natW = Number(svg.getAttribute('width'));
-          const natH = Number(svg.getAttribute('height'));
-          if (natW && natH) {
-            svg.setAttribute('viewBox', `0 0 ${natW} ${natH}`);
-            svg.setAttribute('preserveAspectRatio', 'none');
-            svg.removeAttribute('width');
-            svg.removeAttribute('height');
-            svg.style.width = bwmm + 'mm';
-            svg.style.height = natH + 'px';
-          }
-        } catch (e) { svg.outerHTML = `<div style="color:red;">描画失敗:${b.barcode_value}</div>`; }
+        renderLabelInner(label, b, CFG);
       });
-    }
-
-    function escapeHtml(s) {
-      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
-        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
     boot();

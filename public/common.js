@@ -34,6 +34,9 @@ function applyContentWidth(v) {
 const DEVICE_LABEL_DEFAULTS = {
   label_width_mm: 52, label_height_mm: 29, barcode_height_px: 60, barcode_width_mm: 45,
   label_barcode_font: 6, label_name_font: 13, label_sub_font: 13,
+  // 2次元バーコード(QRコード)ラベルの既定(1次元とは別に保持)
+  label2d_width_mm: 40, label2d_height_mm: 30, barcode2d_size_mm: 22,
+  label2d_barcode_font: 8, label2d_name_font: 12, label2d_sub_font: 11,
 };
 function getDeviceSetting(key, def) {
   try {

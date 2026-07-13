@@ -49,7 +49,19 @@
       </div>
 
       <div class="card">
-        <h2>バーコードラベル（この端末の既定）</h2>
+        <h2>バーコードの種別</h2>
+        <div>
+          <label>印刷するバーコード</label>
+          <select id="barcode_kind" style="min-width:260px; display:block;">
+            <option value="1d">1次元バーコード（CODE128）</option>
+            <option value="2d">2次元バーコード（QRコード）</option>
+          </select>
+        </div>
+        <p style="color:#6b7280; font-size:0.83rem; margin-top:10px;">入庫時の印刷やバーコード印刷画面で使う種別です。1次元・2次元それぞれのラベル設定は下の各欄で別々に保持します（バーコード印刷画面では都度切り替えることもできます）。</p>
+      </div>
+
+      <div class="card">
+        <h2>1次元バーコード（CODE128）ラベル（この端末の既定）</h2>
         <div class="row">
           <div style="flex:0;"><label>ラベル幅(mm)</label><input type="number" id="label_width_mm" min="10" max="200" style="width:110px;" /></div>
           <div style="flex:0;"><label>ラベル高(mm)</label><input type="number" id="label_height_mm" min="10" max="200" style="width:110px;" /></div>
@@ -66,6 +78,22 @@
       </div>
 
       <div class="card">
+        <h2>2次元バーコード（QRコード）ラベル（この端末の既定）</h2>
+        <div class="row">
+          <div style="flex:0;"><label>ラベル幅(mm)</label><input type="number" id="label2d_width_mm" min="10" max="200" style="width:110px;" /></div>
+          <div style="flex:0;"><label>ラベル高(mm)</label><input type="number" id="label2d_height_mm" min="10" max="200" style="width:110px;" /></div>
+          <div style="flex:0;"><label>QRコードの大きさ(mm)</label><input type="number" id="barcode2d_size_mm" min="8" max="120" style="width:150px;" /></div>
+        </div>
+        <div class="row">
+          <div style="flex:0;"><label>バーコード値の文字サイズ</label><input type="number" id="label2d_barcode_font" min="4" max="30" style="width:180px;" /></div>
+          <div style="flex:0;"><label>名称の文字サイズ</label><input type="number" id="label2d_name_font" min="6" max="40" style="width:150px;" /></div>
+          <div style="flex:0;"><label>ロット・期限・内容物Noの文字サイズ</label><input type="number" id="label2d_sub_font" min="6" max="40" style="width:220px;" /></div>
+        </div>
+        <p style="color:#6b7280; font-size:0.83rem;">QRコードは正方形です。「QRコードの大きさ」で1辺の長さ(mm)を指定します。<br>
+          「バーコード値」＝QRの下に印字する値の文字、「名称」＝商品名、「ロット・期限・内容物No」＝その下の行。</p>
+      </div>
+
+      <div class="card">
         <button onclick="save()">保存</button>
         <button class="secondary" onclick="resetDefaults()">既定値に戻す</button>
         <p class="msg" id="msg"></p>
@@ -78,6 +106,9 @@
     // 端末別に保持するラベル設定のキーと既定値
     const LABEL_KEYS = ['label_width_mm', 'label_height_mm', 'barcode_height_px', 'barcode_width_mm',
       'label_barcode_font', 'label_name_font', 'label_sub_font'];
+    // 2次元バーコード(QR)ラベルのキー(1次元とは別に保持)
+    const LABEL2D_KEYS = ['label2d_width_mm', 'label2d_height_mm', 'barcode2d_size_mm',
+      'label2d_barcode_font', 'label2d_name_font', 'label2d_sub_font'];
 
     async function boot() {
       const user = await initPage('device');
@@ -89,15 +120,20 @@
       document.getElementById('theme').value = theme;
       // 画面の幅(端末別)。現在値を選択状態に。
       document.getElementById('content_width').value = getDeviceSetting('content_width', '980px');
-      // ラベル設定(端末別)
+      // バーコード種別(端末別)
+      document.getElementById('barcode_kind').value = getDeviceSetting('barcode_kind', '1d') === '2d' ? '2d' : '1d';
+      // ラベル設定(端末別。1次元・2次元)
       LABEL_KEYS.forEach((k) => { document.getElementById(k).value = getDeviceSetting(k); });
+      LABEL2D_KEYS.forEach((k) => { document.getElementById(k).value = getDeviceSetting(k); });
     }
 
     function save() {
       applyTheme(document.getElementById('theme').value); // テーマは端末に保存
       const cw = document.getElementById('content_width').value;
       setDeviceSetting('content_width', cw); applyContentWidth(cw); // 画面の幅は端末に保存
+      setDeviceSetting('barcode_kind', document.getElementById('barcode_kind').value); // バーコード種別
       LABEL_KEYS.forEach((k) => { setDeviceSetting(k, document.getElementById(k).value); });
+      LABEL2D_KEYS.forEach((k) => { setDeviceSetting(k, document.getElementById(k).value); });
       setMsg(document.getElementById('msg'), 'この端末に保存しました', 'ok');
     }
 
@@ -107,7 +143,9 @@
       try { localStorage.removeItem('dev_content_width'); } catch (e) { /* ignore */ }
       document.getElementById('content_width').value = '980px';
       applyContentWidth('980px');
-      LABEL_KEYS.forEach((k) => {
+      try { localStorage.removeItem('dev_barcode_kind'); } catch (e) { /* ignore */ }
+      document.getElementById('barcode_kind').value = '1d';
+      LABEL_KEYS.concat(LABEL2D_KEYS).forEach((k) => {
         try { localStorage.removeItem('dev_' + k); } catch (e) { /* ignore */ }
         document.getElementById(k).value = getDeviceSetting(k);
       });
