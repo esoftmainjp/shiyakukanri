@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>カメラ読取テスト | 試薬在庫管理システム</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif; margin: 0; background: #0f1720; color: #e6eef6; }
+    header { padding: 12px 16px; background: #16324a; font-weight: 700; }
+    main { padding: 12px 16px 40px; max-width: 720px; margin: 0 auto; }
+    .btnrow { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+    button { font-size: 16px; font-weight: 700; padding: 12px 16px; border: none; border-radius: 10px; cursor: pointer; }
+    .primary { background: #23b5e3; color: #052738; }
+    .ghost { background: #22384a; color: #cfe3f2; }
+    .danger { background: #c25a6a; color: #fff; }
+    #video { width: 100%; max-height: 60vh; background: #000; border-radius: 12px; object-fit: cover; }
+    .frame { position: relative; }
+    .frame .guide { position: absolute; inset: 12% 10%; border: 3px solid rgba(35,181,227,.9); border-radius: 12px; pointer-events: none; }
+    .diag { font-size: 12px; color: #9db6cc; background: #13202c; border: 1px solid #24384a; border-radius: 8px; padding: 8px 10px; margin: 10px 0; white-space: pre-wrap; }
+    .engine { font-size: 13px; color: #7fe0a0; font-weight: 700; }
+    #results { list-style: none; padding: 0; margin: 8px 0; }
+    #results li { background: #16232f; border: 1px solid #263b4d; border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
+    #results .fmt { display: inline-block; font-size: 11px; font-weight: 700; color: #052738; background: #7fd0ec; border-radius: 6px; padding: 1px 7px; margin-right: 6px; }
+    #results .val { font-family: "Consolas", monospace; word-break: break-all; }
+    #results .meta { font-size: 11px; color: #9db6cc; margin-top: 3px; }
+    .msg { color: #ffd28a; font-size: 13px; }
+    a { color: #7fd0ec; }
+  </style>
+</head>
+<body>
+  <header>📷 カメラ読取テスト（DBには保存しません）</header>
+  <main>
+    <p style="font-size:13px; color:#9db6cc; margin-top:6px;">
+      スマートフォンのカメラでバーコード／QRを読み取り、値と種別を表示するだけの確認用ページです。<br>
+      QR・独自CODE128・JAN・GS1-128・GS1 DataMatrix を対象にしています。
+    </p>
+    <div class="btnrow">
+      <button class="primary" id="startBtn" onclick="startCamera()">カメラ起動</button>
+      <button class="ghost" id="torchBtn" onclick="toggleTorch()" style="display:none;">ライト</button>
+      <button class="danger" id="stopBtn" onclick="stopCamera()" style="display:none;">停止</button>
+      <button class="ghost" onclick="clearResults()">結果クリア</button>
+    </div>
+    <div class="frame">
+      <video id="video" playsinline autoplay muted></video>
+      <div class="guide" id="guide" style="display:none;"></div>
+    </div>
+    <p class="engine" id="engine"></p>
+    <p class="msg" id="msg"></p>
+    <h3 style="margin:14px 0 4px;">読取結果</h3>
+    <ul id="results"></ul>
+    <div class="diag" id="diag"></div>
+    <p style="font-size:12px;"><a href="/index.html">← システムに戻る</a></p>
+  </main>
+
+  <!-- iOS Safari 等は BarcodeDetector 非対応のため ZXing でフォールバック -->
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
+  <script>
+    let stream = null, track = null, running = false, engine = '';
+    let detector = null, zxingControls = null, torchOn = false;
+    let lastVal = '', lastAt = 0, count = 0;
+    const video = document.getElementById('video');
+
+    function setMsg(t) { document.getElementById('msg').textContent = t || ''; }
+    function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    // 起動前の環境診断
+    (function diag() {
+      const bd = ('BarcodeDetector' in window);
+      const lines = [
+        '端末: ' + navigator.userAgent,
+        'secure context(HTTPS): ' + window.isSecureContext,
+        'getUserMedia: ' + !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+        'BarcodeDetector: ' + bd,
+        'ZXing(フォールバック): ' + (typeof ZXingBrowser !== 'undefined'),
+      ];
+      document.getElementById('diag').textContent = lines.join('\n');
+      if (bd) {
+        try { BarcodeDetector.getSupportedFormats().then(f => {
+          document.getElementById('diag').textContent += '\nBarcodeDetector対応形式: ' + f.join(', ');
+        }); } catch (e) {}
+      }
+    })();
+
+    async function startCamera() {
+      setMsg('');
+      if (!window.isSecureContext) { setMsg('HTTPSでないためカメラを使用できません。'); return; }
+      if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { setMsg('このブラウザはカメラ取得に対応していません。'); return; }
+      document.getElementById('startBtn').style.display = 'none';
+      document.getElementById('stopBtn').style.display = '';
+      document.getElementById('guide').style.display = '';
+
+      const useBD = ('BarcodeDetector' in window);
+      try {
+        if (useBD) {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+          video.srcObject = stream;
+          await video.play();
+          track = stream.getVideoTracks()[0];
+          const fmts = await BarcodeDetector.getSupportedFormats();
+          const want = ['qr_code','code_128','ean_13','ean_8','upc_a','upc_e','data_matrix','code_39','itf','codabar'].filter(f => fmts.includes(f));
+          detector = new BarcodeDetector({ formats: want });
+          engine = 'BarcodeDetector（端末標準）';
+          running = true;
+          loopBD();
+        } else {
+          startZXing();
+          // ZXingがvideo.srcObjectを設定するのでtrackを拾う
+          setTimeout(() => { if (video.srcObject) { stream = video.srcObject; track = stream.getVideoTracks()[0]; setupTorch(); } }, 800);
+        }
+      } catch (e) {
+        setMsg('カメラ起動に失敗しました: ' + (e && (e.name + ' ' + e.message)));
+        resetButtons();
+        return;
+      }
+      setupTorch();
+      document.getElementById('engine').textContent = 'エンジン: ' + engine;
+    }
+
+    async function loopBD() {
+      if (!running) return;
+      try {
+        const codes = await detector.detect(video);
+        if (codes && codes.length) codes.forEach(c => onResult(c.rawValue, c.format));
+      } catch (e) { /* 一時的なdetectエラーは無視 */ }
+      setTimeout(loopBD, 120);
+    }
+
+    function zfmt(num) {
+      try { return Object.keys(ZXing.BarcodeFormat).find(k => ZXing.BarcodeFormat[k] === num) || String(num); }
+      catch (e) { return String(num); }
+    }
+    function startZXing() {
+      if (typeof ZXingBrowser === 'undefined') { setMsg('読取ライブラリ(ZXing)の読込に失敗しました。'); resetButtons(); return; }
+      const hints = new Map();
+      const F = ZXing.BarcodeFormat;
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [F.QR_CODE, F.CODE_128, F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.DATA_MATRIX, F.CODE_39, F.ITF]);
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      const reader = new ZXingBrowser.BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 120 });
+      engine = 'ZXing（フォールバック）';
+      reader.decodeFromConstraints({ video: { facingMode: { ideal: 'environment' } } }, video, (result, err) => {
+        if (result) onResult(result.getText(), zfmt(result.getBarcodeFormat()));
+      }).then(controls => { zxingControls = controls; }).catch(e => {
+        setMsg('カメラ起動に失敗しました: ' + (e && (e.name + ' ' + e.message))); resetButtons();
+      });
+    }
+
+    function onResult(value, format) {
+      const now = Date.now();
+      if (value === lastVal && (now - lastAt) < 1500) { return; } // 直近の重複は無視
+      lastVal = value; lastAt = now; count++;
+      beep(); if (navigator.vibrate) { try { navigator.vibrate(80); } catch (e) {} }
+      const li = document.createElement('li');
+      const t = new Date();
+      const hh = String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0') + ':' + String(t.getSeconds()).padStart(2,'0');
+      li.innerHTML = `<div><span class="fmt">${esc(format || '?')}</span><span class="val">${esc(value)}</span></div>` +
+        `<div class="meta">${hh} ・ 文字数 ${String(value).length} ・ 通算 ${count} 件目</div>`;
+      const ul = document.getElementById('results');
+      ul.insertBefore(li, ul.firstChild);
+    }
+
+    function setupTorch() {
+      try {
+        if (!track || !track.getCapabilities) return;
+        const cap = track.getCapabilities();
+        if (cap && cap.torch) { document.getElementById('torchBtn').style.display = ''; }
+      } catch (e) {}
+    }
+    async function toggleTorch() {
+      if (!track) return;
+      torchOn = !torchOn;
+      try { await track.applyConstraints({ advanced: [{ torch: torchOn }] }); }
+      catch (e) { setMsg('ライトの切替に対応していません。'); }
+    }
+
+    function stopCamera() {
+      running = false;
+      try { if (zxingControls) zxingControls.stop(); } catch (e) {}
+      zxingControls = null;
+      try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+      if (video.srcObject) { try { video.srcObject.getTracks().forEach(t => t.stop()); } catch(e){} }
+      video.srcObject = null; stream = null; track = null;
+      resetButtons();
+      document.getElementById('engine').textContent = '';
+    }
+    function resetButtons() {
+      document.getElementById('startBtn').style.display = '';
+      document.getElementById('stopBtn').style.display = 'none';
+      document.getElementById('torchBtn').style.display = 'none';
+      document.getElementById('guide').style.display = 'none';
+    }
+    function clearResults() { document.getElementById('results').innerHTML = ''; count = 0; lastVal = ''; }
+
+    // 読取音(WebAudio)
+    let actx = null;
+    function beep() {
+      try {
+        actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+        const o = actx.createOscillator(), g = actx.createGain();
+        o.type = 'square'; o.frequency.value = 880; g.gain.value = 0.06;
+        o.connect(g); g.connect(actx.destination);
+        o.start(); o.stop(actx.currentTime + 0.08);
+      } catch (e) {}
+    }
+  </script>
+</body>
+</html>
