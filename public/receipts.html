@@ -42,8 +42,8 @@
       <h3 style="margin-top:20px;">GS1-128 バーコード読取</h3>
       <div class="row">
         <div style="flex:3;">
-          <label class="barcode-label">バーコードをスキャン（GS1-128：JAN・ロット・使用期限）</label>
-          <input id="scan" class="barcode-input" placeholder="ここにスキャン（Enterで確定）" autofocus />
+          <label class="barcode-label">バーコードをスキャン（GS1-128：JAN・ロット・使用期限）／読み取ると自動で明細に追加。同じロットは箱数＋1</label>
+          <input id="scan" class="barcode-input" placeholder="ここにスキャン（Enterで自動追加）" autofocus />
         </div>
       </div>
       <p class="msg" id="scanMsg"></p>
@@ -207,10 +207,26 @@
       document.getElementById('expiry').value = info.expiry || '';
       document.getElementById('qty').value = 1;
       await updateCurrentStock();
-      setMsg(msg, `読取: ${p.productName} / ロット:${info.lot || '-'} / 期限:${info.expiry || '-'}（数量を確認して「明細に追加」）`, 'ok');
+      // 読み取ったら自動で明細に追加。同一(商品+ロット+期限)は行を増やさず箱数(入庫数)+1。
+      const cur = currentDetail();
+      if (!cur || !cur.detail) { setMsg(msg, `読取: ${p.productName}（この問屋の商品詳細が見つかりません）`, 'error'); return; }
+      const line = {
+        productId: p.productId,
+        productName: p.productName,
+        productDetailId: cur.detail.productDetailId,
+        lotNumber: info.lot || '',
+        expiryDate: info.expiry || null,
+        receiptQuantity: 1,
+        packSize: Number(document.getElementById('pack').value) || Number(cur.detail.packSize) || 1,
+        unitPrice: Number(document.getElementById('unitPrice').value) || 0,
+        barcode: cur.detail.barcodeIssueFlag,
+        note: '',
+      };
+      const row = addOrAggregate(line);
+      setMsg(msg, `追加: ${p.productName} / ロット:${info.lot || '-'} / 期限:${info.expiry || '-'} → 箱数:${row.receiptQuantity}`, 'ok');
+      // 連続スキャンできるよう読取欄をクリアしてフォーカスを戻す
       document.getElementById('scan').value = '';
-      document.getElementById('qty').focus();
-      document.getElementById('qty').select();
+      document.getElementById('scan').focus();
     }
 
     function currentDetail() {
@@ -252,6 +268,17 @@
       updateCurrentStock();
     }
 
+    // 同一行の集約キー: 商品 + ロット + 使用期限
+    function lineKey(l) { return [l.productId, l.lotNumber || '', l.expiryDate || ''].join('|'); }
+    // 明細に追加。同一キー(商品+ロット+期限)が既にあれば行を増やさず箱数(入庫数)を加算する。
+    // 戻り値: 対象の明細行(集約後)
+    function addOrAggregate(line) {
+      const key = lineKey(line);
+      const ex = lines.find((l) => lineKey(l) === key);
+      if (ex) { ex.receiptQuantity += line.receiptQuantity; renderLines(); return ex; }
+      lines.push(line); renderLines(); return line;
+    }
+
     function addLine() {
       if (!document.getElementById('supplier').value) { setMsg(document.getElementById('addMsg'), '先に問屋を選択してください', 'error'); return; }
       const cur = currentDetail();
@@ -271,10 +298,9 @@
         barcode: cur.detail.barcodeIssueFlag,
         note: document.getElementById('lineNote').value || '',
       };
-      lines.push(line);
+      addOrAggregate(line);
       document.getElementById('lineNote').value = '';
       setMsg(document.getElementById('addMsg'), '', '');
-      renderLines();
     }
 
     function renderLines() {
