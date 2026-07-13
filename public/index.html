@@ -25,9 +25,9 @@
     <div class="card" id="loginCard" style="display:none; max-width:360px;">
       <h2>ログイン</h2>
       <label>ログインID</label>
-      <input id="loginId" value="admin" style="width:100%;" />
+      <input id="loginId" type="text" autocomplete="username" placeholder="ログインID" style="width:100%;" />
       <label>パスワード</label>
-      <input id="password" type="password" value="Admin@12345" style="width:100%;" />
+      <input id="password" type="password" autocomplete="current-password" placeholder="パスワード" style="width:100%;" />
       <div style="margin-top:12px;"><button onclick="login()">ログイン</button></div>
       <p class="msg error" id="loginMsg"></p>
     </div>
