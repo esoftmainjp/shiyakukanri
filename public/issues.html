@@ -17,9 +17,9 @@
       </div>
 
       <h3 style="margin-top:20px;">① バーコードで出庫</h3>
-      <p style="font-size:0.85rem; color:#555;">独自バーコード＝バラ1個を出庫。GS1-128＝商品・ロット・期限を特定して数量出庫欄へ反映（数量を入力して追加）。</p>
+      <p style="font-size:0.85rem; color:#555;">読み取ると自動で明細に追加。連続で読み取れます。独自バーコード＝バラ1個（二度読みは無視）。GS1-128＝商品・ロット・期限を特定して1梱包を追加（同じロットは梱包数＋1）。</p>
       <div class="row">
-        <div style="flex:2;"><label class="barcode-label">バーコードを読み取り/入力（独自 / GS1-128）</label><input id="barcode" class="barcode-input" placeholder="ここにスキャン（Enterで読取）" /></div>
+        <div style="flex:2;"><label class="barcode-label">バーコードを読み取り/入力（独自 / GS1-128）／読み取ると自動で明細に追加</label><input id="barcode" class="barcode-input" placeholder="ここにスキャン（Enterで自動追加）" autofocus /></div>
         <div style="flex:0;"><label>&nbsp;</label><button onclick="addBarcode()">読取</button></div>
       </div>
       <p class="msg" id="bcMsg"></p>
@@ -127,48 +127,76 @@
       sel.selectedIndex = 0; // FEFO: 最短期限を既定選択
     }
 
+    // 連続読み取りできるよう読取欄をクリアしてフォーカスを戻す
+    function refocusBarcode() {
+      const el = document.getElementById('barcode');
+      el.value = '';
+      el.focus();
+    }
+
+    // 数量明細の集約キー: 商品 + ロット + 期限 + 梱包数(バラ/梱包の混同を防ぐ)
+    function issueQtyKey(l) { return ['qty', l.productId, l.lot || '', l.expiryDate || '', l.packSize].join('|'); }
+    // 数量明細に追加。同一キーが既にあれば行を増やさず出庫数(梱包)を加算する。戻り値=集約後の行。
+    function addOrAggregateQty(line) {
+      line.bara = line.issueQuantity * line.packSize;
+      const key = issueQtyKey(line);
+      const ex = lines.find((l) => l.kind === 'qty' && issueQtyKey(l) === key);
+      if (ex) { ex.issueQuantity += line.issueQuantity; ex.bara = ex.issueQuantity * ex.packSize; renderLines(); return ex; }
+      lines.push(line); renderLines(); return line;
+    }
+
     async function addBarcode() {
       const msg = document.getElementById('bcMsg');
       const value = document.getElementById('barcode').value.trim();
       if (!value) return;
 
-      // GS1-128の場合: JAN→商品特定、ロット・期限で在庫を選び、数量出庫欄へ反映
+      // GS1-128の場合: JAN→商品特定、ロット・期限で在庫を特定し、1梱包を自動追加(同一ロットは梱包数+1)
       if (isGs1(value)) {
         const info = extractGs1(value);
         const r = await api('/api/lookup/by-jan/' + encodeURIComponent(info.jan));
-        if (!r.ok) { setMsg(msg, `${r.data.error || '照合失敗'}（JAN:${info.jan}）`, 'error'); return; }
+        if (!r.ok) { setMsg(msg, `${r.data.error || '照合失敗'}（JAN:${info.jan}）`, 'error'); refocusBarcode(); return; }
         const p = r.data.product;
-        // 商品を選択してロット別在庫を読み込み、該当ロット/期限を選択
+        // 商品を選択してロット別在庫を読み込み、該当ロット/期限を特定
         document.getElementById('product').value = p.productId;
         await onProductChange();
         const stockSel = document.getElementById('stock');
-        let matched = false;
+        let matchedStock = null;
         for (const opt of stockSel.options) {
           if (!opt.value) continue;
           const st = JSON.parse(opt.value);
           if ((st.lot || '') === (info.lot || '') && (st.exp || null) === (info.expiry || null)) {
-            stockSel.value = opt.value; matched = true; break;
+            stockSel.value = opt.value; matchedStock = st; break;
           }
         }
         document.getElementById('pack').value = p.packSize;
-        setMsg(msg, matched
-          ? `読取: ${p.productName} / ロット:${info.lot || '-'} / 期限:${info.expiry || '-'}（数量を入力して「追加」）`
-          : `読取: ${p.productName}（該当ロット/期限の在庫が見つかりません。ロット:${info.lot || '-'} 期限:${info.expiry || '-'}）`,
-          matched ? 'ok' : 'error');
-        document.getElementById('barcode').value = '';
-        document.getElementById('qty').focus();
+        if (!matchedStock) {
+          setMsg(msg, `読取: ${p.productName}（該当ロット/期限の在庫が見つかりません。ロット:${info.lot || '-'} 期限:${info.expiry || '-'}）`, 'error');
+          refocusBarcode(); return;
+        }
+        const packSize = Number(p.packSize) || 1;
+        const row = addOrAggregateQty({
+          kind: 'qty', productId: p.productId, productDetailId: p.productDetailId,
+          label: p.productName, lot: matchedStock.lot, expiryDate: matchedStock.exp,
+          issueQuantity: 1, packSize,
+        });
+        setMsg(msg, `追加: ${p.productName} / ロット:${info.lot || '-'} / 期限:${info.expiry || '-'} → 梱包数:${row.issueQuantity}（=${row.bara}バラ）`, 'ok');
+        refocusBarcode();
         return;
       }
 
-      // 独自バーコードの場合: バラ1個出庫
+      // 独自バーコードの場合: バラ1個を自動追加。二度読み(同一バーコード)は無視。
       const { ok, data } = await api('/api/lookup/barcode/' + encodeURIComponent(value));
-      if (!ok) { setMsg(msg, data.error || '照会失敗', 'error'); return; }
+      if (!ok) { setMsg(msg, data.error || '照会失敗', 'error'); refocusBarcode(); return; }
       const b = data.barcode;
-      if (b.used_flag) { setMsg(msg, '使用済みのバーコードです', 'error'); return; }
+      if (b.used_flag) { setMsg(msg, '使用済みのバーコードです', 'error'); refocusBarcode(); return; }
+      if (lines.some((l) => l.kind === 'barcode' && l.barcodeValue === b.barcode_value)) {
+        setMsg(msg, `既に読取済みのバーコードです（${b.product_name} No.${b.content_code}）`, 'error');
+        refocusBarcode(); return;
+      }
       lines.push({ kind: 'barcode', barcodeValue: b.barcode_value, label: `${b.product_name}(No.${b.content_code})`, lot: b.lot_number, bara: 1 });
-      setMsg(msg, '', '');
-      document.getElementById('barcode').value = '';
       renderLines();
+      setMsg(msg, `追加: ${b.product_name}（No.${b.content_code}） → バラ1`, 'ok');
+      refocusBarcode();
     }
 
     // 出庫単位の切替(梱包/バラ)。バラ時は梱包数を使わずバラ数をそのまま出庫。
