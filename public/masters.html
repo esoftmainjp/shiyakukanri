@@ -258,15 +258,9 @@
       const { ok, data } = await api(path, { method, body: JSON.stringify(body) });
       if (!ok) { setMsg(msg, data.error || '保存失敗', 'error'); return; }
       setMsg(msg, editId ? '更新しました' : '登録しました', 'ok');
-      // 商品詳細は続けて同じ商品の詳細を登録できるよう、保存後も商品の選択を保持する
-      const keepProductId = (t === 'product-details') ? (body.product_id || '') : '';
       refCache = {};
       resetForm();
       await renderForm();
-      if (keepProductId) {
-        const el = document.getElementById('fld_product_id');
-        if (el) el.value = String(keepProductId);
-      }
       loadList();
     }
 
@@ -331,12 +325,16 @@
       const t = curType();
       const area = document.getElementById('filterArea');
       if (t === 'product-details') {
+        // 一覧の再描画(保存・追加など)後も「商品で絞り込み」の選択を保持する
+        const prevProduct = (document.getElementById('listFilterProduct') || {}).value || '';
         const prods = await loadRef('products');
         area.innerHTML = `<div style="flex:0; min-width:280px;"><label>商品で絞り込み</label>
           <select id="listFilterProduct" onchange="applyListFilter()">
             <option value="">すべて</option>
             ${prods.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
           </select></div>`;
+        const fsel = document.getElementById('listFilterProduct');
+        if (fsel && prevProduct) fsel.value = prevProduct;
       } else {
         area.innerHTML = `<div style="flex:0; min-width:280px;"><label>名称で絞り込み</label>
           <input id="listFilterName" placeholder="部分一致" oninput="applyListFilter()" /></div>`;
