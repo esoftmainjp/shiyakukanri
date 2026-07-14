@@ -40,6 +40,7 @@
         </div>
         <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">検索</button></div>
         <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="downloadCsv()">CSV出力</button></div>
+        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="printList()">印刷</button></div>
       </div>
       <p class="msg" id="msg"></p>
       <div class="scroll-x">
@@ -149,6 +150,17 @@
     }
 
     function downloadCsv() { window.location = '/api/inventory/csv?' + queryString(); }
+
+    // 現在の絞り込みで在庫一覧を印刷(会社ヘッダー付き帳票)。選択系は表示名も渡す。
+    function printList() {
+      const p = new URLSearchParams(queryString());
+      const selText = (id) => { const el = document.getElementById(id); return el && el.selectedIndex >= 0 ? el.options[el.selectedIndex].text : ''; };
+      if (document.getElementById('fSupplier').value) p.set('supplierName', selText('fSupplier'));
+      if (document.getElementById('fMaker').value) p.set('makerName', selText('fMaker'));
+      if (document.getElementById('fDepartment').value) p.set('departmentName', selText('fDepartment'));
+      if (document.getElementById('fCategory').value) p.set('categoryName', selText('fCategory'));
+      window.open('/print.html?type=inventory&' + p.toString(), '_blank');
+    }
 
     function openEdit(s) {
       current = s;

@@ -50,15 +50,17 @@
       orders_list: '発 注 履 歴', movements_list: '在 庫 調 整 履 歴',
       usage_report: '使 用 量 集 計', monthly_report: '月 次 推 移',
       billing: '支 払 書', billing_detail: '支 払 明 細 書',
+      inventory: '在 庫 一 覧',
     };
     // id を使わず期間/絞り込みで出力する一覧系
-    const LIST_TYPES = ['ledger', 'logs', 'receipts_list', 'issues_list', 'orders_list', 'movements_list', 'usage_report', 'monthly_report'];
+    const LIST_TYPES = ['ledger', 'logs', 'receipts_list', 'issues_list', 'orders_list', 'movements_list', 'usage_report', 'monthly_report', 'inventory'];
     // 一覧系の取得先(type名とAPIパスが異なるものをマッピング)
     const LIST_ENDPOINT = {
       ledger: '/api/ledger', logs: '/api/logs',
       receipts_list: '/api/receipts', issues_list: '/api/issues',
       orders_list: '/api/orders', movements_list: '/api/inventory/movements',
       usage_report: '/api/reports/usage', monthly_report: '/api/reports/monthly',
+      inventory: '/api/inventory',
     };
     // id系で type名とAPIパスが異なるもの(例: 請求明細書は請求と同じデータを使う)
     const ID_ENDPOINT = { billing_detail: '/api/billing' };
@@ -143,11 +145,17 @@
       else if (type === 'usage_report') html += usageReportBody(data);
       else if (type === 'monthly_report') html += monthlyReportBody(data);
       else if (type === 'billing_detail') html += billingDetailBody(data);
+      else if (type === 'inventory') html += inventoryBody(data);
       else html += orderBody(data);
       const sheet = document.getElementById('sheet');
       // 試薬管理台帳は列が多いため、横向き・固定列幅・小フォントで1商品1行に収める。
       if (type === 'ledger') {
         sheet.classList.add('ledger');
+        document.getElementById('pageOrient').textContent = '@media print { @page { size: A4 landscape; margin: 10mm; } }';
+      }
+      // 在庫一覧は列が多いため横向きにする(折り返し可・通常フォント)。
+      if (type === 'inventory') {
+        sheet.style.maxWidth = '1040px';
         document.getElementById('pageOrient').textContent = '@media print { @page { size: A4 landscape; margin: 10mm; } }';
       }
       sheet.innerHTML = html;
@@ -397,6 +405,37 @@
           `<td class="num">${(chg > 0 ? '+' : '') + chg}</td><td class="num">${m.quantity_before}</td>` +
           `<td class="num">${m.quantity_after}</td><td>${esc(m.reason)}</td><td>${esc(m.user_name)}</td></tr>`;
       });
+      return h + `</tbody></table>`;
+    }
+
+    // ===== 在庫一覧の印刷 =====
+    function inventoryBody(data) {
+      const rows = data.stocks || [];
+      // 絞り込み条件を表示(選択系は表示名を画面側から受け取る)
+      const pairs = [];
+      if (q.get('productName')) pairs.push(['商品名', q.get('productName')]);
+      if (q.get('lotNumber')) pairs.push(['ロット', q.get('lotNumber')]);
+      if (q.get('supplierName')) pairs.push(['問屋', q.get('supplierName')]);
+      if (q.get('makerName')) pairs.push(['メーカー', q.get('makerName')]);
+      if (q.get('departmentName')) pairs.push(['部門', q.get('departmentName')]);
+      if (q.get('categoryName')) pairs.push(['分類', q.get('categoryName')]);
+      if (q.get('expiryTo')) pairs.push(['使用期限(まで)', q.get('expiryTo')]);
+      if (q.get('note')) pairs.push(['備考', q.get('note')]);
+      if (q.get('includeZero') === 'true') pairs.push(['在庫0', '表示']);
+      pairs.push(['件数', rows.length]);
+      let h = metaRow(pairs);
+      h += `<table><thead><tr><th>商品名</th><th>問屋</th><th>メーカー</th><th>部門</th><th>分類</th>` +
+        `<th>棚</th><th>ロット</th><th>使用期限</th><th>入庫日</th><th class="num">在庫数</th><th>備考</th></tr></thead><tbody>`;
+      if (rows.length === 0) h += emptyRow(11);
+      let tot = 0;
+      rows.forEach((s) => {
+        tot += Number(s.stock_quantity) || 0;
+        h += `<tr><td>${esc(s.product_name)}</td><td>${esc(s.supplier)}</td><td>${esc(s.maker)}</td>` +
+          `<td>${esc(s.department)}</td><td>${esc(s.category)}</td><td>${esc(s.shelf)}</td>` +
+          `<td>${esc(s.lot_number) || '(なし)'}</td><td>${s.expiry_date || '(なし)'}</td>` +
+          `<td>${s.last_receipt_date || '(なし)'}</td><td class="num">${s.stock_quantity}</td><td>${esc(s.note)}</td></tr>`;
+      });
+      if (rows.length) h += `<tr><th colspan="9" class="num">合計(在庫バラ数)</th><th class="num">${num(tot)}</th><th></th></tr>`;
       return h + `</tbody></table>`;
     }
 
