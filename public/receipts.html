@@ -475,8 +475,6 @@
     let qpDefaults = { start: '', end: '' };
     let qpPending = null;               // スキャンから引き継ぐ { lot, expiry }
 
-    function qpDateFromOffset(days) { const d = new Date(); d.setDate(d.getDate() + (Number(days) || 0)); return localDateStr(d); }
-
     // JANメーカーコードの前方一致でメーカーを自動選択する(最長一致を優先)。
     // 該当が無ければ未選択のまま(手動選択)。誤りがあればユーザーが選び直せる。
     function qpAutoSelectMaker(jan) {
@@ -503,12 +501,11 @@
       QP_REFS.shelves = (shv.data && shv.data.shelves) || [];
       // 問屋は入庫画面で読込済みの選択肢を流用
       QP_REFS.suppliers = [...document.querySelectorAll('#supplier option')].filter((o) => o.value).map((o) => ({ id: o.value, name: o.textContent }));
-      // 適用期間の既定(基本設定の「本日＋日数」)
+      // 適用期間の既定(基本設定の固定日付。空欄なら本日)
       const s = await api('/api/settings');
       const st = (s.data && s.data.settings) || {};
-      const so = (st.pd_apply_start_offset_days !== undefined && st.pd_apply_start_offset_days !== '') ? st.pd_apply_start_offset_days : 0;
-      const eo = (st.pd_apply_end_offset_days !== undefined && st.pd_apply_end_offset_days !== '') ? st.pd_apply_end_offset_days : 3650;
-      qpDefaults = { start: qpDateFromOffset(so), end: qpDateFromOffset(eo) };
+      const today = localDateStr();
+      qpDefaults = { start: st.pd_apply_start_default || today, end: st.pd_apply_end_default || today };
     }
 
     function qpRenderField(def, required) {

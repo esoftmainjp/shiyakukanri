@@ -37,12 +37,12 @@
       <div class="card">
         <h2>商品詳細の適用期間（新規登録の既定）</h2>
         <div class="row">
-          <div style="flex:0;"><label>適用開始日の既定（本日＋日数）</label><input type="number" id="pd_apply_start_offset_days" style="width:150px;" /></div>
-          <div style="flex:0;"><label>適用終了日の既定（本日＋日数）</label><input type="number" id="pd_apply_end_offset_days" style="width:150px;" /></div>
+          <div style="flex:0;"><label>適用開始日の既定（日付）</label><input type="date" id="pd_apply_start_default" style="width:170px;" /></div>
+          <div style="flex:0;"><label>適用終了日の既定（日付）</label><input type="date" id="pd_apply_end_default" style="width:170px;" /></div>
         </div>
         <p style="color:#6b7280; font-size:0.83rem;">
           商品詳細マスターの新規登録時、および入庫画面の未登録商品スキャンでの新規登録時に、適用開始日・適用終了日の初期値として自動入力されます。<br>
-          「本日＋日数」で指定します（例：開始日=0で本日、終了日=3650で約10年後）。手入力での変更は可能です。
+          <strong>固定の日付</strong>で指定します（空欄の場合は本日を初期値にします）。手入力での変更は可能です。
         </p>
       </div>
 
@@ -114,8 +114,8 @@
       expiry_warn_days:   { type: 'num',  def: 30 },
       low_stock_threshold:{ type: 'num',  def: 0 },
       allow_expired_issue:{ type: 'bool', def: false },
-      pd_apply_start_offset_days:{ type: 'num', def: 0 },
-      pd_apply_end_offset_days:  { type: 'num', def: 3650 },
+      pd_apply_start_default:{ type: 'text', def: '' },
+      pd_apply_end_default:  { type: 'text', def: '' },
       notify_expiry_enabled:   { type: 'bool', def: false },
       notify_low_stock_enabled:{ type: 'bool', def: false },
       notify_email:            { type: 'text', def: '' },

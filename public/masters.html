@@ -125,18 +125,12 @@
     // 商品詳細の適用開始日・終了日の既定(基本設定の「本日＋日数」から算出)
     let applyDefaults = { start: '', end: '' };
 
-    // 本日＋days日 の YYYY-MM-DD
-    function dateFromOffset(days) {
-      const d = new Date();
-      d.setDate(d.getDate() + (Number(days) || 0));
-      return localDateStr(d);
-    }
     async function loadApplyDefaults() {
       const { data } = await api('/api/settings');
       const s = (data && data.settings) || {};
-      const startOff = (s.pd_apply_start_offset_days !== undefined && s.pd_apply_start_offset_days !== '') ? s.pd_apply_start_offset_days : 0;
-      const endOff = (s.pd_apply_end_offset_days !== undefined && s.pd_apply_end_offset_days !== '') ? s.pd_apply_end_offset_days : 3650;
-      applyDefaults = { start: dateFromOffset(startOff), end: dateFromOffset(endOff) };
+      const today = localDateStr();
+      // 固定の日付指定。空欄なら本日を既定にする。
+      applyDefaults = { start: s.pd_apply_start_default || today, end: s.pd_apply_end_default || today };
     }
 
     async function boot() {
