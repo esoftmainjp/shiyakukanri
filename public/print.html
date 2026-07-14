@@ -23,6 +23,13 @@
       font-size: 0.62rem; padding: 2px 3px; line-height: 1.25;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
+    /* 在庫一覧: 1商品1行。列幅固定・小さめフォント・はみ出しは切り取り(…) */
+    .sheet.inventory { max-width: 1100px; }
+    .sheet.inventory table { table-layout: fixed; width: 100%; }
+    .sheet.inventory th, .sheet.inventory td {
+      font-size: 0.66rem; padding: 2px 4px; line-height: 1.25;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
     @media print {
       .toolbar, header { display: none !important; }
       body { background: #fff; }
@@ -153,9 +160,9 @@
         sheet.classList.add('ledger');
         document.getElementById('pageOrient').textContent = '@media print { @page { size: A4 landscape; margin: 10mm; } }';
       }
-      // 在庫一覧は列が多いため横向きにする(折り返し可・通常フォント)。
+      // 在庫一覧は列が多いため、横向き・固定列幅・小フォントで1商品1行に収める。
       if (type === 'inventory') {
-        sheet.style.maxWidth = '1040px';
+        sheet.classList.add('inventory');
         document.getElementById('pageOrient').textContent = '@media print { @page { size: A4 landscape; margin: 10mm; } }';
       }
       sheet.innerHTML = html;
@@ -424,7 +431,10 @@
       if (q.get('includeZero') === 'true') pairs.push(['在庫0', '表示']);
       pairs.push(['件数', rows.length]);
       let h = metaRow(pairs);
-      h += `<table><thead><tr><th>商品名</th><th>問屋</th><th>メーカー</th><th>部門</th><th>分類</th>` +
+      h += `<table><colgroup>` +
+        `<col style="width:18%"><col style="width:11%"><col style="width:11%"><col style="width:7%"><col style="width:7%">` +
+        `<col style="width:6%"><col style="width:9%"><col style="width:8%"><col style="width:8%"><col style="width:5%"><col style="width:10%"></colgroup>` +
+        `<thead><tr><th>商品名</th><th>問屋</th><th>メーカー</th><th>部門</th><th>分類</th>` +
         `<th>棚</th><th>ロット</th><th>使用期限</th><th>入庫日</th><th class="num">在庫数</th><th>備考</th></tr></thead><tbody>`;
       if (rows.length === 0) h += emptyRow(11);
       let tot = 0;
