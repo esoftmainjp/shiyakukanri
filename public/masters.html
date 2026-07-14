@@ -258,9 +258,15 @@
       const { ok, data } = await api(path, { method, body: JSON.stringify(body) });
       if (!ok) { setMsg(msg, data.error || '保存失敗', 'error'); return; }
       setMsg(msg, editId ? '更新しました' : '登録しました', 'ok');
+      // 商品詳細は続けて同じ商品の詳細を登録できるよう、保存後も商品の選択を保持する
+      const keepProductId = (t === 'product-details') ? (body.product_id || '') : '';
       refCache = {};
       resetForm();
       await renderForm();
+      if (keepProductId) {
+        const el = document.getElementById('fld_product_id');
+        if (el) el.value = String(keepProductId);
+      }
       loadList();
     }
 
