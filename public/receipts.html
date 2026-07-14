@@ -346,14 +346,23 @@
           `<td>${attr(l.productName)}</td>` +
           `<td><input value="${attr(l.lotNumber)}" oninput="lines[${i}].lotNumber=this.value" placeholder="空欄可" style="width:90px;" /></td>` +
           `<td><input type="date" value="${l.expiryDate || ''}" oninput="lines[${i}].expiryDate=this.value||null" style="width:140px;" /></td>` +
-          `<td style="text-align:right;">${l.receiptQuantity}</td><td style="text-align:right;">${l.packSize}</td>` +
+          `<td><input type="number" min="1" step="1" value="${l.receiptQuantity}" oninput="setLineQty(${i}, this.value)" style="width:80px; text-align:right;" /></td>` +
+          `<td style="text-align:right;">${l.packSize}</td>` +
           `<td><input type="number" min="0" step="0.01" value="${l.unitPrice != null ? l.unitPrice : 0}" oninput="lines[${i}].unitPrice=Number(this.value)||0" style="width:90px; text-align:right;" /></td>` +
-          `<td style="text-align:right;">${l.receiptQuantity * l.packSize}</td>` +
+          `<td style="text-align:right;" id="baraCell_${i}">${l.receiptQuantity * l.packSize}</td>` +
           `<td>${l.barcode ? '○' : ''}</td>` +
           `<td><input value="${attr(l.note)}" oninput="lines[${i}].note=this.value" placeholder="任意" style="width:130px;" /></td>` +
           `<td><button class="danger" onclick="removeLine(${i})">削除</button></td>`;
         tbody.appendChild(tr);
       });
+    }
+    // 明細の入庫個数(箱数)を手修正。1以上に丸め、加算バラ数を即時更新する。
+    function setLineQty(i, v) {
+      let n = Math.floor(Number(v));
+      if (!(n >= 1)) n = 1;
+      lines[i].receiptQuantity = n;
+      const cell = document.getElementById('baraCell_' + i);
+      if (cell) cell.textContent = n * lines[i].packSize;
     }
     function removeLine(i) { lines.splice(i, 1); renderLines(); }
 
