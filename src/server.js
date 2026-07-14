@@ -532,6 +532,8 @@ app.use('/api/payment-config', requireLogin, requireRole('superadmin'), require(
 app.use('/api/security-config', requireLogin, requireRole('superadmin'), require('./routes/security-config'));
 app.use('/api/facilities', requireLogin, requireRole('superadmin'), require('./routes/facilities'));
 app.use('/api/db-usage',  requireLogin, requireRole('superadmin'), require('./routes/db-usage'));
+// 入庫時の未登録商品スキャン→その場で新規登録。入庫作業の一環として一般ユーザーにも許可する。
+app.use('/api/quick-product', requireLogin, requireRole('admin', 'general', 'superadmin'), require('./routes/quick-product'));
 app.use('/api/masters',   requireLogin, requireRole('admin', 'superadmin'), require('./routes/masters'));
 app.use('/api/import',    requireLogin, requireRole('admin', 'superadmin'), requireFeature('feat_import'), require('./routes/import'));
 app.use('/api/logs',      requireLogin, requireRole('admin', 'superadmin'), require('./routes/logs'));

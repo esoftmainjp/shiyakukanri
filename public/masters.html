@@ -122,6 +122,22 @@
 
     let editId = null;
     let refCache = {};
+    // 商品詳細の適用開始日・終了日の既定(基本設定の「本日＋日数」から算出)
+    let applyDefaults = { start: '', end: '' };
+
+    // 本日＋days日 の YYYY-MM-DD
+    function dateFromOffset(days) {
+      const d = new Date();
+      d.setDate(d.getDate() + (Number(days) || 0));
+      return localDateStr(d);
+    }
+    async function loadApplyDefaults() {
+      const { data } = await api('/api/settings');
+      const s = (data && data.settings) || {};
+      const startOff = (s.pd_apply_start_offset_days !== undefined && s.pd_apply_start_offset_days !== '') ? s.pd_apply_start_offset_days : 0;
+      const endOff = (s.pd_apply_end_offset_days !== undefined && s.pd_apply_end_offset_days !== '') ? s.pd_apply_end_offset_days : 3650;
+      applyDefaults = { start: dateFromOffset(startOff), end: dateFromOffset(endOff) };
+    }
 
     async function boot() {
       const user = await initPage('masters');
@@ -133,6 +149,7 @@
         document.querySelector('main').innerHTML = '<div class="card">全体管理者は、画面上部の施設セレクタで対象施設を選択してからマスターを編集してください。</div>';
         return;
       }
+      await loadApplyDefaults();
       switchType();
     }
 
@@ -192,10 +209,12 @@
         div.innerHTML = inner;
         area.appendChild(div);
       }
-      // 商品詳細は適用開始日を本日で既定表示(必須のため。未入力時の登録エラー防止)
+      // 商品詳細は適用開始日・終了日を既定表示(必須のため。未入力時の登録エラー防止)
       if (t === 'product-details') {
-        const el = document.getElementById('fld_apply_start_date');
-        if (el && !el.value) el.value = localDateStr();
+        const s = document.getElementById('fld_apply_start_date');
+        if (s && !s.value) s.value = applyDefaults.start || localDateStr();
+        const e = document.getElementById('fld_apply_end_date');
+        if (e && !e.value) e.value = applyDefaults.end || '';
       }
     }
 
@@ -207,10 +226,12 @@
         if (!el) return;
         if (def.type === 'checkbox') el.checked = false; else el.value = '';
       });
-      // 商品詳細の適用開始日は本日を既定表示(必須)
+      // 商品詳細の適用開始日・終了日は既定を表示(必須)
       if (curType() === 'product-details') {
-        const el = document.getElementById('fld_apply_start_date');
-        if (el) el.value = localDateStr();
+        const s = document.getElementById('fld_apply_start_date');
+        if (s) s.value = applyDefaults.start || localDateStr();
+        const e = document.getElementById('fld_apply_end_date');
+        if (e) e.value = applyDefaults.end || '';
       }
       setMsg(document.getElementById('formMsg'), '', '');
     }

@@ -110,6 +110,29 @@
       </div>
       <p class="msg" id="resultMsg"></p>
     </div>
+
+    <!-- 未登録商品の新規登録モーダル(スキャンで見つからない場合) -->
+    <div id="qpOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:1000; overflow:auto;">
+      <div style="max-width:940px; margin:24px auto; background:#fff; border-radius:12px; padding:20px 22px; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+        <h2 style="margin-top:0;">未登録の商品を新規登録</h2>
+        <p style="color:#9a3412; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:8px 12px; font-size:0.86rem; margin-top:0;">
+          スキャンしたJANコードに一致する商品がありません。項目を入力して登録すると、そのまま入庫明細に追加されます。<span style="color:#dc2626;">■</span> は必須項目です。
+        </p>
+        <h3 style="margin-bottom:6px;">必須項目</h3>
+        <div id="qpRequired" class="row"></div>
+        <div style="margin-top:14px;">
+          <button type="button" class="secondary" onclick="toggleQpOptional()"><span id="qpOptToggle">▶</span> 任意項目（後から商品マスターで編集できます）</button>
+        </div>
+        <div id="qpOptionalWrap" style="display:none; margin-top:10px;">
+          <div id="qpOptional" class="row"></div>
+        </div>
+        <p class="msg" id="qpMsg"></p>
+        <div style="margin-top:16px; display:flex; gap:12px; flex-wrap:wrap;">
+          <button type="button" onclick="saveQuickAdd()">登録して明細に追加</button>
+          <button type="button" class="secondary" onclick="closeQuickAdd()">キャンセル</button>
+        </div>
+      </div>
+    </div>
   </main>
 
   <script src="/common.js"></script>
@@ -159,6 +182,9 @@
       document.getElementById('expiry').addEventListener('change', updateCurrentStock);
       rebuildProductOptions(); // 初期は問屋未選択→商品追加不可
 
+      // 未登録商品の新規登録モーダル用の参照データ・既定値を読み込む
+      await loadQuickAddRefs();
+
       // GS1-128スキャン: Enterで確定
       const scan = document.getElementById('scan');
       scan.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); handleScan(scan.value); } });
@@ -192,41 +218,49 @@
       if (!value) return;
       if (!isGs1(value)) { setMsg(msg, 'GS1-128として認識できません（(01)で始まる必要があります）', 'error'); return; }
       const info = extractGs1(value);
-      const { ok, data } = await api('/api/lookup/by-jan/' + encodeURIComponent(info.jan));
-      if (!ok) { setMsg(msg, `${data.error || '照合失敗'}（JAN:${info.jan}）`, 'error'); return; }
+      const { ok, status, data } = await api('/api/lookup/by-jan/' + encodeURIComponent(info.jan));
+      if (!ok) {
+        // 未登録(404)ならその場で新規登録モーダルを開く。それ以外はエラー表示。
+        if (status === 404) { openQuickAdd({ jan: info.jan, lot: info.lot, expiry: info.expiry }); return; }
+        setMsg(msg, `${data.error || '照合失敗'}（JAN:${info.jan}）`, 'error'); return;
+      }
       const p = data.product;
-      // 読み取った商品の問屋に合わせて絞り込み直す(商品が選択肢に含まれるように)
+      const row = finishScanWithProduct(p, info.lot, info.expiry);
+      if (!row) { setMsg(msg, `読取: ${p.productName}（この問屋の商品詳細が見つかりません）`, 'error'); return; }
+      setMsg(msg, `追加: ${p.productName} / ロット:${info.lot || '-'} / 期限:${info.expiry || '-'} → 箱数:${row.receiptQuantity}`, 'ok');
+      // 連続スキャンできるよう読取欄をクリアしてフォーカスを戻す
+      document.getElementById('scan').value = '';
+      document.getElementById('scan').focus();
+    }
+
+    // 照合できた商品(既存/新規作成)をフォームに反映し、スキャンしたロット・期限で明細に追加する。
+    // 同一(商品+ロット+期限)は行を増やさず箱数(入庫数)+1。戻り値=集約後の明細行(nullは詳細未紐付け)。
+    function finishScanWithProduct(p, lot, expiry) {
       const supEl = document.getElementById('supplier');
       if (p.supplierId) { supEl.value = p.supplierId; rebuildProductOptions(); loadIncoming(); }
-      // フォームに反映
       document.getElementById('product').value = p.productId;
       document.getElementById('pack').value = p.packSize;
       const scur = currentDetail();
       document.getElementById('unitPrice').value = (scur && scur.detail && scur.detail.unitPrice != null) ? scur.detail.unitPrice : 0;
-      document.getElementById('lot').value = info.lot || '';
-      document.getElementById('expiry').value = info.expiry || '';
+      document.getElementById('lot').value = lot || '';
+      document.getElementById('expiry').value = expiry || '';
       document.getElementById('qty').value = 1;
-      await updateCurrentStock();
-      // 読み取ったら自動で明細に追加。同一(商品+ロット+期限)は行を増やさず箱数(入庫数)+1。
+      updateCurrentStock();
       const cur = currentDetail();
-      if (!cur || !cur.detail) { setMsg(msg, `読取: ${p.productName}（この問屋の商品詳細が見つかりません）`, 'error'); return; }
+      if (!cur || !cur.detail) return null;
       const line = {
         productId: p.productId,
         productName: p.productName,
         productDetailId: cur.detail.productDetailId,
-        lotNumber: info.lot || '',
-        expiryDate: info.expiry || null,
+        lotNumber: lot || '',
+        expiryDate: expiry || null,
         receiptQuantity: 1,
         packSize: Number(document.getElementById('pack').value) || Number(cur.detail.packSize) || 1,
         unitPrice: Number(document.getElementById('unitPrice').value) || 0,
         barcode: cur.detail.barcodeIssueFlag,
         note: '',
       };
-      const row = addOrAggregate(line);
-      setMsg(msg, `追加: ${p.productName} / ロット:${info.lot || '-'} / 期限:${info.expiry || '-'} → 箱数:${row.receiptQuantity}`, 'ok');
-      // 連続スキャンできるよう読取欄をクリアしてフォーカスを戻す
-      document.getElementById('scan').value = '';
-      document.getElementById('scan').focus();
+      return addOrAggregate(line);
     }
 
     function currentDetail() {
@@ -399,6 +433,178 @@
         window.open('/print.html?type=receipts&id=' + data.receiptId, '_blank');
       }
       lines = []; renderLines(); await updateCurrentStock();
+    }
+
+    // ===== 未登録商品の新規登録(クイック追加) =====
+    // grp: 'p'=商品(products), 'd'=商品詳細(product_details)。col=実DBカラム名。
+    function qf(key, label, type, grp, col, ref, readonly) { return { key, label, type, grp, col, ref: ref || null, readonly: !!readonly }; }
+    const QP_REQUIRED = [
+      qf('name', '商品名', 'text', 'p', 'name'),
+      qf('department_id', '部門', 'ref', 'p', 'department_id', 'departments'),
+      qf('category_id', '分類', 'ref', 'p', 'category_id', 'categories'),
+      qf('supplier_id', '問屋', 'ref', 'd', 'supplier_id', 'suppliers'),
+      qf('shelf_id', '棚', 'ref', 'p', 'shelf_id', 'shelves'),
+      qf('maker_id', 'メーカー', 'ref', 'd', 'maker_id', 'makers'),
+      qf('pack_size', '梱包数', 'number', 'd', 'pack_size'),
+      qf('apply_start_date', '適用開始日', 'date', 'd', 'apply_start_date'),
+      qf('apply_end_date', '適用終了日', 'date', 'd', 'apply_end_date'),
+      qf('jan_code', 'JANコード', 'text', 'd', 'jan_code', null, true),
+    ];
+    const QP_OPTIONAL = [
+      qf('kana', 'カナ', 'text', 'p', 'kana'),
+      qf('management_code', '管理コード', 'text', 'p', 'management_code'),
+      qf('qc_target_flag', '試薬管理対象', 'checkbox', 'p', 'qc_target_flag'),
+      qf('product_note', '商品備考', 'text', 'p', 'note'),
+      qf('quantity_unit', '数量単位', 'text', 'd', 'quantity_unit'),
+      qf('pack_unit', '梱包単位', 'text', 'd', 'pack_unit'),
+      qf('spec', '規格', 'text', 'd', 'spec'),
+      qf('unit_price', '単価', 'number', 'd', 'unit_price'),
+      qf('test_count', 'テスト数', 'number', 'd', 'test_count'),
+      qf('min_quantity', '最低個数', 'number', 'd', 'min_quantity'),
+      qf('order_quantity', '発注個数', 'number', 'd', 'order_quantity'),
+      qf('barcode_issue_flag', 'バーコード発行', 'checkbox', 'd', 'barcode_issue_flag'),
+      qf('expiry_warn_days', '警告日数(0=未設定)', 'number', 'd', 'expiry_warn_days'),
+      qf('open_life_days', '開封後有効日数(0=無効)', 'number', 'd', 'open_life_days'),
+      qf('detail_note', '詳細備考', 'text', 'd', 'note'),
+    ];
+
+    const QP_REFS = {};                 // departments/categories/suppliers/shelves/makers -> [{id,name}]
+    let qpDefaults = { start: '', end: '' };
+    let qpPending = null;               // スキャンから引き継ぐ { lot, expiry }
+
+    function qpDateFromOffset(days) { const d = new Date(); d.setDate(d.getDate() + (Number(days) || 0)); return localDateStr(d); }
+
+    async function loadQuickAddRefs() {
+      const [dep, cat, mak, shv] = await Promise.all([
+        api('/api/lookup/departments'), api('/api/lookup/categories'),
+        api('/api/lookup/makers'), api('/api/lookup/shelves'),
+      ]);
+      QP_REFS.departments = (dep.data && dep.data.departments) || [];
+      QP_REFS.categories = (cat.data && cat.data.categories) || [];
+      QP_REFS.makers = (mak.data && mak.data.makers) || [];
+      QP_REFS.shelves = (shv.data && shv.data.shelves) || [];
+      // 問屋は入庫画面で読込済みの選択肢を流用
+      QP_REFS.suppliers = [...document.querySelectorAll('#supplier option')].filter((o) => o.value).map((o) => ({ id: o.value, name: o.textContent }));
+      // 適用期間の既定(基本設定の「本日＋日数」)
+      const s = await api('/api/settings');
+      const st = (s.data && s.data.settings) || {};
+      const so = (st.pd_apply_start_offset_days !== undefined && st.pd_apply_start_offset_days !== '') ? st.pd_apply_start_offset_days : 0;
+      const eo = (st.pd_apply_end_offset_days !== undefined && st.pd_apply_end_offset_days !== '') ? st.pd_apply_end_offset_days : 3650;
+      qpDefaults = { start: qpDateFromOffset(so), end: qpDateFromOffset(eo) };
+    }
+
+    function qpRenderField(def, required) {
+      const div = document.createElement('div');
+      const mark = required ? '<span style="color:#dc2626;">■</span> ' : '';
+      let inner = `<label>${mark}${def.label}</label>`;
+      if (def.type === 'ref') {
+        const rows = QP_REFS[def.ref] || [];
+        inner += `<select id="qp_${def.key}"><option value="">(未選択)</option>` +
+          rows.map((r) => `<option value="${r.id}">${attr(r.name)}</option>`).join('') + `</select>`;
+      } else if (def.type === 'checkbox') {
+        inner += `<input type="checkbox" id="qp_${def.key}" style="width:auto;" />`;
+      } else {
+        const ro = def.readonly ? ' readonly style="background:#eef2f5;"' : '';
+        inner += `<input type="${def.type}" id="qp_${def.key}"${ro} />`;
+      }
+      div.innerHTML = inner;
+      return div;
+    }
+    function qpRenderForm() {
+      const rq = document.getElementById('qpRequired'); rq.innerHTML = '';
+      QP_REQUIRED.forEach((d) => rq.appendChild(qpRenderField(d, true)));
+      const op = document.getElementById('qpOptional'); op.innerHTML = '';
+      QP_OPTIONAL.forEach((d) => op.appendChild(qpRenderField(d, false)));
+    }
+
+    function toggleQpOptional() {
+      const w = document.getElementById('qpOptionalWrap');
+      const t = document.getElementById('qpOptToggle');
+      const show = w.style.display === 'none';
+      w.style.display = show ? 'block' : 'none';
+      t.textContent = show ? '▼' : '▶';
+    }
+
+    // 未登録スキャン時に呼ぶ。info={jan,lot,expiry}
+    function openQuickAdd(info) {
+      qpPending = { lot: info.lot || '', expiry: info.expiry || null };
+      qpRenderForm();
+      document.getElementById('qpOptionalWrap').style.display = 'none';
+      document.getElementById('qpOptToggle').textContent = '▶';
+      // 既定値: JAN=スキャン値、問屋=選択中、棚=先頭、梱包数=1、適用期間=設定既定
+      document.getElementById('qp_jan_code').value = info.jan || '';
+      const sup = document.getElementById('supplier').value;
+      if (sup) document.getElementById('qp_supplier_id').value = sup;
+      const shv = QP_REFS.shelves || [];
+      if (shv.length) document.getElementById('qp_shelf_id').value = shv[0].id;
+      document.getElementById('qp_pack_size').value = 1;
+      document.getElementById('qp_apply_start_date').value = qpDefaults.start;
+      document.getElementById('qp_apply_end_date').value = qpDefaults.end;
+      setMsg(document.getElementById('qpMsg'), '', '');
+      document.getElementById('qpOverlay').style.display = 'block';
+      const nm = document.getElementById('qp_name'); if (nm) nm.focus();
+    }
+    function closeQuickAdd() {
+      document.getElementById('qpOverlay').style.display = 'none';
+      qpPending = null;
+      document.getElementById('scan').focus();
+    }
+
+    function qpCollect() {
+      const product = {}, detail = {};
+      [...QP_REQUIRED, ...QP_OPTIONAL].forEach((def) => {
+        const el = document.getElementById('qp_' + def.key);
+        if (!el) return;
+        const v = (def.type === 'checkbox') ? el.checked : el.value;
+        (def.grp === 'p' ? product : detail)[def.col] = v;
+      });
+      return { product, detail };
+    }
+
+    async function saveQuickAdd() {
+      const msg = document.getElementById('qpMsg');
+      const { product, detail } = qpCollect();
+      // クライアント側の必須チェック(分かりやすく)
+      const req = [
+        [product.name, '商品名'], [product.department_id, '部門'], [product.category_id, '分類'],
+        [product.shelf_id, '棚'], [detail.supplier_id, '問屋'], [detail.maker_id, 'メーカー'],
+        [detail.jan_code, 'JANコード'], [detail.apply_start_date, '適用開始日'], [detail.apply_end_date, '適用終了日'],
+      ];
+      const miss = req.filter(([v]) => !String(v == null ? '' : v).trim()).map((x) => x[1]);
+      if (!(Number(detail.pack_size) >= 1)) miss.push('梱包数(1以上)');
+      if (miss.length) { setMsg(msg, '必須項目が未入力です：' + miss.join('、'), 'error'); return; }
+      setMsg(msg, '登録中…', 'ok');
+      const { ok, data } = await api('/api/quick-product', { method: 'POST', body: JSON.stringify({ product, detail }) });
+      if (!ok) { setMsg(msg, data.error || '登録に失敗しました', 'error'); return; }
+      const p = data.product;
+      if (!p) { setMsg(msg, '登録しましたが商品情報を取得できませんでした', 'error'); return; }
+      upsertProduct(p);
+      const lot = qpPending ? qpPending.lot : '';
+      const expiry = qpPending ? qpPending.expiry : null;
+      closeQuickAdd();
+      const row = finishScanWithProduct(p, lot, expiry);
+      const scanMsg = document.getElementById('scanMsg');
+      if (!row) { setMsg(scanMsg, `登録: ${p.productName}（商品詳細の紐付けに失敗）`, 'error'); return; }
+      const label = data.existing ? '既存商品を使用' : '新規登録';
+      setMsg(scanMsg, `${label}: ${p.productName} / ロット:${lot || '-'} / 期限:${expiry || '-'} → 箱数:${row.receiptQuantity}`, 'ok');
+      document.getElementById('scan').value = '';
+      document.getElementById('scan').focus();
+    }
+
+    // 作成/照合した商品を、入庫画面の商品配列(lookup形式)に反映する
+    function upsertProduct(p) {
+      let entry = products.find((x) => String(x.productId) === String(p.productId));
+      if (!entry) {
+        entry = { productId: p.productId, productName: p.productName, managementCode: p.managementCode, qcTarget: p.qcTarget, details: [] };
+        products.push(entry);
+      }
+      if (!entry.details.some((d) => String(d.productDetailId) === String(p.productDetailId))) {
+        entry.details.push({
+          productDetailId: p.productDetailId, spec: p.spec, packSize: p.packSize, unitPrice: p.unitPrice,
+          supplierId: p.supplierId, supplierName: p.supplierName, barcodeIssueFlag: p.barcodeIssueFlag, janCode: p.janCode,
+        });
+      }
+      return entry;
     }
 
     boot();

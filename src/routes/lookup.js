@@ -117,6 +117,21 @@ router.get('/makers', async (req, res) => {
   }
 });
 
+// 棚一覧 (入庫画面の未登録商品スキャン→新規登録で使う。一般ユーザーも参照可)
+router.get('/shelves', async (req, res) => {
+  const scope = facilityScope(req);
+  try {
+    const params = [];
+    let where = 'WHERE is_active = TRUE';
+    if (!scope.all) { params.push(scope.facilityId); where += ` AND facility_id = $${params.length}`; }
+    const { rows } = await pool.query(`SELECT id, name FROM shelves ${where} ORDER BY kana, name`, params);
+    res.json({ shelves: rows });
+  } catch (err) {
+    console.error('棚一覧エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
 // 商品のロット別在庫 (出庫画面のロット選択)
 router.get('/stocks', async (req, res) => {
   const { productId } = req.query;
