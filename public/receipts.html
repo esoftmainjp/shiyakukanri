@@ -80,10 +80,6 @@
           <input type="number" id="pack" value="1" min="1" readonly style="background:#eef2f5;" title="梱包数は商品詳細マスターで管理します" />
         </div>
         <div>
-          <label>単価（税抜）</label>
-          <input type="number" id="unitPrice" value="0" min="0" step="0.01" title="商品マスターの単価を既定表示。実際の仕入単価に修正できます（返品・支払集計の元になります）" />
-        </div>
-        <div>
           <label>現在庫（バラ）</label>
           <input id="curStock" value="0" readonly style="background:#eef2f5;" />
         </div>
@@ -95,7 +91,7 @@
       <p class="msg" id="addMsg"></p>
 
       <table id="lineTable">
-        <thead><tr><th>商品</th><th>ロット</th><th>使用期限</th><th>入庫個数</th><th>梱包数</th><th>単価</th><th>加算バラ数</th><th>BC</th><th>備考</th><th></th></tr></thead>
+        <thead><tr><th>商品</th><th>ロット</th><th>使用期限</th><th>入庫個数</th><th>梱包数</th><th>加算バラ数</th><th>BC</th><th>備考</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
 
@@ -240,8 +236,6 @@
       if (p.supplierId) { supEl.value = p.supplierId; rebuildProductOptions(); loadIncoming(); }
       document.getElementById('product').value = p.productId;
       document.getElementById('pack').value = p.packSize;
-      const scur = currentDetail();
-      document.getElementById('unitPrice').value = (scur && scur.detail && scur.detail.unitPrice != null) ? scur.detail.unitPrice : 0;
       document.getElementById('lot').value = lot || '';
       document.getElementById('expiry').value = expiry || '';
       document.getElementById('qty').value = 1;
@@ -256,7 +250,8 @@
         expiryDate: expiry || null,
         receiptQuantity: 1,
         packSize: Number(document.getElementById('pack').value) || Number(cur.detail.packSize) || 1,
-        unitPrice: Number(document.getElementById('unitPrice').value) || 0,
+        // 単価は画面では扱わず、商品マスターの単価を記録する(支払・返品集計の元)
+        unitPrice: cur.detail.unitPrice != null ? Number(cur.detail.unitPrice) : 0,
         barcode: cur.detail.barcodeIssueFlag,
         note: '',
       };
@@ -298,7 +293,6 @@
       const cur = currentDetail();
       if (!cur || !cur.detail) return;
       document.getElementById('pack').value = cur.detail.packSize;
-      document.getElementById('unitPrice').value = cur.detail.unitPrice != null ? cur.detail.unitPrice : 0;
       updateCurrentStock();
     }
 
@@ -328,7 +322,8 @@
         expiryDate: document.getElementById('expiry').value || null,
         receiptQuantity: qty,
         packSize: pack,
-        unitPrice: Number(document.getElementById('unitPrice').value) || 0,
+        // 単価は画面では扱わず、商品マスターの単価を記録する(支払・返品集計の元)
+        unitPrice: cur.detail.unitPrice != null ? Number(cur.detail.unitPrice) : 0,
         barcode: cur.detail.barcodeIssueFlag,
         note: document.getElementById('lineNote').value || '',
       };
@@ -348,7 +343,6 @@
           `<td><input type="date" value="${l.expiryDate || ''}" oninput="lines[${i}].expiryDate=this.value||null" style="width:140px;" /></td>` +
           `<td><input type="number" min="1" step="1" value="${l.receiptQuantity}" oninput="setLineQty(${i}, this.value)" style="width:80px; text-align:right;" /></td>` +
           `<td style="text-align:right;">${l.packSize}</td>` +
-          `<td><input type="number" min="0" step="0.01" value="${l.unitPrice != null ? l.unitPrice : 0}" oninput="lines[${i}].unitPrice=Number(this.value)||0" style="width:90px; text-align:right;" /></td>` +
           `<td style="text-align:right;" id="baraCell_${i}">${l.receiptQuantity * l.packSize}</td>` +
           `<td>${l.barcode ? '○' : ''}</td>` +
           `<td><input value="${attr(l.note)}" oninput="lines[${i}].note=this.value" placeholder="任意" style="width:130px;" /></td>` +
