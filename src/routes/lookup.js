@@ -109,7 +109,7 @@ router.get('/makers', async (req, res) => {
     const params = [];
     let where = '';
     if (!scope.all) { params.push(scope.facilityId); where = 'WHERE facility_id = $1'; }
-    const { rows } = await pool.query(`SELECT id, name FROM makers ${where} ORDER BY name`, params);
+    const { rows } = await pool.query(`SELECT id, name, jan_maker_code FROM makers ${where} ORDER BY name`, params);
     res.json({ makers: rows });
   } catch (err) {
     console.error('メーカー一覧エラー:', err.message);

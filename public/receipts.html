@@ -474,6 +474,21 @@
 
     function qpDateFromOffset(days) { const d = new Date(); d.setDate(d.getDate() + (Number(days) || 0)); return localDateStr(d); }
 
+    // JANメーカーコードの前方一致でメーカーを自動選択する(最長一致を優先)。
+    // 該当が無ければ未選択のまま(手動選択)。誤りがあればユーザーが選び直せる。
+    function qpAutoSelectMaker(jan) {
+      const el = document.getElementById('qp_maker_id');
+      if (!el) return;
+      const digits = String(jan || '').replace(/\D/g, '');
+      if (!digits) return;
+      let bestId = '', bestLen = 0;
+      (QP_REFS.makers || []).forEach((m) => {
+        const code = String(m.jan_maker_code || '').trim();
+        if (code && digits.startsWith(code) && code.length > bestLen) { bestId = m.id; bestLen = code.length; }
+      });
+      if (bestId) el.value = String(bestId);
+    }
+
     async function loadQuickAddRefs() {
       const [dep, cat, mak, shv] = await Promise.all([
         api('/api/lookup/departments'), api('/api/lookup/categories'),
@@ -537,6 +552,8 @@
       if (sup) document.getElementById('qp_supplier_id').value = sup;
       const shv = QP_REFS.shelves || [];
       if (shv.length) document.getElementById('qp_shelf_id').value = shv[0].id;
+      // メーカー自動選択(JANメーカーコードの前方一致・最長一致)。外れていれば手動で選び直せる。
+      qpAutoSelectMaker(info.jan || '');
       document.getElementById('qp_pack_size').value = 1;
       document.getElementById('qp_apply_start_date').value = qpDefaults.start;
       document.getElementById('qp_apply_end_date').value = qpDefaults.end;
