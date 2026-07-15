@@ -67,8 +67,19 @@ function _bcEsc(s) {
 
 // ラベルのページ/プレビューサイズCSS
 function labelPageStyleText(cfg) {
-  return `.label{width:${cfg.lw}mm;height:${cfg.lh}mm;}` +
+  let css = `.label{width:${cfg.lw}mm;height:${cfg.lh}mm;}` +
     `@media print{@page{size:${cfg.lw}mm ${cfg.lh}mm;margin:0;}}`;
+  // 末尾の空白ラベル対策(端末設定でONのときのみ)。
+  // 改ページを各ラベルの「後」ではなく「前(先頭を除く)」に入れ、末尾に改ページを残さない。
+  // barcode-print(.labelが直下)・labels(.label-wrapが直下)の両構造に効くよう .labels>* を対象にする。
+  if (getDeviceSetting('label_trim_blank', 'false') === 'true') {
+    css += `@media print{` +
+      `.label{page-break-after:auto !important;break-after:auto !important;}` +
+      `.labels>*{page-break-before:always !important;break-before:page !important;}` +
+      `.labels>*:first-child{page-break-before:avoid !important;break-before:avoid !important;}` +
+      `}`;
+  }
+  return css;
 }
 
 // .label 要素に、バーコード(1D/2D)＋テキストを描画する
