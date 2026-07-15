@@ -66,9 +66,14 @@ function _bcEsc(s) {
 }
 
 // ラベルのページ/プレビューサイズCSS
+// ラベル幅はバーコード(1D)/QR(2D)の幅を下回らないようにする。
+// (ラベルが狭いとバーコードが切れて反映されない・QRが読み取れないため、
+//  幅を指定した分だけラベル(用紙)幅も自動的に広げる)
 function labelPageStyleText(cfg) {
-  return `.label{width:${cfg.lw}mm;height:${cfg.lh}mm;}` +
-    `@media print{@page{size:${cfg.lw}mm ${cfg.lh}mm;margin:0;}}`;
+  const contentW = cfg.kind === '2d' ? Number(cfg.qr) : Number(cfg.bwmm);
+  const w = Math.max(Number(cfg.lw) || 0, (isNaN(contentW) ? 0 : contentW));
+  return `.label{width:${w}mm;height:${cfg.lh}mm;}` +
+    `@media print{@page{size:${w}mm ${cfg.lh}mm;margin:0;}}`;
 }
 
 // .label 要素に、バーコード(1D/2D)＋テキストを描画する
