@@ -86,7 +86,7 @@
         </div>
         <div class="row">
           <div style="flex:0;"><label>並び</label>
-            <select id="label2d_layout" style="width:220px;">
+            <select id="label2d_layout" style="width:220px;" onchange="on2dLayoutChange()">
               <option value="vertical">縦並び（QRの下に情報）</option>
               <option value="horizontal">横並び（QRの右に情報）</option>
             </select>
@@ -115,9 +115,35 @@
     // 端末別に保持するラベル設定のキーと既定値
     const LABEL_KEYS = ['label_width_mm', 'label_height_mm', 'barcode_height_px', 'barcode_width_mm',
       'label_barcode_font', 'label_name_font', 'label_sub_font'];
-    // 2次元バーコード(QR)ラベルのキー(1次元とは別に保持)
-    const LABEL2D_KEYS = ['label2d_width_mm', 'label2d_height_mm', 'barcode2d_size_mm', 'label2d_layout',
+    // 2次元バーコード(QR)ラベルの寸法/文字サイズのキー(縦並び/横並びで別々に保持)
+    const LABEL2D_DIM_KEYS = ['label2d_width_mm', 'label2d_height_mm', 'barcode2d_size_mm',
       'label2d_barcode_font', 'label2d_name_font', 'label2d_sub_font'];
+    // レイアウト別の既定値(横並びは幅を広めに)
+    const LABEL2D_DEFAULTS = {
+      vertical:   { label2d_width_mm: 40, label2d_height_mm: 30, barcode2d_size_mm: 22, label2d_barcode_font: 8, label2d_name_font: 12, label2d_sub_font: 11 },
+      horizontal: { label2d_width_mm: 60, label2d_height_mm: 30, barcode2d_size_mm: 22, label2d_barcode_font: 8, label2d_name_font: 12, label2d_sub_font: 11 },
+    };
+    function key2d(base, layout) { return base + (layout === 'horizontal' ? '_h' : '_v'); }
+    // レイアウト別の保存値を取得(縦は旧キーを後方互換で参照、無ければ既定)
+    function get2d(base, layout) {
+      let v = getDeviceSetting(key2d(base, layout), null);
+      if ((v === null || v === '') && layout === 'vertical') v = getDeviceSetting(base, null);
+      return (v === null || v === '') ? LABEL2D_DEFAULTS[layout][base] : v;
+    }
+    // レイアウトごとの編集内容を保持するバッファ(縦/横を切り替えても失わない)
+    let buf2d = { vertical: {}, horizontal: {} };
+    let cur2dLayout = 'vertical';
+    function initBuf2d() {
+      ['vertical', 'horizontal'].forEach((L) => { LABEL2D_DIM_KEYS.forEach((k) => { buf2d[L][k] = get2d(k, L); }); });
+    }
+    function readFieldsInto(layout) { LABEL2D_DIM_KEYS.forEach((k) => { buf2d[layout][k] = document.getElementById(k).value; }); }
+    function writeFieldsFrom(layout) { LABEL2D_DIM_KEYS.forEach((k) => { document.getElementById(k).value = buf2d[layout][k]; }); }
+    // 「並び」変更時: 現在の入力を退避し、切替先の値を表示(未保存でも失わない)
+    function on2dLayoutChange() {
+      readFieldsInto(cur2dLayout);
+      cur2dLayout = document.getElementById('label2d_layout').value === 'horizontal' ? 'horizontal' : 'vertical';
+      writeFieldsFrom(cur2dLayout);
+    }
 
     async function boot() {
       const user = await initPage('device');
@@ -131,9 +157,13 @@
       document.getElementById('content_width').value = getDeviceSetting('content_width', '980px');
       // バーコード種別(端末別)
       document.getElementById('barcode_kind').value = getDeviceSetting('barcode_kind', '1d') === '2d' ? '2d' : '1d';
-      // ラベル設定(端末別。1次元・2次元)
+      // 1次元ラベル設定
       LABEL_KEYS.forEach((k) => { document.getElementById(k).value = getDeviceSetting(k); });
-      LABEL2D_KEYS.forEach((k) => { document.getElementById(k).value = getDeviceSetting(k); });
+      // 2次元ラベル: レイアウトを選択し、そのレイアウトの寸法/文字サイズを表示
+      cur2dLayout = getDeviceSetting('label2d_layout', 'vertical') === 'horizontal' ? 'horizontal' : 'vertical';
+      document.getElementById('label2d_layout').value = cur2dLayout;
+      initBuf2d();
+      writeFieldsFrom(cur2dLayout);
     }
 
     function save() {
@@ -142,7 +172,10 @@
       setDeviceSetting('content_width', cw); applyContentWidth(cw); // 画面の幅は端末に保存
       setDeviceSetting('barcode_kind', document.getElementById('barcode_kind').value); // バーコード種別
       LABEL_KEYS.forEach((k) => { setDeviceSetting(k, document.getElementById(k).value); });
-      LABEL2D_KEYS.forEach((k) => { setDeviceSetting(k, document.getElementById(k).value); });
+      // 2次元: 現在表示中の入力を取り込み、縦/横それぞれのキーで保存
+      readFieldsInto(cur2dLayout);
+      setDeviceSetting('label2d_layout', cur2dLayout);
+      ['vertical', 'horizontal'].forEach((L) => { LABEL2D_DIM_KEYS.forEach((k) => { setDeviceSetting(key2d(k, L), buf2d[L][k]); }); });
       setMsg(document.getElementById('msg'), 'この端末に保存しました', 'ok');
     }
 
@@ -154,10 +187,20 @@
       applyContentWidth('980px');
       try { localStorage.removeItem('dev_barcode_kind'); } catch (e) { /* ignore */ }
       document.getElementById('barcode_kind').value = '1d';
-      LABEL_KEYS.concat(LABEL2D_KEYS).forEach((k) => {
+      LABEL_KEYS.forEach((k) => {
         try { localStorage.removeItem('dev_' + k); } catch (e) { /* ignore */ }
         document.getElementById(k).value = getDeviceSetting(k);
       });
+      // 2次元: レイアウト別キー・旧キー・並びを削除して既定へ
+      try { localStorage.removeItem('dev_label2d_layout'); } catch (e) { /* ignore */ }
+      ['vertical', 'horizontal'].forEach((L) => {
+        LABEL2D_DIM_KEYS.forEach((k) => { try { localStorage.removeItem('dev_' + key2d(k, L)); } catch (e) { /* ignore */ } });
+      });
+      LABEL2D_DIM_KEYS.forEach((k) => { try { localStorage.removeItem('dev_' + k); } catch (e) { /* ignore */ } });
+      cur2dLayout = 'vertical';
+      document.getElementById('label2d_layout').value = 'vertical';
+      initBuf2d();
+      writeFieldsFrom('vertical');
       setMsg(document.getElementById('msg'), '既定値に戻しました（保存済み）', 'ok');
     }
 

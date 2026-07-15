@@ -17,17 +17,29 @@ function _bn(key, def) {
   return isNaN(n) ? def : n;
 }
 
+// レイアウト別(縦/横)の2D設定を取得。キーは base+('_v'|'_h')。
+// 縦は旧キー(接尾辞なし)を後方互換で参照する。
+function _bn2(base, layout, def) {
+  const k = base + (layout === 'horizontal' ? '_h' : '_v');
+  let v = getDeviceSetting(k, null);
+  if ((v === null || v === '') && layout === 'vertical') v = getDeviceSetting(base, null);
+  const n = Number(v);
+  return (v === null || v === '' || isNaN(n)) ? def : n;
+}
+
 // 指定した種別('1d'|'2d')の描画設定を返す(端末設定に依存せず取得したいとき用)
 function getBarcodeConfigFor(kind) {
   if (kind === '2d') {
+    // 縦並び/横並びで別々に設定を保持する。横並びは幅を広めに既定。
+    const layout = (getDeviceSetting('label2d_layout', 'vertical') === 'horizontal') ? 'horizontal' : 'vertical';
+    const defW = layout === 'horizontal' ? 60 : 40;
     return {
-      kind: '2d',
-      lw: _bn('label2d_width_mm', 40), lh: _bn('label2d_height_mm', 30),
-      qr: _bn('barcode2d_size_mm', 22),
-      bcFont: _bn('label2d_barcode_font', 8),
-      nameFont: _bn('label2d_name_font', 12),
-      subFont: _bn('label2d_sub_font', 11),
-      layout: (getDeviceSetting('label2d_layout', 'vertical') === 'horizontal') ? 'horizontal' : 'vertical',
+      kind: '2d', layout,
+      lw: _bn2('label2d_width_mm', layout, defW), lh: _bn2('label2d_height_mm', layout, 30),
+      qr: _bn2('barcode2d_size_mm', layout, 22),
+      bcFont: _bn2('label2d_barcode_font', layout, 8),
+      nameFont: _bn2('label2d_name_font', layout, 12),
+      subFont: _bn2('label2d_sub_font', layout, 11),
     };
   }
   return {
@@ -95,10 +107,12 @@ function renderLabelInner(label, b, cfg) {
     }
     const txt = document.createElement('div');
     txt.className = 'txt';
+    // ロットと有効期限は別行に表示(有効期限を改行)
     txt.innerHTML =
       `<div class="sub" style="font-size:${cfg.bcFont}px;">${_bcEsc(b.barcode_value)}</div>` +
       `<div class="pname" style="font-size:${cfg.nameFont}px;">${_bcEsc(b.product_name)}</div>` +
-      `<div class="sub" style="font-size:${cfg.subFont}px;">${[lot, exp].filter(Boolean).map(_bcEsc).join('　')}</div>` +
+      (lot ? `<div class="sub" style="font-size:${cfg.subFont}px;">${_bcEsc(lot)}</div>` : '') +
+      (exp ? `<div class="sub" style="font-size:${cfg.subFont}px;">${_bcEsc(exp)}</div>` : '') +
       `<div class="sub" style="font-size:${cfg.subFont}px;">No.${_bcEsc(b.content_code)}</div>`;
     label.appendChild(txt);
     // 横並び: QRの右に情報を配置(縦並びはページCSSの縦積み・中央寄せに従う)
