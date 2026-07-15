@@ -73,16 +73,8 @@
           <div style="flex:0;"><label>名称の文字サイズ</label><input type="number" id="label_name_font" min="6" max="40" style="width:150px;" /></div>
           <div style="flex:0;"><label>ロット・期限・内容物Noの文字サイズ</label><input type="number" id="label_sub_font" min="6" max="40" style="width:220px;" /></div>
         </div>
-        <div class="row" style="margin-top:6px;">
-          <div style="flex:0;">
-            <label style="display:inline-flex; align-items:center; gap:8px; margin:0; font-weight:700; color:var(--ink); white-space:nowrap;">
-              <input type="checkbox" id="label_trim_blank" style="width:auto;" />末尾の空白ラベル対策（印刷）
-            </label>
-          </div>
-        </div>
         <p style="color:#6b7280; font-size:0.83rem;">入庫時の印刷・バーコード印刷画面で、この端末の既定サイズとして使われます。<br>
-          「バーコード情報」＝バーコード下の数字、「名称」＝商品名、「ロット・期限・内容物No」＝その下の行。<br>
-          「末尾の空白ラベル対策」＝印刷時に末尾へ余分な空白ラベル（空ページ）が出る場合にONにすると改善することがあります（ブラウザ・プリンタ設定により効果は異なります）。</p>
+          「バーコード情報」＝バーコード下の数字、「名称」＝商品名、「ロット・期限・内容物No」＝その下の行。</p>
       </div>
 
       <div class="card">
@@ -179,8 +171,6 @@
       document.getElementById('barcode_kind').value = getDeviceSetting('barcode_kind', '1d') === '2d' ? '2d' : '1d';
       // 1次元ラベル設定
       LABEL_KEYS.forEach((k) => { document.getElementById(k).value = getDeviceSetting(k); });
-      // 末尾の空白ラベル対策(端末別・既定OFF)
-      document.getElementById('label_trim_blank').checked = getDeviceSetting('label_trim_blank', 'false') === 'true';
       // 2次元ラベル: レイアウトを選択し、そのレイアウトの寸法/文字サイズを表示
       cur2dLayout = getDeviceSetting('label2d_layout', 'vertical') === 'horizontal' ? 'horizontal' : 'vertical';
       document.getElementById('label2d_layout').value = cur2dLayout;
@@ -195,7 +185,6 @@
       setDeviceSetting('content_width', cw); applyContentWidth(cw); // 画面の幅は端末に保存
       setDeviceSetting('barcode_kind', document.getElementById('barcode_kind').value); // バーコード種別
       LABEL_KEYS.forEach((k) => { setDeviceSetting(k, document.getElementById(k).value); });
-      setDeviceSetting('label_trim_blank', String(document.getElementById('label_trim_blank').checked));
       // 2次元: 現在表示中の入力を取り込み、縦/横それぞれのキーで保存
       readFieldsInto(cur2dLayout);
       setDeviceSetting('label2d_layout', cur2dLayout);
@@ -215,8 +204,6 @@
         try { localStorage.removeItem('dev_' + k); } catch (e) { /* ignore */ }
         document.getElementById(k).value = getDeviceSetting(k);
       });
-      try { localStorage.removeItem('dev_label_trim_blank'); } catch (e) { /* ignore */ }
-      document.getElementById('label_trim_blank').checked = false;
       // 2次元: レイアウト別キー・旧キー・並びを削除して既定へ
       try { localStorage.removeItem('dev_label2d_layout'); } catch (e) { /* ignore */ }
       ['vertical', 'horizontal'].forEach((L) => {
