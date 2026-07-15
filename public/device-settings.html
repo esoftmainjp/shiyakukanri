@@ -80,25 +80,31 @@
       <div class="card">
         <h2>2次元バーコード（QRコード）ラベル（この端末の既定）</h2>
         <div class="row">
-          <div style="flex:0;"><label>ラベル幅(mm)</label><input type="number" id="label2d_width_mm" min="10" max="200" style="width:110px;" /></div>
-          <div style="flex:0;"><label>ラベル高(mm)</label><input type="number" id="label2d_height_mm" min="10" max="200" style="width:110px;" /></div>
-          <div style="flex:0;"><label>QRコードの大きさ(mm)</label><input type="number" id="barcode2d_size_mm" min="8" max="120" style="width:150px;" /></div>
-        </div>
-        <div class="row">
           <div style="flex:0;"><label>並び</label>
-            <select id="label2d_layout" style="width:220px;" onchange="on2dLayoutChange()">
+            <select id="label2d_layout" style="width:240px;" onchange="on2dLayoutChange()">
               <option value="vertical">縦並び（QRの下に情報）</option>
               <option value="horizontal">横並び（QRの右に情報）</option>
             </select>
           </div>
         </div>
-        <div class="row">
-          <div style="flex:0;"><label>バーコード値の文字サイズ</label><input type="number" id="label2d_barcode_font" min="4" max="30" style="width:180px;" /></div>
-          <div style="flex:0;"><label>名称の文字サイズ</label><input type="number" id="label2d_name_font" min="6" max="40" style="width:150px;" /></div>
-          <div style="flex:0;"><label>ロット・期限・内容物Noの文字サイズ</label><input type="number" id="label2d_sub_font" min="6" max="40" style="width:220px;" /></div>
+        <div style="border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-top:8px; background:#fafbfc;">
+          <div style="font-weight:700; color:var(--ink); margin-bottom:10px;">
+            <span id="layout2dTitle">縦並び</span>の設定（ラベルサイズ・文字サイズ）
+            <span style="font-weight:normal; color:#6b7280; font-size:0.82rem;">— 上の「並び」ごとに別々に保存されます</span>
+          </div>
+          <div class="row">
+            <div style="flex:0;"><label>ラベル幅(mm)</label><input type="number" id="label2d_width_mm" min="10" max="200" style="width:110px;" /></div>
+            <div style="flex:0;"><label>ラベル高(mm)</label><input type="number" id="label2d_height_mm" min="10" max="200" style="width:110px;" /></div>
+            <div style="flex:0;"><label>QRコードの大きさ(mm)</label><input type="number" id="barcode2d_size_mm" min="8" max="120" style="width:150px;" /></div>
+          </div>
+          <div class="row">
+            <div style="flex:0;"><label>バーコード値の文字サイズ</label><input type="number" id="label2d_barcode_font" min="4" max="30" style="width:180px;" /></div>
+            <div style="flex:0;"><label>名称の文字サイズ</label><input type="number" id="label2d_name_font" min="6" max="40" style="width:150px;" /></div>
+            <div style="flex:0;"><label>ロット・期限・内容物Noの文字サイズ</label><input type="number" id="label2d_sub_font" min="6" max="40" style="width:220px;" /></div>
+          </div>
         </div>
-        <p style="color:#6b7280; font-size:0.83rem;">QRコードは正方形です。「QRコードの大きさ」で1辺の長さ(mm)を指定します。<br>
-          「並び」＝QRと情報の配置（縦並び＝QRの下、横並び＝QRの右）。横並びのときはラベル幅を広めにすると収まりやすくなります。<br>
+        <p style="color:#6b7280; font-size:0.83rem; margin-top:10px;">QRコードは正方形です。「QRコードの大きさ」で1辺の長さ(mm)を指定します。<br>
+          「並び」＝QRと情報の配置（縦並び＝QRの下、横並び＝QRの右）。上で「並び」を切り替えると、枠内のサイズ・文字サイズはその並び用の値に切り替わり、それぞれ別々に保存されます。横並びのときはラベル幅を広めにすると収まりやすくなります。<br>
           「バーコード値」＝QRの近くに印字する値の文字、「名称」＝商品名、「ロット・期限・内容物No」＝その下の行。</p>
       </div>
 
@@ -138,11 +144,17 @@
     }
     function readFieldsInto(layout) { LABEL2D_DIM_KEYS.forEach((k) => { buf2d[layout][k] = document.getElementById(k).value; }); }
     function writeFieldsFrom(layout) { LABEL2D_DIM_KEYS.forEach((k) => { document.getElementById(k).value = buf2d[layout][k]; }); }
+    // 枠の見出しを現在の「並び」に連動させる
+    function update2dTitle() {
+      const el = document.getElementById('layout2dTitle');
+      if (el) el.textContent = cur2dLayout === 'horizontal' ? '横並び' : '縦並び';
+    }
     // 「並び」変更時: 現在の入力を退避し、切替先の値を表示(未保存でも失わない)
     function on2dLayoutChange() {
       readFieldsInto(cur2dLayout);
       cur2dLayout = document.getElementById('label2d_layout').value === 'horizontal' ? 'horizontal' : 'vertical';
       writeFieldsFrom(cur2dLayout);
+      update2dTitle();
     }
 
     async function boot() {
@@ -164,6 +176,7 @@
       document.getElementById('label2d_layout').value = cur2dLayout;
       initBuf2d();
       writeFieldsFrom(cur2dLayout);
+      update2dTitle();
     }
 
     function save() {
@@ -201,6 +214,7 @@
       document.getElementById('label2d_layout').value = 'vertical';
       initBuf2d();
       writeFieldsFrom('vertical');
+      update2dTitle();
       setMsg(document.getElementById('msg'), '既定値に戻しました（保存済み）', 'ok');
     }
 
