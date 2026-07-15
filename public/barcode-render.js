@@ -99,6 +99,7 @@ function renderLabelInner(label, b, cfg) {
         }
         svg.removeAttribute('width'); svg.removeAttribute('height');
         svg.style.width = cfg.qr + 'mm'; svg.style.height = cfg.qr + 'mm'; svg.style.display = 'block';
+        svg.style.maxWidth = 'none'; // 設定したQRサイズを優先(ラベルCSSのmax-width:100%で縮小させない)
         label.appendChild(svg);
       }
     } catch (e) {
@@ -150,6 +151,9 @@ function renderLabelInner(label, b, cfg) {
       svg.removeAttribute('height');
       svg.style.width = cfg.bwmm + 'mm';
       svg.style.height = natH + 'px';
+      // ラベルCSSの max-width:100% で頭打ちにならないよう、設定した幅を優先する
+      // (ラベル幅より大きい場合は overflow:hidden ではみ出しが切れる)
+      svg.style.maxWidth = 'none';
     }
   } catch (e) { svg.outerHTML = `<div style="color:red;">描画失敗:${_bcEsc(b.barcode_value)}</div>`; }
 }
