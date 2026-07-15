@@ -32,7 +32,7 @@ function applyContentWidth(v) {
 // テーマ(画面カラー)とバーコードラベルの既定サイズは端末ごとに保持する。
 // 全ユーザーが「端末設定」画面から変更できる(施設共通設定とは別)。
 const DEVICE_LABEL_DEFAULTS = {
-  label_width_mm: 52, label_height_mm: 29, barcode_height_px: 60, barcode_width_mm: 45,
+  label_width_mm: 52, label_height_mm: 29, barcode_height_mm: 15, barcode_width_mm: 45,
   label_barcode_font: 6, label_name_font: 13, label_sub_font: 13,
   // 2次元バーコード(QRコード)ラベルの既定(1次元とは別に保持)
   label2d_width_mm: 40, label2d_height_mm: 30, barcode2d_size_mm: 22,

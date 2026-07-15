@@ -65,7 +65,7 @@
         <div class="row">
           <div style="flex:0;"><label>ラベル幅(mm)</label><input type="number" id="label_width_mm" min="10" max="200" style="width:110px;" /></div>
           <div style="flex:0;"><label>ラベル高(mm)</label><input type="number" id="label_height_mm" min="10" max="200" style="width:110px;" /></div>
-          <div style="flex:0;"><label>バーコード高(px)</label><input type="number" id="barcode_height_px" min="20" max="140" style="width:120px;" /></div>
+          <div style="flex:0;"><label>バーコード高(mm)</label><input type="number" id="barcode_height_mm" min="3" max="80" style="width:120px;" /></div>
           <div style="flex:0;"><label>バーコード幅(mm)</label><input type="number" id="barcode_width_mm" min="10" max="200" style="width:120px;" /></div>
         </div>
         <div class="row">
@@ -119,7 +119,7 @@
   <script src="/common.js"></script>
   <script>
     // 端末別に保持するラベル設定のキーと既定値
-    const LABEL_KEYS = ['label_width_mm', 'label_height_mm', 'barcode_height_px', 'barcode_width_mm',
+    const LABEL_KEYS = ['label_width_mm', 'label_height_mm', 'barcode_height_mm', 'barcode_width_mm',
       'label_barcode_font', 'label_name_font', 'label_sub_font'];
     // 2次元バーコード(QR)ラベルの寸法/文字サイズのキー(縦並び/横並びで別々に保持)
     const LABEL2D_DIM_KEYS = ['label2d_width_mm', 'label2d_height_mm', 'barcode2d_size_mm',

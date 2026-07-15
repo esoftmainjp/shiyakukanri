@@ -1,7 +1,7 @@
 'use strict';
 // バーコードラベル描画の共通処理。1次元(CODE128, JsBarcode)と2次元(QRコード, qrcode-generator)を
 // 端末設定(barcode_kind)で切り替える。2次元は専用の設定(サイズ・文字サイズ)を別に持つ。
-//   1D設定: label_width_mm/label_height_mm/barcode_height_px/barcode_width_mm/
+//   1D設定: label_width_mm/label_height_mm/barcode_height_mm/barcode_width_mm/
 //           label_barcode_font/label_name_font/label_sub_font
 //   2D設定: label2d_width_mm/label2d_height_mm/barcode2d_size_mm/
 //           label2d_barcode_font/label2d_name_font/label2d_sub_font
@@ -45,7 +45,7 @@ function getBarcodeConfigFor(kind) {
   return {
     kind: '1d',
     lw: _bn('label_width_mm', 52), lh: _bn('label_height_mm', 29),
-    bh: _bn('barcode_height_px', 60), bwmm: _bn('barcode_width_mm', 45),
+    bhmm: _bn('barcode_height_mm', 15), bwmm: _bn('barcode_width_mm', 45),
     bcFont: _bn('label_barcode_font', 6),
     nameFont: _bn('label_name_font', 13),
     subFont: _bn('label_sub_font', 13),
@@ -139,7 +139,8 @@ function renderLabelInner(label, b, cfg) {
   try {
     JsBarcode(svg, b.barcode_value, {
       format: 'CODE128', displayValue: true, fontSize: cfg.bcFont || 6, textMargin: 0,
-      height: cfg.bh, margin: 0, width: 2,
+      // バーコード高はmm指定。生成用に mm→px に換算(1mm≒3.78px)。最終高さは下でmm指定する。
+      height: Math.max(1, Math.round(cfg.bhmm * 96 / 25.4)), margin: 0, width: 2,
     });
     // JsBarcodeは width/height を "246px" のように単位付きで出力するため、
     // Number() ではなく parseFloat() で数値化する(Number("246px")はNaNになり幅指定が無効化される)
@@ -151,7 +152,7 @@ function renderLabelInner(label, b, cfg) {
       svg.removeAttribute('width');
       svg.removeAttribute('height');
       svg.style.width = cfg.bwmm + 'mm';
-      svg.style.height = natH + 'px';
+      svg.style.height = cfg.bhmm + 'mm';
     }
   } catch (e) { svg.outerHTML = `<div style="color:red;">描画失敗:${_bcEsc(b.barcode_value)}</div>`; }
 }
