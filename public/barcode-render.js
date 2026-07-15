@@ -27,6 +27,7 @@ function getBarcodeConfigFor(kind) {
       bcFont: _bn('label2d_barcode_font', 8),
       nameFont: _bn('label2d_name_font', 12),
       subFont: _bn('label2d_sub_font', 11),
+      layout: (getDeviceSetting('label2d_layout', 'vertical') === 'horizontal') ? 'horizontal' : 'vertical',
     };
   }
   return {
@@ -61,6 +62,9 @@ function labelPageStyleText(cfg) {
 // .label 要素に、バーコード(1D/2D)＋テキストを描画する
 function renderLabelInner(label, b, cfg) {
   label.innerHTML = '';
+  // 再描画(種別/並び切替)での残留を防ぐため、並び関連のインラインスタイルを初期化
+  label.style.flexDirection = '';
+  label.style.gap = '';
   const exp = b.expiry_date ? `期限:${b.expiry_date}` : '';
   const lot = b.lot_number ? `Lot:${b.lot_number}` : '';
 
@@ -97,6 +101,14 @@ function renderLabelInner(label, b, cfg) {
       `<div class="sub" style="font-size:${cfg.subFont}px;">${[lot, exp].filter(Boolean).map(_bcEsc).join('　')}</div>` +
       `<div class="sub" style="font-size:${cfg.subFont}px;">No.${_bcEsc(b.content_code)}</div>`;
     label.appendChild(txt);
+    // 横並び: QRの右に情報を配置(縦並びはページCSSの縦積み・中央寄せに従う)
+    if (cfg.layout === 'horizontal') {
+      label.style.flexDirection = 'row';
+      label.style.gap = '1.5mm';
+      txt.style.width = 'auto';
+      txt.style.textAlign = 'left';
+      txt.style.marginTop = '0';
+    }
     return;
   }
 

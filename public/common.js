@@ -37,6 +37,8 @@ const DEVICE_LABEL_DEFAULTS = {
   // 2次元バーコード(QRコード)ラベルの既定(1次元とは別に保持)
   label2d_width_mm: 40, label2d_height_mm: 30, barcode2d_size_mm: 22,
   label2d_barcode_font: 8, label2d_name_font: 12, label2d_sub_font: 11,
+  // QRラベルの並び: 'vertical'=QRの下に情報 / 'horizontal'=QRの右に情報
+  label2d_layout: 'vertical',
 };
 function getDeviceSetting(key, def) {
   try {
