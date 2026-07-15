@@ -141,8 +141,10 @@ function renderLabelInner(label, b, cfg) {
       format: 'CODE128', displayValue: true, fontSize: cfg.bcFont || 6, textMargin: 0,
       height: cfg.bh, margin: 0, width: 2,
     });
-    const natW = Number(svg.getAttribute('width'));
-    const natH = Number(svg.getAttribute('height'));
+    // JsBarcodeは width/height を "246px" のように単位付きで出力するため、
+    // Number() ではなく parseFloat() で数値化する(Number("246px")はNaNになり幅指定が無効化される)
+    const natW = parseFloat(svg.getAttribute('width'));
+    const natH = parseFloat(svg.getAttribute('height'));
     if (natW && natH) {
       svg.setAttribute('viewBox', `0 0 ${natW} ${natH}`);
       svg.setAttribute('preserveAspectRatio', 'none');
