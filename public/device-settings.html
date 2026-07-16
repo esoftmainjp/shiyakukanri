@@ -63,15 +63,15 @@
       <div class="card">
         <h2>1次元バーコード（CODE128）ラベル（この端末の既定）</h2>
         <div class="row">
-          <div style="flex:0;"><label>ラベル幅(mm)</label><input type="number" id="label_width_mm" min="10" max="200" style="width:110px;" /></div>
-          <div style="flex:0;"><label>ラベル高(mm)</label><input type="number" id="label_height_mm" min="10" max="200" style="width:110px;" /></div>
-          <div style="flex:0;"><label>バーコード高(mm)</label><input type="number" id="barcode_height_mm" min="3" max="80" style="width:120px;" /></div>
-          <div style="flex:0;"><label>バーコード幅(mm)</label><input type="number" id="barcode_width_mm" min="10" max="200" style="width:120px;" /></div>
+          <div style="flex:0 0 auto;"><label>ラベル幅(mm)</label><input type="number" id="label_width_mm" min="10" max="200" style="width:110px;" /></div>
+          <div style="flex:0 0 auto;"><label>ラベル高(mm)</label><input type="number" id="label_height_mm" min="10" max="200" style="width:110px;" /></div>
+          <div style="flex:0 0 auto;"><label>バーコード高(mm)</label><input type="number" id="barcode_height_mm" min="3" max="80" style="width:120px;" /></div>
+          <div style="flex:0 0 auto;"><label>バーコード幅(mm)</label><input type="number" id="barcode_width_mm" min="10" max="200" style="width:120px;" /></div>
         </div>
         <div class="row">
-          <div style="flex:0;"><label>バーコード情報の文字サイズ</label><input type="number" id="label_barcode_font" min="4" max="30" style="width:180px;" /></div>
-          <div style="flex:0;"><label>名称の文字サイズ</label><input type="number" id="label_name_font" min="6" max="40" style="width:150px;" /></div>
-          <div style="flex:0;"><label>ロット・期限・内容物Noの文字サイズ</label><input type="number" id="label_sub_font" min="6" max="40" style="width:220px;" /></div>
+          <div style="flex:0 0 auto;"><label>バーコード情報の文字サイズ</label><input type="number" id="label_barcode_font" min="4" max="30" style="width:180px;" /></div>
+          <div style="flex:0 0 auto;"><label>名称の文字サイズ</label><input type="number" id="label_name_font" min="6" max="40" style="width:150px;" /></div>
+          <div style="flex:0 0 auto;"><label>ロット・期限・内容物Noの文字サイズ</label><input type="number" id="label_sub_font" min="6" max="40" style="width:220px;" /></div>
         </div>
         <p style="color:#6b7280; font-size:0.83rem;">入庫時の印刷・バーコード印刷画面で、この端末の既定サイズとして使われます。<br>
           「バーコード情報」＝バーコード下の数字、「名称」＝商品名、「ロット・期限・内容物No」＝その下の行。</p>
@@ -80,7 +80,7 @@
       <div class="card">
         <h2>2次元バーコード（QRコード）ラベル（この端末の既定）</h2>
         <div class="row">
-          <div style="flex:0;"><label>並び</label>
+          <div style="flex:0 0 auto;"><label>並び</label>
             <select id="label2d_layout" style="width:240px;" onchange="on2dLayoutChange()">
               <option value="vertical">縦並び（QRの下に情報）</option>
               <option value="horizontal">横並び（QRの右に情報）</option>
@@ -93,14 +93,14 @@
             <span style="font-weight:normal; color:#6b7280; font-size:0.82rem;">— 上の「並び」ごとに別々に保存されます</span>
           </div>
           <div class="row">
-            <div style="flex:0;"><label>ラベル幅(mm)</label><input type="number" id="label2d_width_mm" min="10" max="200" style="width:110px;" /></div>
-            <div style="flex:0;"><label>ラベル高(mm)</label><input type="number" id="label2d_height_mm" min="10" max="200" style="width:110px;" /></div>
-            <div style="flex:0;"><label>QRコードの大きさ(mm)</label><input type="number" id="barcode2d_size_mm" min="8" max="120" style="width:150px;" /></div>
+            <div style="flex:0 0 auto;"><label>ラベル幅(mm)</label><input type="number" id="label2d_width_mm" min="10" max="200" style="width:110px;" /></div>
+            <div style="flex:0 0 auto;"><label>ラベル高(mm)</label><input type="number" id="label2d_height_mm" min="10" max="200" style="width:110px;" /></div>
+            <div style="flex:0 0 auto;"><label>QRコードの大きさ(mm)</label><input type="number" id="barcode2d_size_mm" min="8" max="120" style="width:150px;" /></div>
           </div>
           <div class="row">
-            <div style="flex:0;"><label>バーコード値の文字サイズ</label><input type="number" id="label2d_barcode_font" min="4" max="30" style="width:180px;" /></div>
-            <div style="flex:0;"><label>名称の文字サイズ</label><input type="number" id="label2d_name_font" min="6" max="40" style="width:150px;" /></div>
-            <div style="flex:0;"><label>ロット・期限・内容物Noの文字サイズ</label><input type="number" id="label2d_sub_font" min="6" max="40" style="width:220px;" /></div>
+            <div style="flex:0 0 auto;"><label>バーコード値の文字サイズ</label><input type="number" id="label2d_barcode_font" min="4" max="30" style="width:180px;" /></div>
+            <div style="flex:0 0 auto;"><label>名称の文字サイズ</label><input type="number" id="label2d_name_font" min="6" max="40" style="width:150px;" /></div>
+            <div style="flex:0 0 auto;"><label>ロット・期限・内容物Noの文字サイズ</label><input type="number" id="label2d_sub_font" min="6" max="40" style="width:220px;" /></div>
           </div>
         </div>
         <p style="color:#6b7280; font-size:0.83rem; margin-top:10px;">QRコードは正方形です。「QRコードの大きさ」で1辺の長さ(mm)を指定します。<br>
