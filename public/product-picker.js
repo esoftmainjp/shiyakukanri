@@ -57,7 +57,7 @@ var ProductPicker = (function () {
       '  </div>' +
       '  <div class="row">' +
       '    <div style="flex:2;"><label>商品名</label><input id="pp-name" placeholder="部分一致" /></div>' +
-      '    <div style="flex:0;"><label>&nbsp;</label><button type="button" onclick="ProductPicker.search()">検索</button></div>' +
+      '    <div style="flex:0 0 auto;"><label>&nbsp;</label><button type="button" onclick="ProductPicker.search()">検索</button></div>' +
       '  </div>' +
       '  <p class="msg" id="pp-msg"></p>' +
       '  <div style="max-height:52vh;overflow:auto;">' +

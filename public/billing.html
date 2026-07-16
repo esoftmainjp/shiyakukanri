@@ -29,9 +29,9 @@
       <p style="font-size:0.85rem; color:#555;">入庫実績を問屋×期間で集計し、返品を控除・消費税を加味して<strong>支払額</strong>を締めます。表示は<strong>未精算分のみ</strong>です。問屋からの請求書と金額を照合できます。</p>
       <div class="row">
         <div style="flex:0; min-width:200px;"><label>問屋</label><select id="supplier"></select></div>
-        <div style="flex:0;"><label>期間(開始)</label><input type="date" id="from" /></div>
-        <div style="flex:0;"><label>期間(終了)</label><input type="date" id="to" /></div>
-        <div style="flex:0;"><label>&nbsp;</label><button onclick="preview()">プレビュー</button></div>
+        <div style="flex:0 0 auto;"><label>期間(開始)</label><input type="date" id="from" /></div>
+        <div style="flex:0 0 auto;"><label>期間(終了)</label><input type="date" id="to" /></div>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label><button onclick="preview()">プレビュー</button></div>
       </div>
       <p class="msg" id="pmsg"></p>
 
@@ -48,9 +48,9 @@
           </table>
         </div>
         <div class="row" style="margin-top:12px; align-items:flex-end;">
-          <div style="flex:0;"><label>締日</label><input type="date" id="closingDate" /></div>
+          <div style="flex:0 0 auto;"><label>締日</label><input type="date" id="closingDate" /></div>
           <div style="flex:2;"><label>備考</label><input id="note" placeholder="任意" /></div>
-          <div style="flex:0;"><label>&nbsp;</label><button onclick="confirmBill()">この内容で締め確定</button></div>
+          <div style="flex:0 0 auto;"><label>&nbsp;</label><button onclick="confirmBill()">この内容で締め確定</button></div>
         </div>
       </div>
     </div>
@@ -65,7 +65,7 @@
             <option value="paid">支払済</option><option value="canceled">取消</option>
           </select>
         </div>
-        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="downloadListCsv()">一覧CSV</button></div>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label><button class="secondary" onclick="downloadListCsv()">一覧CSV</button></div>
       </div>
       <p class="msg" id="lmsg"></p>
       <div class="scroll-x">

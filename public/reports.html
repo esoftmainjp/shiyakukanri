@@ -43,11 +43,11 @@
         <div id="mkBox" style="flex:0; min-width:150px;"><label>メーカー</label>
           <select id="makerId" onchange="load()"><option value="">(すべて)</option></select>
         </div>
-        <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">表示</button></div>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label><button onclick="load()">表示</button></div>
       </div>
       <div class="row">
-        <div style="flex:0;"><button class="secondary" onclick="csvOut()">CSV出力</button></div>
-        <div style="flex:0;"><button class="secondary" onclick="printOut()">印刷</button></div>
+        <div style="flex:0 0 auto;"><button class="secondary" onclick="csvOut()">CSV出力</button></div>
+        <div style="flex:0 0 auto;"><button class="secondary" onclick="printOut()">印刷</button></div>
       </div>
       <p style="font-size:0.82rem; color:#777; margin:6px 0;">金額は「入力単位(取引単位)の個数 × 単価」で算出しています。数量はバラ(最小単位)です。</p>
       <p class="msg" id="msg"></p>

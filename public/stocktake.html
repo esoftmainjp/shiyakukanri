@@ -47,7 +47,7 @@
         <button onclick="showNew()">＋ 新規棚卸しを開始</button>
       </div>
       <div class="row" style="margin-top:10px;">
-        <div style="flex:0;"><label>状態</label>
+        <div style="flex:0 0 auto;"><label>状態</label>
           <select id="fStatus" onchange="loadList()">
             <option value="">すべて</option>
             <option value="open">作成</option>
@@ -79,12 +79,12 @@
         <div><label>部門</label><select id="nDepartment"><option value="">すべて</option></select></div>
       </div>
       <div class="row">
-        <div style="flex:0;"><label>&nbsp;</label>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label>
           <label style="display:inline-flex; align-items:center; gap:6px; margin:0; font-weight:normal; white-space:nowrap; height:37px;">
             <input type="checkbox" id="nQcOnly" style="width:auto;" />試薬管理対象のみ
           </label>
         </div>
-        <div style="flex:0;"><label>&nbsp;</label>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label>
           <label style="display:inline-flex; align-items:center; gap:6px; margin:0; font-weight:normal; white-space:nowrap; height:37px;">
             <input type="checkbox" id="nIncludeZero" style="width:auto;" />在庫0も含める
           </label>

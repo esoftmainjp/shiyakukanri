@@ -22,8 +22,8 @@
       <div class="card">
         <h2>使用期限・在庫</h2>
         <div class="row">
-          <div style="flex:0;"><label>使用期限の警告日数（日）</label><input type="number" id="expiry_warn_days" min="0" style="width:120px;" /></div>
-          <div style="flex:0;"><label>在庫僅少アラートのしきい値（バラ数）</label><input type="number" id="low_stock_threshold" min="0" style="width:160px;" /></div>
+          <div style="flex:0 0 auto;"><label>使用期限の警告日数（日）</label><input type="number" id="expiry_warn_days" min="0" style="width:120px;" /></div>
+          <div style="flex:0 0 auto;"><label>在庫僅少アラートのしきい値（バラ数）</label><input type="number" id="low_stock_threshold" min="0" style="width:160px;" /></div>
         </div>
         <div style="margin-top:12px;">
           <label style="display:inline-flex; align-items:center; gap:8px; margin:0; font-weight:700; color:var(--ink);">
@@ -74,7 +74,7 @@
       <div class="card">
         <h2>パスワード</h2>
         <div class="row">
-          <div style="flex:0;"><label>パスワード有効期限（日）</label><input type="number" id="password_expiry_days" min="0" style="width:140px;" /></div>
+          <div style="flex:0 0 auto;"><label>パスワード有効期限（日）</label><input type="number" id="password_expiry_days" min="0" style="width:140px;" /></div>
         </div>
         <p style="color:#6b7280; font-size:0.83rem;">パスワード変更日から、この日数が経過したユーザーには、ログイン後に「パスワードを変更してください」というメッセージを表示します。<strong>0 の場合はチェックしません（無効）。</strong></p>
       </div>
@@ -82,7 +82,7 @@
       <div class="card">
         <h2>支払管理・消費税</h2>
         <div class="row">
-          <div style="flex:0;"><label>消費税率（％）</label><input type="number" id="tax_rate" min="0" step="0.1" style="width:120px;" /></div>
+          <div style="flex:0 0 auto;"><label>消費税率（％）</label><input type="number" id="tax_rate" min="0" step="0.1" style="width:120px;" /></div>
         </div>
         <p style="color:#6b7280; font-size:0.83rem;">問屋への支払/請求の集計で使います。単価は税抜として、税抜小計に対しこの率で消費税（円未満切り捨て）を計算します。</p>
       </div>
@@ -91,7 +91,7 @@
         <h2>施設情報（伝票・発注書に印字）</h2>
         <div class="row">
           <div style="flex:2;"><label>施設名</label><input id="company_name" placeholder="例：〇〇病院 中央検査室" /></div>
-          <div style="flex:0;"><label>電話</label><input id="company_tel" placeholder="例：03-0000-0000" /></div>
+          <div style="flex:0 0 auto;"><label>電話</label><input id="company_tel" placeholder="例：03-0000-0000" /></div>
         </div>
         <div class="row">
           <div style="flex:3;"><label>住所</label><input id="company_address" placeholder="例：東京都〇〇区…" /></div>

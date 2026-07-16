@@ -33,8 +33,8 @@
       <p style="font-size:0.85rem; color:#555;">選択中の問屋の商品バーコード（独自 / GS1-128）を読み取り、発注予定（未発注）に追加します。</p>
       <div class="row">
         <div style="flex:2;"><label class="barcode-label">バーコードを読み取り/入力</label><input id="obc" class="barcode-input" placeholder="ここにスキャン（Enterで追加）" /></div>
-        <div style="flex:0;"><label>発注数(梱包)</label><input type="number" id="obcQty" value="1" min="1" style="width:100px;" /></div>
-        <div style="flex:0;"><label>&nbsp;</label><button onclick="addByBarcode()">追加</button></div>
+        <div style="flex:0 0 auto;"><label>発注数(梱包)</label><input type="number" id="obcQty" value="1" min="1" style="width:100px;" /></div>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label><button onclick="addByBarcode()">追加</button></div>
       </div>
       <div class="row" style="align-items:flex-end;">
         <div style="flex:2;"><label>商品を選んで追加</label>
@@ -43,8 +43,8 @@
             <button type="button" class="secondary" onclick="openProductSearch()" style="white-space:nowrap;">検索</button>
           </div>
         </div>
-        <div style="flex:0;"><label>発注数(梱包)</label><input type="number" id="addProductQty" value="1" min="1" style="width:100px;" /></div>
-        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="addBySelect()">追加</button></div>
+        <div style="flex:0 0 auto;"><label>発注数(梱包)</label><input type="number" id="addProductQty" value="1" min="1" style="width:100px;" /></div>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label><button class="secondary" onclick="addBySelect()">追加</button></div>
       </div>
       <p class="msg" id="obcMsg"></p>
     </div>
@@ -62,7 +62,7 @@
             <option value="">すべて</option>
           </select>
         </div>
-        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="load()">再読み込み</button></div>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label><button class="secondary" onclick="load()">再読み込み</button></div>
       </div>
       <p class="msg" id="msg"></p>
       <div id="orderList"></div>

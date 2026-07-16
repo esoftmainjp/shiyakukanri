@@ -51,9 +51,9 @@
         <div><label>発行日(至)</label><input type="date" id="to" /></div>
         <div style="flex:2;"><label>商品</label><select id="productId"><option value="">(すべて)</option></select></div>
         <div style="flex:1;"><label>検索(値/商品名)</label><input id="query" placeholder="部分一致" /></div>
-        <div style="flex:0;"><label>&nbsp;</label><button onclick="load()">検索</button></div>
-        <div style="flex:0;"><label>&nbsp;</label><button class="secondary" onclick="setToday()">本日発行分</button></div>
-        <div style="flex:0;"><label>&nbsp;</label>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label><button onclick="load()">検索</button></div>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label><button class="secondary" onclick="setToday()">本日発行分</button></div>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label>
           <label style="display:inline-flex; align-items:center; gap:6px; font-weight:normal; white-space:nowrap;">
             <input type="checkbox" id="includePrinted" style="width:auto;" onchange="load()" />印刷済みも表示
           </label>
