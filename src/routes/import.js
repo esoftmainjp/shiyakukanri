@@ -2,10 +2,60 @@
 
 const express = require('express');
 const { pool, getClient } = require('../db');
-const { parseCsv, sendCsv } = require('../services/csv');
+const { parseCsvMapped, sendCsv } = require('../services/csv');
 const { facilityScope } = require('../services/facility');
 const { writeLog } = require('../services/log');
 const { getFacilityPlan } = require('../services/plan');
+
+// CSV取込のフィールド定義。field=正規名(取込処理が参照する名前)、aliases=許容する別名。
+// ヘッダー名は表記ゆらぎ(全角/半角・内部空白・英字大小)を吸収して照合する(services/csv.js)。
+const PRODUCT_FIELDS = [
+  { field: '名称',       aliases: ['商品名', '品名', '製品名'] },
+  { field: 'カナ',       aliases: ['カナ名', '名称カナ', 'フリガナ', 'ふりがな', 'よみ', 'ヨミ'] },
+  { field: '部門',       aliases: ['部門名'] },
+  { field: '分類',       aliases: ['分類名', 'カテゴリ', 'カテゴリー'] },
+  { field: '管理コード', aliases: ['管理番号', '管理No'] },
+  { field: '試薬管理対象', aliases: ['精度管理対象', '精度管理', '試薬管理', 'QC対象', '管理対象'] },
+  { field: '棚',         aliases: ['棚番', '棚名', '保管場所', 'ロケーション'] },
+];
+
+const DETAIL_ONLY_FIELDS = [
+  { field: '適用開始日',   aliases: ['開始日', '適用開始', '適用日'] },
+  { field: '適用終了日',   aliases: ['終了日', '適用終了'] },
+  { field: '数量単位',     aliases: ['単位', '数量の単位'] },
+  { field: '梱包数',       aliases: ['入数', '梱包入数', 'ケース入数'] },
+  { field: '梱包単位',     aliases: ['梱包の単位'] },
+  { field: '規格',         aliases: ['規格容量', 'スペック', '容量'] },
+  { field: '単価',         aliases: ['価格', '金額', '税抜単価'] },
+  { field: 'テスト数',     aliases: ['テスト回数', '検査数'] },
+  { field: '最低個数',     aliases: ['発注点', '最小個数', '最低在庫', '最低在庫数'] },
+  { field: '発注個数',     aliases: ['発注数', '発注量'] },
+  { field: 'JANコード',    aliases: ['JAN', 'JANcode'] },
+  { field: 'メーカー',     aliases: ['メーカー名', '製造元', '製造販売元'] },
+  { field: '問屋',         aliases: ['問屋名', '仕入先', '仕入れ先', '販売店', '販売元'] },
+  { field: 'バーコード発行', aliases: ['バーコード', 'BC発行', 'バーコード発行有無', 'ラベル発行'] },
+  { field: '開封後有効日数', aliases: ['開封後日数', '開封後有効期限日数', '開封後'] },
+];
+
+// 商品詳細のみ取込: 商品は「商品名」で特定する。
+const DETAIL_FIELDS = [
+  { field: '商品名', aliases: ['名称', '品名', '製品名'] },
+  ...DETAIL_ONLY_FIELDS,
+];
+
+// 商品＋詳細 同時取込: 商品側(名称ほか)＋詳細側をまとめて許容する。
+const COMBINED_FIELDS = [...PRODUCT_FIELDS, ...DETAIL_ONLY_FIELDS];
+
+// プレビュー(ドライラン)要求か。取込は行わずヘッダー認識結果だけ返す。
+function isPreview(req) {
+  return !!(req.body && (req.body.preview || req.body.dryRun));
+}
+function previewResult(res, mapped) {
+  return res.json({
+    ok: true, preview: true,
+    recognized: mapped.recognized, ignored: mapped.ignored, rowCount: mapped.rowCount,
+  });
+}
 
 // 取込での商品追加上限。現在数を返す(max=NULL は無制限)。
 async function productLimit(client, fid) {
@@ -65,7 +115,9 @@ function requireFacility(req, res) {
 // ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚
 router.post('/products', async (req, res) => {
   const fid = requireFacility(req, res); if (fid == null) return;
-  const rows = parseCsv(req.body && req.body.csv);
+  const mapped = parseCsvMapped(req.body && req.body.csv, PRODUCT_FIELDS);
+  if (isPreview(req)) return previewResult(res, mapped);
+  const rows = mapped.rows;
   if (rows.length === 0) return res.status(400).json({ error: 'データがありません' });
 
   const client = await getClient();
@@ -127,7 +179,7 @@ router.post('/products', async (req, res) => {
       targetTable: 'products', operationType: 'CSV取込', facilityId: fid,
       after: { inserted, skipped, departmentsCreated, categoriesCreated, shelvesCreated },
     });
-    res.json({ ok: true, inserted, skipped, departmentsCreated, categoriesCreated, shelvesCreated });
+    res.json({ ok: true, inserted, skipped, departmentsCreated, categoriesCreated, shelvesCreated, recognized: mapped.recognized, ignored: mapped.ignored });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('商品インポートエラー:', err.message);
@@ -142,7 +194,9 @@ router.post('/products', async (req, res) => {
 // 商品は「商品名」で特定する(管理コードは使わない)。同名商品が複数ある場合はエラー。
 router.post('/product-details', async (req, res) => {
   const fid = requireFacility(req, res); if (fid == null) return;
-  const rows = parseCsv(req.body && req.body.csv);
+  const mapped = parseCsvMapped(req.body && req.body.csv, DETAIL_FIELDS);
+  if (isPreview(req)) return previewResult(res, mapped);
+  const rows = mapped.rows;
   if (rows.length === 0) return res.status(400).json({ error: 'データがありません' });
 
   const client = await getClient();
@@ -212,7 +266,7 @@ router.post('/product-details', async (req, res) => {
       targetTable: 'product_details', operationType: 'CSV取込', facilityId: fid,
       after: { inserted, makersCreated, suppliersCreated },
     });
-    res.json({ ok: true, inserted, makersCreated, suppliersCreated });
+    res.json({ ok: true, inserted, makersCreated, suppliersCreated, recognized: mapped.recognized, ignored: mapped.ignored });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('商品詳細インポートエラー:', err.message);
@@ -229,7 +283,9 @@ router.post('/product-details', async (req, res) => {
 // 商品と商品詳細は商品ID(内部)で紐付ける。管理コードは顧客用の任意コードで、システムキーではない。
 router.post('/products-combined', async (req, res) => {
   const fid = requireFacility(req, res); if (fid == null) return;
-  const rows = parseCsv(req.body && req.body.csv);
+  const mapped = parseCsvMapped(req.body && req.body.csv, COMBINED_FIELDS);
+  if (isPreview(req)) return previewResult(res, mapped);
+  const rows = mapped.rows;
   if (rows.length === 0) return res.status(400).json({ error: 'データがありません' });
 
   const client = await getClient();
@@ -338,7 +394,7 @@ router.post('/products-combined', async (req, res) => {
       targetTable: 'products', operationType: 'CSV取込', facilityId: fid,
       after: { productsCreated, detailsCreated, makersCreated, departmentsCreated, categoriesCreated, suppliersCreated, shelvesCreated },
     });
-    res.json({ ok: true, productsCreated, detailsCreated, makersCreated, departmentsCreated, categoriesCreated, suppliersCreated, shelvesCreated });
+    res.json({ ok: true, productsCreated, detailsCreated, makersCreated, departmentsCreated, categoriesCreated, suppliersCreated, shelvesCreated, recognized: mapped.recognized, ignored: mapped.ignored });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('商品＋詳細インポートエラー:', err.message);

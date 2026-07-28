@@ -403,6 +403,21 @@
       const csv = await file.text();
       const combined = curType() === 'products' && document.getElementById('combined').checked;
       const endpoint = combined ? 'products-combined' : curType();
+
+      // 取込前にヘッダーの認識結果を確認する(ドライラン)。列名は別名・全角半角の違いを吸収して照合します。
+      const pre = await api('/api/import/' + endpoint, { method: 'POST', body: JSON.stringify({ csv, preview: true }) });
+      if (!pre.ok) { setMsg(msg, (pre.data && pre.data.error) || 'ファイルを確認できませんでした', 'error'); return; }
+      const rec = (pre.data.recognized || []);
+      const ign = (pre.data.ignored || []);
+      if (rec.length === 0) { setMsg(msg, '認識できる列がありませんでした。ヘッダー行（列名）をご確認ください。', 'error'); return; }
+      const recLines = rec.map((r) => (r.column === r.field ? r.field : `${r.column} → ${r.field}`));
+      let confirmText = `取込前の確認（${endpoint === 'products-combined' ? '商品＋詳細' : (endpoint === 'product-details' ? '商品詳細' : '商品')}）\n`;
+      confirmText += `\n取込予定：${pre.data.rowCount} 行`;
+      confirmText += `\n\n■ 認識した列（${rec.length}）\n・` + recLines.join('\n・');
+      confirmText += `\n\n■ 取り込まれない列（${ign.length}）\n` + (ign.length ? '・' + ign.join('\n・') : '（なし）');
+      confirmText += `\n\nこの内容で取り込みますか？`;
+      if (!confirm(confirmText)) { setMsg(msg, '取込を中止しました', ''); return; }
+
       const { ok, data } = await api('/api/import/' + endpoint, { method: 'POST', body: JSON.stringify({ csv }) });
       if (!ok) {
         let t = data.error || '取込失敗';
@@ -418,6 +433,7 @@
       if (data.suppliersCreated) added.push(`問屋${data.suppliersCreated}件`);
       if (data.makersCreated) added.push(`メーカー${data.makersCreated}件`);
       if (added.length) summary += `（${added.join('・')}を自動追加）`;
+      if (data.ignored && data.ignored.length) summary += ` ※取り込まれなかった列：${data.ignored.join('、')}`;
       setMsg(msg, summary, 'ok');
       refCache = {};
       loadList();
