@@ -48,7 +48,7 @@
       <p style="font-size:0.82rem; color:#555; margin:6px 0 0;"><strong>対応文字コード：UTF-8</strong>（BOM付きも可）。Excelで保存する場合は「<strong>CSV UTF-8（コンマ区切り）</strong>」を選んでください（Shift-JISは文字化けします）。エクスポートしたCSVはUTF-8です。</p>
       <div style="margin-top:8px;">
         <label><input type="checkbox" id="hasHeader" checked /> 1行目はヘッダー行（列名）</label>
-        <span style="font-size:0.82rem; color:#777;">　※列名は自動では使いません。<strong>列のデータ内容から項目を推測</strong>し、取込前に割り当てを確認・修正できます。</span>
+        <span style="font-size:0.82rem; color:#777;">　※<strong>基本は「列の順番」で項目を割り当て</strong>、疑わしい列は<strong>列名やデータ内容で判定</strong>します。取込前に確認・修正できます。</span>
       </div>
       <div style="margin-top:10px;">
         <button class="secondary" onclick="importCsv()">取込実行</button>
@@ -130,9 +130,9 @@
     function chk(key, label) { return { key, label, type: 'checkbox' }; }
 
     const IMPORT_HINTS = {
-      products: '標準の列順: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚（列名が違っても内容から推測します。取込前に割り当てを確認できます）',
+      products: '標準の列順: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚（基本は列順で割当。並べ替え等で疑わしい列は列名・内容で判定。取込前に確認・修正可）',
     };
-    const COMBINED_HINT = '標準の列順: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行,開封後有効日数（列名が違っても内容から推測。取込前に確認可）';
+    const COMBINED_HINT = '標準の列順: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行,開封後有効日数（基本は列順で割当。疑わしい列は列名・内容で判定。取込前に確認・修正可）';
 
     // 一覧ヘッダーの日本語ラベル(全マスター共通)
     const COL_LABELS = {

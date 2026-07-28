@@ -110,38 +110,83 @@ function columnSignals(dataRows, c) {
   return { n, jan: f(jan), date: f(date), int: f(int), num: f(num), bool: f(bool), kana: f(kana) };
 }
 
-// 列名を使わず、データ内容から各列を項目(field)へ割り当てる。
-//   1) JAN(8〜14桁数字)が最も多い列を JAN項目へ
-//   2) 日付が多い列(>=60%)を、日付項目へ列順で
-//   3) 残りは「標準の列順」を前提に、未割当項目へ左から順に割り当て(位置フォールバック)
-// fieldSpecs: [{ field, type, required }]。戻り値: assign(列index→field/null)。
-function inferColumns(dataRows, fieldSpecs) {
+// ヘッダー名の表記ゆらぎを吸収する正規化キー(NFKC・空白除去・小文字化)。
+function normHeaderKey(s) {
+  return String(s == null ? '' : s).normalize('NFKC').replace(/\s+/g, '').toLowerCase();
+}
+// フィールド定義(field＋aliases)から「正規化キー → field」の対応表を作る。
+function buildNameLookup(fieldSpecs) {
+  const map = new Map();
+  for (const f of fieldSpecs) {
+    for (const name of [f.field, ...(f.aliases || [])]) {
+      const k = normHeaderKey(name);
+      if (!map.has(k)) map.set(k, f.field);
+    }
+  }
+  return map;
+}
+// 位置の項目(type)に対して、その列の内容が概ね合致するか。
+function positionFits(sig, type) {
+  if (sig.n === 0) return true; // 全て空は判定不能→列順を尊重
+  switch (type) {
+    case 'int': return sig.int >= 0.5;
+    case 'num': return sig.num >= 0.5;
+    case 'date': return sig.date >= 0.5;
+    case 'jan': return sig.jan >= 0.5;
+    default: return true; // text/kana/bool は内容で否定しない
+  }
+}
+// 内容が際立って JAN/日付 の列なら、その項目名を返す(なければ null)。
+function distinctiveField(sig, fieldSpecs) {
+  if (sig.jan >= 0.8) { const f = fieldSpecs.find((x) => x.type === 'jan'); if (f) return f.field; }
+  if (sig.date >= 0.8) { const f = fieldSpecs.find((x) => x.type === 'date'); if (f) return f.field; }
+  return null;
+}
+
+// 列を項目(field)へ割り当てる。方針: 基本は「列順」を尊重し、疑わしいときだけ「列名」で判定。
+//   ・通常(列順が妥当): 列index i → 標準の i 番目の項目。
+//   ・疑わしい(内容が位置の型に合わない/明らかにJAN・日付/列名が別項目を示す)場合:
+//       列名(別名含む)が項目を示せばそれを採用。示せなければ内容(JAN/日付)で補正、無ければ列順のまま。
+// fieldSpecs: [{ field, type, required, aliases }]。headerRow: ヘッダー行(無ければ null)。
+function inferColumns(dataRows, fieldSpecs, headerRow) {
   const nCols = dataRows.reduce((m, r) => Math.max(m, r.length), 0);
   const fields = fieldSpecs.map((f) => f.field);
-  const assign = new Array(nCols).fill(null);
-  const used = new Set();
+  const typeOf = {}; fieldSpecs.forEach((f) => { typeOf[f.field] = f.type; });
+  const nameLookup = buildNameLookup(fieldSpecs);
   const sig = [];
   for (let c = 0; c < nCols; c++) sig.push(columnSignals(dataRows, c));
-  // 1) JAN
-  for (const jf of fieldSpecs.filter((f) => f.type === 'jan').map((f) => f.field)) {
-    let best = -1, bestv = 0.6 - 1e-9;
-    for (let c = 0; c < nCols; c++) {
-      if (assign[c]) continue;
-      if (sig[c].n > 0 && sig[c].jan > bestv) { bestv = sig[c].jan; best = c; }
-    }
-    if (best >= 0) { assign[best] = jf; used.add(jf); }
-  }
-  // 2) 日付
-  const dateFields = fieldSpecs.filter((f) => f.type === 'date').map((f) => f.field);
-  let di = 0;
-  for (let c = 0; c < nCols && di < dateFields.length; c++) {
-    if (assign[c]) continue;
-    if (sig[c].n > 0 && sig[c].date >= 0.6) { assign[c] = dateFields[di]; used.add(dateFields[di]); di++; }
-  }
-  // 3) 位置フォールバック
-  let fi = 0;
+
+  // 各列の希望割当(field)と優先度(prio)を決める。prio大が競合に勝つ。
+  const pref = new Array(nCols);
   for (let c = 0; c < nCols; c++) {
-    if (assign[c]) continue;
+    const pos = c < fields.length ? fields[c] : null;
+    const nm = headerRow ? (nameLookup.get(normHeaderKey(headerRow[c] !== undefined ? headerRow[c] : '')) || null) : null;
+    let doubtful = false;
+    if (!pos) doubtful = true;
+    else {
+      if (!positionFits(sig[c], typeOf[pos])) doubtful = true;         // 内容が位置の型に合わない
+      if (typeOf[pos] !== 'jan' && sig[c].jan >= 0.8) doubtful = true; // 明らかにJANが別位置
+      if (typeOf[pos] !== 'date' && sig[c].date >= 0.8) doubtful = true; // 明らかに日付が別位置
+      if (nm && nm !== pos) doubtful = true;                          // 列名が別項目を示す
+    }
+    if (!doubtful) { pref[c] = { field: pos, prio: 2 }; }             // 列順(通常)
+    else if (nm) { pref[c] = { field: nm, prio: 3 }; }                // 疑わしい→列名
+    else { const dc = distinctiveField(sig[c], fieldSpecs); pref[c] = dc ? { field: dc, prio: 2 } : { field: pos, prio: 1 }; }
+  }
+
+  // 競合解決: 優先度の高い順に確定。あぶれた列は列順で未使用項目へ。
+  const assign = new Array(nCols).fill(null);
+  const used = new Set();
+  const leftover = [];
+  const order = [...Array(nCols).keys()].sort((a, b) => (pref[b].prio - pref[a].prio) || (a - b));
+  for (const c of order) {
+    const f = pref[c].field;
+    if (f && !used.has(f)) { assign[c] = f; used.add(f); }
+    else leftover.push(c);
+  }
+  leftover.sort((a, b) => a - b);
+  let fi = 0;
+  for (const c of leftover) {
     while (fi < fields.length && used.has(fields[fi])) fi++;
     if (fi < fields.length) { assign[c] = fields[fi]; used.add(fields[fi]); fi++; }
   }
@@ -228,7 +273,7 @@ function analyzeCsv(text, fieldSpecs, opts = {}) {
   const nCols = dataRows.reduce((m, r) => Math.max(m, r.length), 0);
   const assign = Array.isArray(opts.mapping)
     ? normalizeMapping(opts.mapping, nCols, fieldSpecs)
-    : inferColumns(dataRows, fieldSpecs);
+    : inferColumns(dataRows, fieldSpecs, headerRow);
   const rowObjs = buildRowObjects(dataRows, assign, fieldSpecs);
   const errors = validateRows(rowObjs, fieldSpecs, lineOffset);
   return { headerRow, dataRows, assign, rows: rowObjs, errors, mapping: mappingInfo(assign, headerRow), rowCount: rowObjs.length, lineOffset };

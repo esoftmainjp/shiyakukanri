@@ -10,32 +10,32 @@ const { getFacilityPlan } = require('../services/plan');
 // 取込フィールド定義。順序=標準の列順(内容推測の位置フォールバックに使用)。type=データ検証種別。
 //   type: text/kana/int/num/date/jan/bool。required=必須(空でエラー)。
 const PRODUCT_SPEC = [
-  { field: '名称', type: 'text', required: true },
-  { field: 'カナ', type: 'kana' },
-  { field: '部門', type: 'text' },
-  { field: '分類', type: 'text' },
-  { field: '管理コード', type: 'text' },
-  { field: '試薬管理対象', type: 'bool' },
-  { field: '棚', type: 'text' },
+  { field: '名称', type: 'text', required: true, aliases: ['商品名', '品名', '製品名'] },
+  { field: 'カナ', type: 'kana', aliases: ['カナ名', '名称カナ', 'フリガナ', 'ふりがな', 'よみ', 'ヨミ'] },
+  { field: '部門', type: 'text', aliases: ['部門名'] },
+  { field: '分類', type: 'text', aliases: ['分類名', 'カテゴリ', 'カテゴリー'] },
+  { field: '管理コード', type: 'text', aliases: ['管理番号', '管理No'] },
+  { field: '試薬管理対象', type: 'bool', aliases: ['精度管理対象', '精度管理', '試薬管理', 'QC対象', '管理対象'] },
+  { field: '棚', type: 'text', aliases: ['棚番', '棚名', '保管場所', 'ロケーション'] },
 ];
 const DETAIL_ONLY_SPEC = [
-  { field: '適用開始日', type: 'date' },
-  { field: '適用終了日', type: 'date' },
-  { field: '数量単位', type: 'text' },
-  { field: '梱包数', type: 'int' },
-  { field: '梱包単位', type: 'text' },
-  { field: '規格', type: 'text' },
-  { field: '単価', type: 'num' },
-  { field: 'テスト数', type: 'int' },
-  { field: '最低個数', type: 'int' },
-  { field: '発注個数', type: 'int' },
-  { field: 'JANコード', type: 'jan' },
-  { field: 'メーカー', type: 'text' },
-  { field: '問屋', type: 'text' },
-  { field: 'バーコード発行', type: 'bool' },
-  { field: '開封後有効日数', type: 'int' },
+  { field: '適用開始日', type: 'date', aliases: ['開始日', '適用開始', '適用日'] },
+  { field: '適用終了日', type: 'date', aliases: ['終了日', '適用終了'] },
+  { field: '数量単位', type: 'text', aliases: ['単位', '数量の単位'] },
+  { field: '梱包数', type: 'int', aliases: ['入数', '梱包入数', 'ケース入数'] },
+  { field: '梱包単位', type: 'text', aliases: ['梱包の単位'] },
+  { field: '規格', type: 'text', aliases: ['規格容量', 'スペック', '容量'] },
+  { field: '単価', type: 'num', aliases: ['価格', '金額', '税抜単価'] },
+  { field: 'テスト数', type: 'int', aliases: ['テスト回数', '検査数'] },
+  { field: '最低個数', type: 'int', aliases: ['発注点', '最小個数', '最低在庫', '最低在庫数'] },
+  { field: '発注個数', type: 'int', aliases: ['発注数', '発注量'] },
+  { field: 'JANコード', type: 'jan', aliases: ['JAN', 'JANcode'] },
+  { field: 'メーカー', type: 'text', aliases: ['メーカー名', '製造元', '製造販売元'] },
+  { field: '問屋', type: 'text', aliases: ['問屋名', '仕入先', '仕入れ先', '販売店', '販売元'] },
+  { field: 'バーコード発行', type: 'bool', aliases: ['バーコード', 'BC発行', 'バーコード発行有無', 'ラベル発行'] },
+  { field: '開封後有効日数', type: 'int', aliases: ['開封後日数', '開封後有効期限日数', '開封後'] },
 ];
-const DETAIL_SPEC = [{ field: '商品名', type: 'text', required: true }, ...DETAIL_ONLY_SPEC];
+const DETAIL_SPEC = [{ field: '商品名', type: 'text', required: true, aliases: ['名称', '品名', '製品名'] }, ...DETAIL_ONLY_SPEC];
 const COMBINED_SPEC = [...PRODUCT_SPEC, ...DETAIL_ONLY_SPEC];
 
 const router = express.Router();
