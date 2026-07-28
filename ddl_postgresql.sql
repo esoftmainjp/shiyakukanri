@@ -832,6 +832,27 @@ COMMENT ON TABLE supplier_bill_lines IS '問屋精算 明細';
 CREATE INDEX idx_bill_lines_bill ON supplier_bill_lines(bill_id);
 CREATE UNIQUE INDEX uq_bill_lines_active_source ON supplier_bill_lines(source_type, source_id);
 
+-- CSV取込バッチ(取込前に戻す用。作成した行IDを保持)
+CREATE TABLE import_batches (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    facility_id    BIGINT      NOT NULL REFERENCES facilities(id),
+    import_type    VARCHAR(32) NOT NULL,
+    created_by     BIGINT,
+    product_ids    BIGINT[]    NOT NULL DEFAULT '{}',
+    detail_ids     BIGINT[]    NOT NULL DEFAULT '{}',
+    department_ids BIGINT[]    NOT NULL DEFAULT '{}',
+    category_ids   BIGINT[]    NOT NULL DEFAULT '{}',
+    supplier_ids   BIGINT[]    NOT NULL DEFAULT '{}',
+    maker_ids      BIGINT[]    NOT NULL DEFAULT '{}',
+    shelf_ids      BIGINT[]    NOT NULL DEFAULT '{}',
+    summary        JSONB,
+    undone         BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    undone_at      TIMESTAMPTZ
+);
+COMMENT ON TABLE import_batches IS 'CSV取込バッチ(取込前に戻す用。作成した行IDを保持)';
+CREATE INDEX idx_import_batches_facility ON import_batches (facility_id, created_at DESC);
+
 -- ============================================================
 -- 以上
 -- ============================================================

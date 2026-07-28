@@ -46,12 +46,41 @@
       <p id="importHint" style="font-size:0.85rem; color:#555;"></p>
       <input type="file" id="csvFile" accept=".csv" />
       <p style="font-size:0.82rem; color:#555; margin:6px 0 0;"><strong>対応文字コード：UTF-8</strong>（BOM付きも可）。Excelで保存する場合は「<strong>CSV UTF-8（コンマ区切り）</strong>」を選んでください（Shift-JISは文字化けします）。エクスポートしたCSVはUTF-8です。</p>
+      <div style="margin-top:8px;">
+        <label><input type="checkbox" id="hasHeader" checked /> 1行目はヘッダー行（列名）</label>
+        <span style="font-size:0.82rem; color:#777;">　※列名は自動では使いません。<strong>列のデータ内容から項目を推測</strong>し、取込前に割り当てを確認・修正できます。</span>
+      </div>
       <div style="margin-top:10px;">
         <button class="secondary" onclick="importCsv()">取込実行</button>
         <button class="secondary" onclick="exportCsv()">CSVエクスポート</button>
+        <button class="secondary" id="undoBtn" style="display:none;" onclick="undoImport()">直前の取込を取り消す</button>
+        <button class="secondary" id="resetBtn" style="color:#b3261e;" onclick="resetMasters()">マスターを全てリセット</button>
       </div>
-      <p style="font-size:0.8rem; color:#777; margin-top:6px;">エクスポートは上のヘッダー形式で、この施設の全商品を出力します（そのまま取込に再利用できます）。</p>
+      <p style="font-size:0.8rem; color:#777; margin-top:6px;">エクスポートは上のヘッダー形式で、この施設の全商品を出力します（そのまま取込に再利用できます）。<br>
+        「取り消す」は直前の取込で追加した分だけを削除します。「全てリセット」は商品・商品詳細・区分マスターを全消去します（在庫・入出庫の履歴があるときは保護のため実行できません）。</p>
       <p class="msg" id="importMsg"></p>
+    </div>
+
+    <!-- 取込前の割り当て確認モーダル -->
+    <div id="mapModalBg" style="position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:50;">
+      <div style="background:#fff; border-radius:10px; padding:18px 20px; width:min(780px,94vw); max-height:88vh; overflow:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <h3 style="margin:0;">取込内容の確認（列の割り当て）</h3>
+          <button class="secondary" onclick="closeMapModal()">閉じる</button>
+        </div>
+        <p id="mapInfo" style="font-size:0.86rem; color:#555; margin:8px 0;"></p>
+        <div id="mapErrors" style="display:none; margin:8px 0; padding:8px 10px; border:1px solid #f0c0c0; background:#fdf2f2; border-radius:8px; font-size:0.84rem; color:#b3261e;"></div>
+        <div style="overflow-x:auto;">
+          <table id="mapTable" style="width:100%;">
+            <thead><tr><th>CSVの列（先頭行 / データ例）</th><th style="width:220px;">取り込む項目</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div style="margin-top:14px; text-align:right;">
+          <button class="secondary" onclick="closeMapModal()">キャンセル</button>
+          <button id="mapRunBtn" onclick="runImportWithMapping()">この割り当てで取り込む</button>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -101,9 +130,9 @@
     function chk(key, label) { return { key, label, type: 'checkbox' }; }
 
     const IMPORT_HINTS = {
-      products: 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚',
+      products: '標準の列順: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚（列名が違っても内容から推測します。取込前に割り当てを確認できます）',
     };
-    const COMBINED_HINT = 'ヘッダー: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行,開封後有効日数';
+    const COMBINED_HINT = '標準の列順: 名称,カナ,部門,分類,管理コード,試薬管理対象,棚,適用開始日,適用終了日,数量単位,梱包数,梱包単位,規格,単価,テスト数,最低個数,発注個数,JANコード,メーカー,問屋,バーコード発行,開封後有効日数（列名が違っても内容から推測。取込前に確認可）';
 
     // 一覧ヘッダーの日本語ラベル(全マスター共通)
     const COL_LABELS = {
@@ -165,6 +194,7 @@
       document.getElementById('combinedRow').style.display = (t === 'products') ? 'block' : 'none';
       if (t !== 'products') document.getElementById('combined').checked = false;
       updateImportHint();
+      refreshImportState();
       await renderForm();
       await loadList();
     }
@@ -396,6 +426,9 @@
       window.location = '/api/import/' + endpoint;
     }
 
+    // 取込のセッション状態(プレビュー→本取込で引き継ぐ)
+    let _imp = null;
+
     async function importCsv() {
       const file = document.getElementById('csvFile').files[0];
       const msg = document.getElementById('importMsg');
@@ -403,28 +436,83 @@
       const csv = await file.text();
       const combined = curType() === 'products' && document.getElementById('combined').checked;
       const endpoint = combined ? 'products-combined' : curType();
+      const hasHeader = document.getElementById('hasHeader').checked;
 
-      // 取込前にヘッダーの認識結果を確認する(ドライラン)。列名は別名・全角半角の違いを吸収して照合します。
-      const pre = await api('/api/import/' + endpoint, { method: 'POST', body: JSON.stringify({ csv, preview: true }) });
+      // 列名は使わず、データ内容から項目を推測(ドライラン)。結果を確認・修正できる。
+      const pre = await api('/api/import/' + endpoint, { method: 'POST', body: JSON.stringify({ csv, hasHeader, preview: true }) });
       if (!pre.ok) { setMsg(msg, (pre.data && pre.data.error) || 'ファイルを確認できませんでした', 'error'); return; }
-      const rec = (pre.data.recognized || []);
-      const ign = (pre.data.ignored || []);
-      if (rec.length === 0) { setMsg(msg, '認識できる列がありませんでした。ヘッダー行（列名）をご確認ください。', 'error'); return; }
-      const recLines = rec.map((r) => (r.column === r.field ? r.field : `${r.column} → ${r.field}`));
-      let confirmText = `取込前の確認（${endpoint === 'products-combined' ? '商品＋詳細' : (endpoint === 'product-details' ? '商品詳細' : '商品')}）\n`;
-      confirmText += `\n取込予定：${pre.data.rowCount} 行`;
-      confirmText += `\n\n■ 認識した列（${rec.length}）\n・` + recLines.join('\n・');
-      confirmText += `\n\n■ 取り込まれない列（${ign.length}）\n` + (ign.length ? '・' + ign.join('\n・') : '（なし）');
-      confirmText += `\n\nこの内容で取り込みますか？`;
-      if (!confirm(confirmText)) { setMsg(msg, '取込を中止しました', ''); return; }
+      if (!pre.data.rowCount) { setMsg(msg, 'データ行がありません（ヘッダー行の有無をご確認ください）。', 'error'); return; }
+      _imp = { csv, endpoint, hasHeader, combined, fields: pre.data.fields || [] };
+      openMapModal(pre.data);
+      setMsg(msg, '', '');
+    }
 
-      const { ok, data } = await api('/api/import/' + endpoint, { method: 'POST', body: JSON.stringify({ csv }) });
+    function fieldLabel(kind) { return kind === 'products-combined' ? '商品＋詳細' : (kind === 'product-details' ? '商品詳細' : '商品'); }
+
+    function openMapModal(d) {
+      const tbody = document.querySelector('#mapTable tbody');
+      const optHtml = ['<option value="">（取り込まない）</option>']
+        .concat((_imp.fields || []).map((f) => `<option value="${f.field}">${f.field}${f.required ? '（必須）' : ''}</option>`)).join('');
+      tbody.innerHTML = (d.columns || []).map((c) => {
+        const ex = c.sample ? `<span style="color:#888;">例: ${esc(c.sample)}</span>` : '<span style="color:#bbb;">（空）</span>';
+        return `<tr><td><strong>${esc(c.header)}</strong>　${ex}</td>` +
+          `<td><select data-col="${c.col}" style="width:100%;">${optHtml}</select></td></tr>`;
+      }).join('');
+      // 推測された割り当てを初期選択
+      (d.columns || []).forEach((c) => {
+        const sel = tbody.querySelector(`select[data-col="${c.col}"]`);
+        if (sel) sel.value = c.field || '';
+      });
+      document.getElementById('mapInfo').textContent =
+        `種別：${fieldLabel(_imp.endpoint)}　／　取込予定：${d.rowCount} 行　／　1行目：${_imp.hasHeader ? 'ヘッダー' : 'データ'}として扱います。各列の「取り込む項目」を必要に応じて修正してください。`;
+      showMapErrors(d.errors, d.errorCount);
+      document.getElementById('mapModalBg').style.display = 'flex';
+    }
+
+    function showMapErrors(errors, errorCount) {
+      const box = document.getElementById('mapErrors');
+      if (errors && errors.length) {
+        const lines = errors.slice(0, 20).map((e) => `${e.line}行目「${e.field}」：${e.error}（値：${esc(e.value || '空')}）`);
+        box.innerHTML = `■ データエラー ${errorCount}件（このままでは取込できません。割り当てを直すか、CSVを修正してください）<br>・` + lines.join('<br>・');
+        box.style.display = 'block';
+        document.getElementById('mapRunBtn').disabled = true;
+      } else {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        document.getElementById('mapRunBtn').disabled = false;
+      }
+    }
+
+    function closeMapModal() { document.getElementById('mapModalBg').style.display = 'none'; }
+
+    function currentMapping() {
+      const sels = document.querySelectorAll('#mapTable tbody select');
+      const maxCol = Math.max(-1, ...Array.from(sels).map((s) => Number(s.getAttribute('data-col'))));
+      const map = new Array(maxCol + 1).fill(null);
+      sels.forEach((s) => { map[Number(s.getAttribute('data-col'))] = s.value || null; });
+      return map;
+    }
+
+    async function runImportWithMapping() {
+      const msg = document.getElementById('importMsg');
+      const mapping = currentMapping();
+      // 必須項目が割り当てられているか
+      const assigned = new Set(mapping.filter(Boolean));
+      const missing = (_imp.fields || []).filter((f) => f.required && !assigned.has(f.field)).map((f) => f.field);
+      if (missing.length) { alert('必須項目が割り当てられていません：' + missing.join('、')); return; }
+
+      const { ok, data } = await api('/api/import/' + _imp.endpoint, {
+        method: 'POST', body: JSON.stringify({ csv: _imp.csv, hasHeader: _imp.hasHeader, mapping }),
+      });
       if (!ok) {
+        // データエラーはモーダルに表示して割り当て修正を促す
+        if (data.errors && data.errors.length && data.errorCount !== undefined) { showMapErrors(data.errors, data.errorCount); return; }
         let t = data.error || '取込失敗';
         if (data.errors) t += ' / ' + data.errors.slice(0, 5).map((e) => `${e.line}行:${e.error}`).join(' , ');
-        setMsg(msg, t, 'error'); return;
+        closeMapModal(); setMsg(msg, t, 'error'); return;
       }
-      let summary = combined
+      closeMapModal();
+      let summary = _imp.combined
         ? `商品${data.productsCreated}件・詳細${data.detailsCreated}件を取り込みました`
         : `${data.inserted}件取り込みました`;
       const added = [];
@@ -432,10 +520,50 @@
       if (data.categoriesCreated) added.push(`分類${data.categoriesCreated}件`);
       if (data.suppliersCreated) added.push(`問屋${data.suppliersCreated}件`);
       if (data.makersCreated) added.push(`メーカー${data.makersCreated}件`);
+      if (data.shelvesCreated) added.push(`棚${data.shelvesCreated}件`);
       if (added.length) summary += `（${added.join('・')}を自動追加）`;
-      if (data.ignored && data.ignored.length) summary += ` ※取り込まれなかった列：${data.ignored.join('、')}`;
+      if (data.skipped) summary += `（既存${data.skipped}件はスキップ）`;
       setMsg(msg, summary, 'ok');
       refCache = {};
+      await refreshImportState();
+      loadList();
+    }
+
+    // 直前の取込を取り消せるかを確認してボタン表示を更新
+    async function refreshImportState() {
+      const btn = document.getElementById('undoBtn');
+      if (!btn) return;
+      if (curType() !== 'products' || (typeof planAllows === 'function' && !planAllows('feat_import'))) { btn.style.display = 'none'; return; }
+      const { ok, data } = await api('/api/import/last-batch');
+      if (ok && data.batch) {
+        const b = data.batch;
+        btn.textContent = `直前の取込を取り消す（商品${b.products}・詳細${b.details}件）`;
+        btn.style.display = '';
+      } else {
+        btn.style.display = 'none';
+      }
+    }
+
+    async function undoImport() {
+      const msg = document.getElementById('importMsg');
+      if (!confirm('直前の取込で追加した商品・商品詳細（＋自動追加された区分）を削除して、取込前の状態に戻します。よろしいですか？')) return;
+      const { ok, data } = await api('/api/import/undo', { method: 'POST', body: JSON.stringify({}) });
+      if (!ok) { setMsg(msg, data.error || '取り消しに失敗しました', 'error'); return; }
+      setMsg(msg, `取込前に戻しました（商品${data.deletedProducts}件・詳細${data.deletedDetails}件を削除）`, 'ok');
+      refCache = {};
+      await refreshImportState();
+      loadList();
+    }
+
+    async function resetMasters() {
+      const msg = document.getElementById('importMsg');
+      if (!confirm('【警告】この施設の商品・商品詳細・区分マスター（部門/分類/棚/問屋/メーカー）を全て削除します。元に戻せません。よろしいですか？')) return;
+      if (!confirm('本当に全てリセットしますか？（在庫・入出庫などの履歴があるときは保護のため実行されません）')) return;
+      const { ok, data } = await api('/api/import/reset', { method: 'POST', body: JSON.stringify({ confirm: true }) });
+      if (!ok) { setMsg(msg, data.error || 'リセットに失敗しました', 'error'); return; }
+      setMsg(msg, `マスターをリセットしました（商品${data.deletedProducts}件・詳細${data.deletedDetails}件を削除）`, 'ok');
+      refCache = {};
+      await refreshImportState();
       loadList();
     }
 
