@@ -69,6 +69,13 @@
       }
       facility = data.facility; plans = data.plans; paymentMode = data.paymentMode;
       document.getElementById('content').style.display = 'block';
+      // 「永続」プランはお支払い・プラン変更なし(施設管理でのみ設定)。
+      if (data.isPermanent || (facility && facility.plan_code === 'permanent')) {
+        renderCurrent();
+        document.getElementById('plansCard').style.display = 'none';
+        setMsg(document.getElementById('msg'), '永続プランのため、お支払いはありません。プランの変更が必要な場合は運営にお問い合わせください。', 'ok');
+        return;
+      }
       document.getElementById('plansCard').style.display = 'block';
       renderCurrent();
       renderPlans();

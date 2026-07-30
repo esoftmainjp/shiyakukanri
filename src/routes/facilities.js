@@ -177,6 +177,8 @@ router.put('/:id', async (req, res) => {
     const cur = await pool.query('SELECT plan_code FROM facilities WHERE id = $1', [req.params.id]);
     beforePlan = cur.rowCount ? cur.rows[0].plan_code : null;
     params.push(String(planCode)); sets.push(`plan_code = $${params.length}`);
+    // 「永続」は支払義務なし。past_due等の課金状態をクリアする。
+    if (String(planCode) === 'permanent') { sets.push(`billing_status = 'none'`); sets.push(`past_due_since = NULL`); }
   }
   if (sets.length === 0) return res.status(400).json({ error: '変更項目がありません' });
   try {

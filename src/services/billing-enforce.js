@@ -32,6 +32,7 @@ async function enforcePastDue(db = pool) {
   const r = await db.query(
     `UPDATE facilities SET is_active = FALSE
       WHERE billing_status = 'past_due' AND is_active = TRUE
+        AND plan_code <> 'permanent'
         AND past_due_since IS NOT NULL
         AND past_due_since < now() - ($1 || ' days')::interval
       RETURNING id`,

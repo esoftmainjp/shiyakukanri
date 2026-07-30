@@ -42,12 +42,13 @@ router.get('/current', async (req, res) => {
   try {
     const facility = await loadFacility(facilityId);
     if (!facility) return res.status(404).json({ error: '施設が見つかりません' });
+    // 「永続」は施設管理でのみ選択。セルフ変更の選択肢には出さない。
     const plans = (await pool.query(
       `SELECT code, name, price, max_users, max_products, log_retention_days,
               feat_stocktake, feat_barcode, feat_reports, feat_ledger, feat_import, feat_billing
-         FROM plans ORDER BY sort_order, price, code`)).rows;
+         FROM plans WHERE code <> 'permanent' ORDER BY sort_order, price, code`)).rows;
     const provider = await payments.active();
-    res.json({ facility, plans, paymentMode: provider.key, providerLabel: provider.label });
+    res.json({ facility, plans, isPermanent: facility.plan_code === 'permanent', paymentMode: provider.key, providerLabel: provider.label });
   } catch (err) {
     console.error('契約取得エラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
@@ -61,6 +62,9 @@ router.post('/change', async (req, res) => {
   try {
     const facility = await loadFacility(facilityId);
     if (!facility) return res.status(404).json({ error: '施設が見つかりません' });
+    // 「永続」プランは施設管理(全体管理者)でのみ変更できる。セルフ変更は不可。
+    if (facility.plan_code === 'permanent') return res.status(400).json({ error: '永続プランのため、こちらではプラン変更・お支払いはありません。変更が必要な場合は運営にお問い合わせください。' });
+    if (planCode === 'permanent') return res.status(400).json({ error: 'このプランはお選びいただけません。' });
     const pl = await pool.query('SELECT code, price, stripe_price_id FROM plans WHERE code = $1', [planCode]);
     if (pl.rowCount === 0) return res.status(400).json({ error: 'プランを選択してください' });
     const target = pl.rows[0];

@@ -124,7 +124,8 @@ INSERT INTO plans (code, name, sort_order, max_users, max_products, log_retentio
   ('free',     'フリー',       1,    1,    10,   30,   FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,    0),
   ('light',    'ライト',       2,   10,   100,   90,   FALSE, TRUE,  FALSE, TRUE,  TRUE,  FALSE,  980),
   ('standard', 'スタンダード', 3,  100,  1000,  365,   TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  1980),
-  ('pro',      'プロ',         4, 1000, 10000, NULL,   TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  4980)
+  ('pro',      'プロ',         4, 1000, 10000, NULL,   TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  4980),
+  ('permanent','永続',         5, NULL,  NULL,  NULL,   TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  TRUE,     0)
 ON CONFLICT (code) DO NOTHING;
 
 -- 10b. 施設マスタ (マルチテナント)

@@ -169,12 +169,14 @@ function operationalMenu(includeAdmin) {
     mkGroup('履歴・集計', histItems),
   ];
   if (includeAdmin) {
+    // 「永続」プランは支払義務なし・プラン情報を表示しない(施設管理でのみ設定)。
+    const isPermanent = !!(currentMe && currentMe.plan && currentMe.plan.code === 'permanent');
     const adminItems = [
       ['masters', '/masters.html', 'マスター編集'],
       planAllows('feat_billing') && ['billing', '/billing.html', '支払管理'],
       ['logs', '/logs.html', '操作ログ'],
       ['settings', '/settings.html', '施設設定'],
-      ['plan', '/plan.html', 'ご契約・プラン'],
+      !isPermanent && ['plan', '/plan.html', 'ご契約・プラン'],
     ].filter(Boolean);
     m.push(mkGroup('管理', adminItems));
   }

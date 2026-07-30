@@ -30,7 +30,7 @@ router.get('/plans', async (req, res) => {
     const { rows } = await pool.query(
       `SELECT code, name, price, max_users, max_products, log_retention_days,
               feat_stocktake, feat_barcode, feat_reports, feat_ledger, feat_import, feat_billing
-         FROM plans ORDER BY sort_order, price, code`
+         FROM plans WHERE code <> 'permanent' ORDER BY sort_order, price, code`
     );
     res.json({ plans: rows, paymentMode: (await payments.active()).key });
   } catch (err) {
@@ -52,6 +52,7 @@ router.post('/', signupLimiter, async (req, res) => {
   // 規約・プライバシー等への同意は必須(画面のチェックを回避されないようサーバーでも必須化)
   if (b.agreed !== true) return res.status(400).json({ error: '利用規約・プライバシーポリシー等への同意が必要です' });
 
+  if (planCode === 'permanent') return res.status(400).json({ error: 'このプランはお選びいただけません' });
   try {
     const pl = await pool.query('SELECT code, price, stripe_price_id FROM plans WHERE code = $1', [planCode]);
     if (pl.rowCount === 0) return res.status(400).json({ error: 'プランを選択してください' });
