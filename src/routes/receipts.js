@@ -75,6 +75,7 @@ router.post('/', async (req, res) => {
 
     const affectedOrders = new Set();
     const resultDetails = [];
+    const logItems = []; // 操作ログ用: 入庫した商品名と個数
 
     for (const d of details) {
       if (!d.productId || !d.receiptQuantity || !d.packSize) {
@@ -168,6 +169,7 @@ router.post('/', async (req, res) => {
       resultDetails.push({
         receiptDetailId, addedBara, stockAfter: after, barcodesIssued: barcodes.length,
       });
+      logItems.push({ productId: d.productId, quantity: d.receiptQuantity });
     }
 
     // 関連発注の入庫済み判定
@@ -177,9 +179,18 @@ router.post('/', async (req, res) => {
       if (done) receivedOrders.push(oid);
     }
 
+    // 操作ログの入庫詳細: 入庫済み発注数は載せず、商品名×個数を記録する。
+    const nameMap = {};
+    if (logItems.length) {
+      const ids = [...new Set(logItems.map((x) => x.productId))];
+      const nm = await client.query('SELECT id, name FROM products WHERE id = ANY($1::bigint[])', [ids]);
+      nm.rows.forEach((row) => { nameMap[row.id] = row.name; });
+    }
+    const itemsText = logItems.map((x) => `${nameMap[x.productId] || ('商品#' + x.productId)} ×${x.quantity}`).join(' / ');
+
     await writeLog(client, {
       userId, targetTable: 'receipts', targetId: receiptId, operationType: '登録',
-      after: { receiptDate, detailCount: resultDetails.length, receivedOrders },
+      after: { receiptDate, detailCount: resultDetails.length, items: itemsText },
     });
 
     await client.query('COMMIT');
