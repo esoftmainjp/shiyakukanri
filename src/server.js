@@ -619,10 +619,20 @@ async function enforcePastDueJob() {
   }
 }
 
+// facility_id=NULL のログ(全体管理者の操作・ログイン・入庫等、writeLog に施設を
+// 渡していないもの)の絶対保持上限(日)。プランに依存しない。従来はこの種のログが
+// 一切削除されず溜まり続ける「パージ穴」だったため、ここで上限を設けて塞ぐ。
+const NULL_FACILITY_LOG_RETENTION_DAYS = 730;
+
 // プラン(施設)の log_retention_days を超えた operation_logs を削除する。
+// (1) 施設が紐づくログ … その施設プランの保持日数で削除(log_retention_days が
+//     NULL の無制限プラン=pro/permanent 等は従来どおり削除しない)。
+// (2) facility_id=NULL のログ … プラン非依存の絶対保持上限で削除(パージ穴の対処)。
+//     全体管理者の操作や不明ユーザーのログイン失敗も対象に含めて塞ぐ。
 async function pruneOldLogs() {
   try {
-    const r = await pool.query(
+    // (1) 施設が紐づくログ: その施設プランの保持日数で削除
+    const r1 = await pool.query(
       `DELETE FROM operation_logs ol
          USING facilities f
          JOIN plans p ON p.code = f.plan_code
@@ -630,7 +640,15 @@ async function pruneOldLogs() {
           AND p.log_retention_days IS NOT NULL
           AND ol.created_at < now() - (p.log_retention_days || ' days')::interval`
     );
-    if (r.rowCount) console.log(`[retention] 保持期間超過の操作ログを削除: ${r.rowCount}件`);
+    // (2) facility_id=NULL のログ: プラン非依存の絶対保持上限で削除
+    const r2 = await pool.query(
+      `DELETE FROM operation_logs
+        WHERE facility_id IS NULL
+          AND created_at < now() - make_interval(days => $1)`,
+      [NULL_FACILITY_LOG_RETENTION_DAYS]
+    );
+    const total = r1.rowCount + r2.rowCount;
+    if (total) console.log(`[retention] 保持期間超過の操作ログを削除: ${total}件(施設${r1.rowCount}/施設未設定${r2.rowCount})`);
   } catch (err) {
     console.error('[retention] ログ保持期間の適用に失敗:', err.message);
   }
