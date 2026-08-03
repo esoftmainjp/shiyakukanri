@@ -56,6 +56,12 @@ router.post('/', async (req, res) => {
       [scope.all ? null : scope.facilityId]
     );
     const allowExpired = setting.rowCount ? String(setting.rows[0].value) === 'true' : false;
+    // 発注機能の利用可否(施設設定 order_enabled。未設定は既定=有効)。オフなら発注予定は作らない。
+    const oe = await client.query(
+      `SELECT value FROM app_settings WHERE key = 'order_enabled' AND facility_id IS NOT DISTINCT FROM $1`,
+      [scope.all ? null : scope.facilityId]
+    );
+    const orderEnabled = oe.rowCount ? !(String(oe.rows[0].value) === 'false' || String(oe.rows[0].value) === '0') : true;
     const todayRow = await client.query(`SELECT CURRENT_DATE::text AS today`);
     const today = todayRow.rows[0].today;
 
@@ -187,7 +193,10 @@ router.post('/', async (req, res) => {
     let orderPlanCreated = false;
     let message = null;
 
-    if (suppliers.length > 1) {
+    // 発注機能オフの施設では発注予定を作らない(DB肥大化・再有効化時の混乱を防ぐ)。
+    if (!orderEnabled) {
+      // 何もしない(orderPlanCreated=false のまま)
+    } else if (suppliers.length > 1) {
       message = '複数の問屋の商品が混在しているため、発注予定は自動作成しませんでした。';
     } else if (suppliers.length === 1) {
       for (const p of processed) {
