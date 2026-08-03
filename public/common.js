@@ -146,6 +146,11 @@ function planAllows(featKey) {
   return me.plan[featKey] !== false;
 }
 
+// 発注機能が有効か(施設設定 order_enabled。未設定/未取得は既定=有効)。
+function orderFeatureEnabled() {
+  return !(currentMe && currentMe.orderEnabled === false);
+}
+
 // 施設の運用メニュー(管理者・一般・施設選択中の全体管理者で共通)。プランで機能を出し分け。
 function operationalMenu(includeAdmin) {
   const stockItems = [
@@ -164,10 +169,10 @@ function operationalMenu(includeAdmin) {
     mkLink('dashboard', '/', 'ホーム'),
     mkLink('receipts', '/receipts.html', '入庫'),
     mkLink('issues', '/issues.html', '出庫'),
-    mkLink('orders', '/orders.html', '発注'),
+    orderFeatureEnabled() && mkLink('orders', '/orders.html', '発注'),
     mkGroup('在庫', stockItems),
     mkGroup('履歴・集計', histItems),
-  ];
+  ].filter(Boolean);
   if (includeAdmin) {
     // 「永続」プランは支払義務なし・プラン情報を表示しない(施設管理でのみ設定)。
     const isPermanent = !!(currentMe && currentMe.plan && currentMe.plan.code === 'permanent');
@@ -202,7 +207,7 @@ function renderHeader(user, activeKey) {
   } else if (user.userType === 'supplier') {
     main.push(mkLink('dashboard', '/', 'ホーム'));
     main.push(mkLink('receipts', '/receipts.html', '入庫'));
-    main.push(mkLink('orders', '/orders.html', '発注'));
+    if (orderFeatureEnabled()) main.push(mkLink('orders', '/orders.html', '発注'));
   } else {
     operationalMenu(user.userType === 'admin').forEach((m) => main.push(m));
   }

@@ -20,6 +20,18 @@
       </div>
 
       <div class="card">
+        <h2>発注機能</h2>
+        <div style="margin-top:4px;">
+          <label style="display:inline-flex; align-items:center; gap:8px; margin:0; font-weight:700; color:var(--ink);">
+            <input type="checkbox" id="order_enabled" style="width:auto;" />発注機能を使う
+          </label>
+        </div>
+        <p style="color:#6b7280; font-size:0.83rem; margin-top:8px;">
+          オフにすると、メニューから「発注」が消え、ホームの「発注予定」「入庫予定」や入庫画面の「入庫予定」も表示されなくなります（発注を使わない運用向け）。
+        </p>
+      </div>
+
+      <div class="card">
         <h2>使用期限・在庫</h2>
         <div class="row">
           <div style="flex:0 0 auto;"><label>使用期限の警告日数（日）</label><input type="number" id="expiry_warn_days" min="0" style="width:120px;" /></div>
@@ -111,6 +123,7 @@
   <script>
     // key -> {type, default}
     const FIELDS = {
+      order_enabled:      { type: 'bool', def: true },
       expiry_warn_days:   { type: 'num',  def: 30 },
       low_stock_threshold:{ type: 'num',  def: 0 },
       allow_expired_issue:{ type: 'bool', def: false },

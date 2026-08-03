@@ -403,9 +403,20 @@ app.get('/api/me', requireLogin, async (req, res) => {
     console.error('プラン取得エラー:', err.message);
   }
 
+  // 発注機能の利用可否(施設設定 order_enabled。未設定は既定=有効)
+  let orderEnabled = true;
+  try {
+    if (activeFacilityId != null) {
+      const v = await getSetting('order_enabled', '1', activeFacilityId);
+      orderEnabled = !(String(v) === '0' || String(v).toLowerCase() === 'false');
+    }
+  } catch (err) {
+    console.error('発注設定取得エラー:', err.message);
+  }
+
   res.json({
     user: req.session.user, passwordExpired, passwordExpiryDays, daysSinceChange,
-    isSuperadmin: isSuper, facilities, activeFacilityId, facilityName, plan,
+    isSuperadmin: isSuper, facilities, activeFacilityId, facilityName, plan, orderEnabled,
   });
 });
 

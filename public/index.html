@@ -34,7 +34,7 @@
 
     <!-- ログイン後 -->
     <div id="appArea" style="display:none;">
-      <div class="row" style="align-items:stretch; gap:16px;">
+      <div class="row" id="planRow" style="align-items:stretch; gap:16px;">
         <div class="card" style="flex:1; min-width:300px;">
           <h2>発注予定（未発注）</h2>
           <p style="color:#666; font-size:0.85rem; margin:4px 0;">出庫から自動作成された、これから発注する分です。</p>
@@ -123,6 +123,11 @@
       loadExpiry();
     }
     async function loadPlans() {
+      // 発注機能オフの施設では「発注予定」「入庫予定」カードを表示しない
+      if (currentMe && currentMe.orderEnabled === false) {
+        const pr = document.getElementById('planRow'); if (pr) pr.style.display = 'none';
+        return;
+      }
       const { ok, data } = await api('/api/orders/summary');
       if (!ok) return;
       const opb = document.querySelector('#orderPlanTable tbody');

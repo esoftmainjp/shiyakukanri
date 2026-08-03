@@ -365,6 +365,8 @@
       const sid = document.getElementById('supplier').value;
       const area = document.getElementById('incomingArea');
       const tbody = document.querySelector('#incomingTable tbody');
+      // 発注機能オフの施設では「入庫予定」を表示しない
+      if (currentMe && currentMe.orderEnabled === false) { area.style.display = 'none'; tbody.innerHTML = ''; incomingItems = []; return; }
       if (!sid) { area.style.display = 'none'; tbody.innerHTML = ''; incomingItems = []; return; }
       const { data } = await api('/api/orders/incoming?supplierId=' + encodeURIComponent(sid));
       incomingItems = data.items || [];
