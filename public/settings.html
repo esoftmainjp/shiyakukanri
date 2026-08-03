@@ -27,7 +27,19 @@
           </label>
         </div>
         <p style="color:#6b7280; font-size:0.83rem; margin-top:8px;">
-          オフにすると、メニューから「発注」が消え、ホームの「発注予定」「入庫予定」や入庫画面の「入庫予定」も表示されなくなります（発注を使わない運用向け）。
+          オフにすると、メニューから「発注」が消え、ホームの「発注予定」「入庫予定」や入庫画面の「入庫予定」も表示されなくなります（発注を使わない運用向け）。出庫時の発注予定の自動作成も行いません。
+        </p>
+      </div>
+
+      <div class="card" id="billingCard">
+        <h2>支払管理（問屋精算）</h2>
+        <div style="margin-top:4px;">
+          <label style="display:inline-flex; align-items:center; gap:8px; margin:0; font-weight:700; color:var(--ink);">
+            <input type="checkbox" id="billing_enabled" style="width:auto;" />支払管理を使う
+          </label>
+        </div>
+        <p style="color:#6b7280; font-size:0.83rem; margin-top:8px;">
+          オフにすると、メニューから「支払管理」が消えます（問屋への支払集計を使わない運用向け）。すでに作成済みの締め・請求データは削除されません。
         </p>
       </div>
 
@@ -124,6 +136,7 @@
     // key -> {type, default}
     const FIELDS = {
       order_enabled:      { type: 'bool', def: true },
+      billing_enabled:    { type: 'bool', def: true },
       expiry_warn_days:   { type: 'num',  def: 30 },
       low_stock_threshold:{ type: 'num',  def: 0 },
       allow_expired_issue:{ type: 'bool', def: false },
@@ -151,6 +164,10 @@
         return;
       }
       document.getElementById('area').style.display = 'block';
+      // 支払管理はプラン(feat_billing)前提。プランに含まれない施設では設定カードを隠す。
+      if (typeof planAllows === 'function' && !planAllows('feat_billing')) {
+        const bc = document.getElementById('billingCard'); if (bc) bc.style.display = 'none';
+      }
       const { data } = await api('/api/settings');
       const s = data.settings || {};
       for (const [key, meta] of Object.entries(FIELDS)) {

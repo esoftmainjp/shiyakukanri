@@ -151,6 +151,11 @@ function orderFeatureEnabled() {
   return !(currentMe && currentMe.orderEnabled === false);
 }
 
+// 支払管理が有効か(施設設定 billing_enabled。未設定/未取得は既定=有効)。プラン(feat_billing)とは別。
+function billingFeatureEnabled() {
+  return !(currentMe && currentMe.billingEnabled === false);
+}
+
 // 施設の運用メニュー(管理者・一般・施設選択中の全体管理者で共通)。プランで機能を出し分け。
 function operationalMenu(includeAdmin) {
   const stockItems = [
@@ -178,7 +183,7 @@ function operationalMenu(includeAdmin) {
     const isPermanent = !!(currentMe && currentMe.plan && currentMe.plan.code === 'permanent');
     const adminItems = [
       ['masters', '/masters.html', 'マスター編集'],
-      planAllows('feat_billing') && ['billing', '/billing.html', '支払管理'],
+      planAllows('feat_billing') && billingFeatureEnabled() && ['billing', '/billing.html', '支払管理'],
       ['logs', '/logs.html', '操作ログ'],
       ['settings', '/settings.html', '施設設定'],
       !isPermanent && ['plan', '/plan.html', 'ご契約・プラン'],

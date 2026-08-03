@@ -403,20 +403,23 @@ app.get('/api/me', requireLogin, async (req, res) => {
     console.error('プラン取得エラー:', err.message);
   }
 
-  // 発注機能の利用可否(施設設定 order_enabled。未設定は既定=有効)
+  // 機能の利用可否(施設設定。未設定は既定=有効)。発注・支払管理をメニュー出し分けに使う。
   let orderEnabled = true;
+  let billingEnabled = true;
   try {
     if (activeFacilityId != null) {
-      const v = await getSetting('order_enabled', '1', activeFacilityId);
-      orderEnabled = !(String(v) === '0' || String(v).toLowerCase() === 'false');
+      const ov = await getSetting('order_enabled', '1', activeFacilityId);
+      orderEnabled = !(String(ov) === '0' || String(ov).toLowerCase() === 'false');
+      const bv = await getSetting('billing_enabled', '1', activeFacilityId);
+      billingEnabled = !(String(bv) === '0' || String(bv).toLowerCase() === 'false');
     }
   } catch (err) {
-    console.error('発注設定取得エラー:', err.message);
+    console.error('機能設定取得エラー:', err.message);
   }
 
   res.json({
     user: req.session.user, passwordExpired, passwordExpiryDays, daysSinceChange,
-    isSuperadmin: isSuper, facilities, activeFacilityId, facilityName, plan, orderEnabled,
+    isSuperadmin: isSuper, facilities, activeFacilityId, facilityName, plan, orderEnabled, billingEnabled,
   });
 });
 
