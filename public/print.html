@@ -312,7 +312,14 @@
         });
       }
       h += `</tbody></table>`;
-      h += `<div style="font-size:0.78rem; color:#444; margin-top:8px;">作成者: ＿＿＿＿＿＿＿＿　　管理責任者(確認): ＿＿＿＿＿＿＿＿　　作成日: ＿＿＿＿年＿＿月＿＿日</div>`;
+      // 作成者・管理責任者・作成日は画面からの入力を反映。未入力は記入線で印刷する。
+      const blank = '＿＿＿＿＿＿＿＿';
+      const author = q.get('author') ? esc(q.get('author')) : blank;
+      const manager = q.get('manager') ? esc(q.get('manager')) : blank;
+      const cd = q.get('createdDate');
+      const cdm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(cd || '');
+      const createdDate = cdm ? `${cdm[1]}年${cdm[2]}月${cdm[3]}日` : (cd ? esc(cd) : '＿＿＿＿年＿＿月＿＿日');
+      h += `<div style="font-size:0.78rem; color:#444; margin-top:8px;">作成者: ${author}　　管理責任者(確認): ${manager}　　作成日: ${createdDate}</div>`;
       return h;
     }
 
@@ -329,9 +336,12 @@
     }
     const LOG_TABLE_JP = {
       users: 'ユーザー', products: '商品', product_details: '商品詳細', suppliers: '問屋',
+      makers: 'メーカー', departments: '部門', categories: '分類', facilities: '施設',
       receipts: '入庫', receipt_details: '入庫明細', issues: '出庫', issue_details: '出庫明細',
       orders: '発注', order_details: '発注明細', barcodes: 'バーコード', usage_records: '使用記録',
       stock_movements: '在庫変動', product_stocks: '在庫', app_settings: '設定',
+      plans: 'プラン', supplier_bills: '支払管理', stocktakes: '棚卸し',
+      system_settings: 'システム設定', notification_state: '通知状態',
       ledger: '試薬管理台帳', inventory: '在庫一覧', logs: '操作ログ',
     };
     function logsBody(data) {

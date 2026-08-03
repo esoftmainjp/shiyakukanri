@@ -20,6 +20,12 @@
         <div style="flex:0 0 auto;"><label>&nbsp;</label><button class="secondary" onclick="downloadCsv()">CSV出力</button></div>
         <div style="flex:0 0 auto;"><label>&nbsp;</label><button class="secondary" onclick="printLedger()">印刷</button></div>
       </div>
+      <div class="row" style="background:#fbfcfd; border:1px solid #eee; border-radius:8px; padding:8px 10px;">
+        <div><label>作成者</label><input id="author" placeholder="例：山田 太郎" /></div>
+        <div><label>管理責任者</label><input id="manager" placeholder="例：検査部長" /></div>
+        <div style="flex:0 0 auto;"><label>作成日</label><input type="date" id="createdDate" style="width:170px;" /></div>
+      </div>
+      <p style="font-size:0.8rem; color:#777; margin:4px 0 0;">※ 作成者・管理責任者・作成日は印刷帳票の下部に反映されます（空欄は記入線で印刷されます）。</p>
       <p class="msg" id="msg"></p>
       <div style="overflow-x:auto;">
       <table id="tbl">
@@ -43,6 +49,7 @@
       const y = new Date(); y.setFullYear(y.getFullYear() - 1);
       document.getElementById('from').value = localDateStr(y);
       document.getElementById('to').value = today;
+      document.getElementById('createdDate').value = today; // 作成日は本日を既定(変更可)
       load();
     }
 
@@ -80,7 +87,14 @@
     function downloadCsv() { window.location = '/api/ledger/csv?' + queryString(); }
 
     // 入庫伝票などと同じ専用フォーマットで印刷(画面のメニュー等は含めない)
-    function printLedger() { window.open('/print.html?type=ledger&' + queryString(), '_blank'); }
+    // 作成者・管理責任者・作成日を印刷帳票に反映するためパラメータで渡す。
+    function printLedger() {
+      const p = new URLSearchParams(queryString());
+      const a = document.getElementById('author').value.trim(); if (a) p.set('author', a);
+      const m = document.getElementById('manager').value.trim(); if (m) p.set('manager', m);
+      const d = document.getElementById('createdDate').value; if (d) p.set('createdDate', d);
+      window.open('/print.html?type=ledger&' + p.toString(), '_blank');
+    }
 
     boot();
   </script>
