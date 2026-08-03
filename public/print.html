@@ -58,9 +58,10 @@
       usage_report: '使 用 量 集 計', monthly_report: '月 次 推 移',
       billing: '支 払 書', billing_detail: '支 払 明 細 書',
       inventory: '在 庫 一 覧',
+      expiry: '使 用 期 限 一 覧', open_life: '開 封 後 期 限 一 覧',
     };
     // id を使わず期間/絞り込みで出力する一覧系
-    const LIST_TYPES = ['ledger', 'logs', 'receipts_list', 'issues_list', 'orders_list', 'movements_list', 'usage_report', 'monthly_report', 'inventory'];
+    const LIST_TYPES = ['ledger', 'logs', 'receipts_list', 'issues_list', 'orders_list', 'movements_list', 'usage_report', 'monthly_report', 'inventory', 'expiry', 'open_life'];
     // 一覧系の取得先(type名とAPIパスが異なるものをマッピング)
     const LIST_ENDPOINT = {
       ledger: '/api/ledger', logs: '/api/logs',
@@ -68,6 +69,7 @@
       orders_list: '/api/orders', movements_list: '/api/inventory/movements',
       usage_report: '/api/reports/usage', monthly_report: '/api/reports/monthly',
       inventory: '/api/inventory',
+      expiry: '/api/inventory/expiry', open_life: '/api/inventory/open-life',
     };
     // id系で type名とAPIパスが異なるもの(例: 請求明細書は請求と同じデータを使う)
     const ID_ENDPOINT = { billing_detail: '/api/billing' };
@@ -153,6 +155,8 @@
       else if (type === 'monthly_report') html += monthlyReportBody(data);
       else if (type === 'billing_detail') html += billingDetailBody(data);
       else if (type === 'inventory') html += inventoryBody(data);
+      else if (type === 'expiry') html += expiryBody(data);
+      else if (type === 'open_life') html += openLifeBody(data);
       else html += orderBody(data);
       const sheet = document.getElementById('sheet');
       // 試薬管理台帳は列が多いため、横向き・固定列幅・小フォントで1商品1行に収める。
@@ -446,6 +450,47 @@
           `<td>${s.last_receipt_date || '(なし)'}</td><td class="num">${s.stock_quantity}</td><td>${esc(s.note)}</td></tr>`;
       });
       if (rows.length) h += `<tr><th colspan="9" class="num">合計(在庫バラ数)</th><th class="num">${num(tot)}</th><th></th></tr>`;
+      return h + `</tbody></table>`;
+    }
+
+    // ===== 使用期限一覧の印刷 =====
+    const EXP_LABEL = { expired: '期限切れ', warning: '期限接近' };
+    function daysText(d) {
+      const n = Number(d);
+      return n < 0 ? `${-n}日超過` : `残${n}日`;
+    }
+    function expiryBody(data) {
+      const rows = data.rows || [];
+      const pairs = [['警告日数(この日数以内)', (q.get('warnDays') || (data.warnDays != null ? data.warnDays : '')) + '日'], ['件数', rows.length]];
+      let h = metaRow(pairs);
+      h += `<table><thead><tr><th>状態</th><th>商品名</th><th>ロット</th><th>使用期限</th>` +
+        `<th class="num">残日数</th><th class="num">警告日数</th><th class="num">在庫数</th><th class="num">総在庫</th></tr></thead><tbody>`;
+      if (rows.length === 0) h += emptyRow(8);
+      rows.forEach((r) => {
+        h += `<tr><td>${EXP_LABEL[r.status] || esc(r.status)}</td><td>${esc(r.product_name)}</td>` +
+          `<td>${esc(r.lot_number) || '(なし)'}</td><td>${r.expiry_date || ''}</td>` +
+          `<td class="num">${daysText(r.days_left)}</td>` +
+          `<td class="num">${r.warn_days != null ? r.warn_days + '日' : ''}</td>` +
+          `<td class="num">${num(r.stock_quantity)}</td><td class="num">${num(r.product_total)}</td></tr>`;
+      });
+      return h + `</tbody></table>`;
+    }
+
+    // ===== 開封後期限一覧の印刷 =====
+    function openLifeBody(data) {
+      const rows = data.rows || [];
+      const pairs = [['警告日数(この日数以内)', (q.get('warnDays') || (data.warnDays != null ? data.warnDays : '')) + '日'], ['件数', rows.length]];
+      let h = metaRow(pairs);
+      h += `<table><thead><tr><th>状態</th><th>商品名</th><th>棚</th><th>ロット</th><th>開封日</th>` +
+        `<th>開封後期限</th><th class="num">残日数</th><th class="num">開封後日数</th><th>ラベル期限</th></tr></thead><tbody>`;
+      if (rows.length === 0) h += emptyRow(9);
+      rows.forEach((r) => {
+        h += `<tr><td>${EXP_LABEL[r.status] || esc(r.status)}</td><td>${esc(r.product_name)}</td>` +
+          `<td>${esc(r.shelf || '')}</td><td>${esc(r.lot_number) || '(なし)'}</td>` +
+          `<td>${r.use_start_date || ''}</td><td>${r.open_expiry || ''}</td>` +
+          `<td class="num">${daysText(r.days_left)}</td>` +
+          `<td class="num">${r.open_life_days}日</td><td>${r.labeled_expiry || ''}</td></tr>`;
+      });
       return h + `</tbody></table>`;
     }
 

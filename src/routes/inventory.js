@@ -90,27 +90,25 @@ router.get('/csv', async (req, res) => {
   }
 });
 
-// 使用期限管理: 期限切れ・期限接近の在庫一覧
-// GET /api/inventory/expiry?warnDays=30
-router.get('/expiry', async (req, res) => {
-  try {
-    const scope = facilityScope(req);
-    let warnDays = parseInt(req.query.warnDays, 10);
-    if (Number.isNaN(warnDays)) {
-      const { rows } = await pool.query(
-        `SELECT value FROM app_settings WHERE key = 'expiry_warn_days' AND facility_id IS NOT DISTINCT FROM $1`,
-        [scope.all ? null : scope.facilityId]
-      );
-      warnDays = rows.length ? parseInt(rows[0].value, 10) : 30;
-    }
-    if (Number.isNaN(warnDays) || warnDays < 0) warnDays = 30;
-    const params = [warnDays];
-    let facCond = '';
-    if (!scope.all) { params.push(scope.facilityId); facCond = ` AND p.facility_id = $${params.length}`; }
-    // 有効警告日数 = 商品詳細の expiry_warn_days(0超) を優先、無ければ施設/既定の warnDays。
-    // 商品詳細は「本日適用中」を優先し、無ければ最新の適用開始日のものを採用。
+// 使用期限管理: 期限切れ・期限接近の在庫一覧を取得する共通処理。
+// 画面表示(/expiry)とCSV出力(/expiry/csv)で共用する。
+async function getExpiryList(reqQuery, scope) {
+  let warnDays = parseInt(reqQuery.warnDays, 10);
+  if (Number.isNaN(warnDays)) {
     const { rows } = await pool.query(
-      `WITH base AS (
+      `SELECT value FROM app_settings WHERE key = 'expiry_warn_days' AND facility_id IS NOT DISTINCT FROM $1`,
+      [scope.all ? null : scope.facilityId]
+    );
+    warnDays = rows.length ? parseInt(rows[0].value, 10) : 30;
+  }
+  if (Number.isNaN(warnDays) || warnDays < 0) warnDays = 30;
+  const params = [warnDays];
+  let facCond = '';
+  if (!scope.all) { params.push(scope.facilityId); facCond = ` AND p.facility_id = $${params.length}`; }
+  // 有効警告日数 = 商品詳細の expiry_warn_days(0超) を優先、無ければ施設/既定の warnDays。
+  // 商品詳細は「本日適用中」を優先し、無ければ最新の適用開始日のものを採用。
+  const { rows } = await pool.query(
+    `WITH base AS (
          SELECT s.id, p.id AS product_id, p.name AS product_name, sh.name AS shelf,
                 s.lot_number, s.expiry_date, s.stock_quantity,
                 (SELECT COALESCE(SUM(ps.stock_quantity), 0) FROM product_stocks ps WHERE ps.product_id = p.id) AS product_total,
@@ -142,8 +140,15 @@ router.get('/expiry', async (req, res) => {
          FROM base
         WHERE expiry_date <= CURRENT_DATE + (warn_days || ' days')::interval
         ORDER BY expiry_date`,
-      params
-    );
+    params
+  );
+  return { warnDays, rows };
+}
+
+// GET /api/inventory/expiry?warnDays=30
+router.get('/expiry', async (req, res) => {
+  try {
+    const { warnDays, rows } = await getExpiryList(req.query, facilityScope(req));
     res.json({ warnDays, rows });
   } catch (err) {
     console.error('使用期限管理エラー:', err.message);
@@ -151,25 +156,107 @@ router.get('/expiry', async (req, res) => {
   }
 });
 
+// 使用期限一覧CSV
+// GET /api/inventory/expiry/csv?warnDays=30
+const EXPIRY_STATUS_LABEL = { expired: '期限切れ', warning: '期限接近' };
+router.get('/expiry/csv', async (req, res) => {
+  try {
+    const { rows } = await getExpiryList(req.query, facilityScope(req));
+    const data = rows.map((r) => ({
+      status: EXPIRY_STATUS_LABEL[r.status] || r.status,
+      product_name: r.product_name,
+      lot_number: r.lot_number,
+      expiry_date: r.expiry_date,
+      days_left: r.days_left,
+      warn_days: r.warn_days,
+      stock_quantity: r.stock_quantity,
+      product_total: r.product_total,
+    }));
+    const columns = [
+      { key: 'status', label: '状態' },
+      { key: 'product_name', label: '商品名' },
+      { key: 'lot_number', label: 'ロット番号' },
+      { key: 'expiry_date', label: '使用期限' },
+      { key: 'days_left', label: '残日数' },
+      { key: 'warn_days', label: '警告日数' },
+      { key: 'stock_quantity', label: '在庫数(バラ)' },
+      { key: 'product_total', label: '総在庫数(バラ)' },
+    ];
+    await writeLog(pool, {
+      userId: req.session.user && req.session.user.id,
+      targetTable: 'inventory', operationType: 'CSV出力',
+      after: { file: '使用期限一覧.csv', count: rows.length },
+    });
+    sendCsv(res, '使用期限一覧.csv', columns, data);
+  } catch (err) {
+    console.error('使用期限CSVエラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 開封後期限一覧を取得する共通処理。画面表示(/open-life)とCSV(/open-life/csv)で共用。
+async function getOpenLifeList(reqQuery, scope) {
+  const { queryOpenLife } = require('../services/notify');
+  let warnDays = parseInt(reqQuery.warnDays, 10);
+  if (Number.isNaN(warnDays)) {
+    const { rows } = await pool.query(
+      `SELECT value FROM app_settings WHERE key = 'expiry_warn_days' AND facility_id IS NOT DISTINCT FROM $1`,
+      [scope.all ? null : scope.facilityId]
+    );
+    warnDays = rows.length ? parseInt(rows[0].value, 10) : 30;
+  }
+  if (Number.isNaN(warnDays) || warnDays < 0) warnDays = 30;
+  const rows = await queryOpenLife(pool, scope.all ? null : scope.facilityId, warnDays);
+  return { warnDays, rows };
+}
+
 // 開封後期限管理: 開封中(使用開始済・未終了)で、開封後有効期限が近い/超過のアイテム一覧
 // GET /api/inventory/open-life?warnDays=30
 router.get('/open-life', async (req, res) => {
   try {
-    const { queryOpenLife } = require('../services/notify');
-    const scope = facilityScope(req);
-    let warnDays = parseInt(req.query.warnDays, 10);
-    if (Number.isNaN(warnDays)) {
-      const { rows } = await pool.query(
-        `SELECT value FROM app_settings WHERE key = 'expiry_warn_days' AND facility_id IS NOT DISTINCT FROM $1`,
-        [scope.all ? null : scope.facilityId]
-      );
-      warnDays = rows.length ? parseInt(rows[0].value, 10) : 30;
-    }
-    if (Number.isNaN(warnDays) || warnDays < 0) warnDays = 30;
-    const rows = await queryOpenLife(pool, scope.all ? null : scope.facilityId, warnDays);
+    const { warnDays, rows } = await getOpenLifeList(req.query, facilityScope(req));
     res.json({ warnDays, rows });
   } catch (err) {
     console.error('開封後期限管理エラー:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+// 開封後期限一覧CSV
+// GET /api/inventory/open-life/csv?warnDays=30
+router.get('/open-life/csv', async (req, res) => {
+  try {
+    const { rows } = await getOpenLifeList(req.query, facilityScope(req));
+    const data = rows.map((r) => ({
+      status: EXPIRY_STATUS_LABEL[r.status] || r.status,
+      product_name: r.product_name,
+      shelf: r.shelf,
+      lot_number: r.lot_number,
+      use_start_date: r.use_start_date,
+      open_expiry: r.open_expiry,
+      days_left: r.days_left,
+      open_life_days: r.open_life_days,
+      labeled_expiry: r.labeled_expiry,
+    }));
+    const columns = [
+      { key: 'status', label: '状態' },
+      { key: 'product_name', label: '商品名' },
+      { key: 'shelf', label: '棚' },
+      { key: 'lot_number', label: 'ロット番号' },
+      { key: 'use_start_date', label: '開封日' },
+      { key: 'open_expiry', label: '開封後期限' },
+      { key: 'days_left', label: '残日数' },
+      { key: 'open_life_days', label: '開封後日数' },
+      { key: 'labeled_expiry', label: 'ラベル期限' },
+    ];
+    await writeLog(pool, {
+      userId: req.session.user && req.session.user.id,
+      targetTable: 'inventory', operationType: 'CSV出力',
+      after: { file: '開封後期限一覧.csv', count: rows.length },
+    });
+    sendCsv(res, '開封後期限一覧.csv', columns, data);
+  } catch (err) {
+    console.error('開封後期限CSVエラー:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
   }
 });

@@ -26,6 +26,8 @@
           <input type="number" id="warnDays" min="0" />
         </div>
         <div style="flex:0 0 auto;"><label>&nbsp;</label><button onclick="load()">表示</button></div>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label><button class="secondary" onclick="csvExpiry()">CSV出力</button></div>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label><button class="secondary" onclick="printExpiry()">印刷</button></div>
       </div>
       <p style="font-size:0.85rem;">
         <span class="legend expired">期限切れ</span>
@@ -65,6 +67,10 @@
         <span class="legend expired">期限切れ</span>
         <span class="legend warning">期限接近</span>
       </p>
+      <div style="margin:8px 0; display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="secondary" onclick="csvOpenLife()">CSV出力</button>
+        <button class="secondary" onclick="printOpenLife()">印刷</button>
+      </div>
       <table id="tblOpen">
         <thead><tr>
           <th>状態</th><th>商品名</th><th>棚</th><th>ロット</th><th>開封日</th><th>開封後期限</th><th>残日数</th><th>開封後日数</th><th>ラベル期限</th>
@@ -213,6 +219,13 @@
       return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
+
+    // CSV出力・印刷(いずれも画面の警告日数を引き継ぐ)
+    function warnDaysParam() { return 'warnDays=' + encodeURIComponent(document.getElementById('warnDays').value || ''); }
+    function csvExpiry() { window.location = '/api/inventory/expiry/csv?' + warnDaysParam(); }
+    function printExpiry() { window.open('/print.html?type=expiry&' + warnDaysParam(), '_blank'); }
+    function csvOpenLife() { window.location = '/api/inventory/open-life/csv?' + warnDaysParam(); }
+    function printOpenLife() { window.open('/print.html?type=open_life&' + warnDaysParam(), '_blank'); }
 
     boot();
   </script>
