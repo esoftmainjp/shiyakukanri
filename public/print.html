@@ -30,6 +30,12 @@
       font-size: 0.66rem; padding: 2px 4px; line-height: 1.25;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
+    /* 使用期限一覧・開封後期限一覧: 1データ1行(折り返さない)。列幅固定・はみ出しは…で省略 */
+    .sheet.fitrows table { table-layout: fixed; width: 100%; }
+    .sheet.fitrows th, .sheet.fitrows td {
+      font-size: 0.72rem; padding: 3px 5px; line-height: 1.3;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
     @media print {
       .toolbar, header { display: none !important; }
       body { background: #fff; }
@@ -169,6 +175,10 @@
         sheet.classList.add('inventory');
         document.getElementById('pageOrient').textContent = '@media print { @page { size: A4 landscape; margin: 10mm; } }';
       }
+      // 使用期限一覧・開封後期限一覧は、1データが2行に折り返さないよう固定列幅で収める。
+      if (type === 'expiry' || type === 'open_life') {
+        sheet.classList.add('fitrows');
+      }
       sheet.innerHTML = html;
     }
 
@@ -283,9 +293,9 @@
       let h = metaRow([['期間', `${from || '—'} ～ ${to || '—'}`]]);
       h += `<div style="font-size:0.8rem; color:#333; margin:2px 0 6px;">ISO15189／医療法（体外診断用医薬品の管理）対応　試薬管理台帳</div>`;
       h += `<table><colgroup>` +
-        `<col style="width:7%"><col style="width:14%"><col style="width:11%"><col style="width:11%"><col style="width:7%">` +
+        `<col style="width:7%"><col style="width:12%"><col style="width:10%"><col style="width:11%"><col style="width:7%">` +
         `<col style="width:9%"><col style="width:6%"><col style="width:7%"><col style="width:7%"><col style="width:7%">` +
-        `<col style="width:4%"><col style="width:6%"><col style="width:4%"></colgroup>` +
+        `<col style="width:7%"><col style="width:6%"><col style="width:4%"></colgroup>` +
         `<thead><tr><th>入庫日</th><th>商品名</th><th>メーカー</th><th>販売元</th><th>保管場所</th>` +
         `<th>ロット</th><th>内容物コード</th><th>有効期限</th><th>使用開始日</th><th>使用終了日</th><th>状態</th>` +
         `<th>記録者</th><th>確認印</th></tr></thead><tbody>`;
@@ -463,7 +473,10 @@
       const rows = data.rows || [];
       const pairs = [['警告日数(この日数以内)', (q.get('warnDays') || (data.warnDays != null ? data.warnDays : '')) + '日'], ['件数', rows.length]];
       let h = metaRow(pairs);
-      h += `<table><thead><tr><th>状態</th><th>商品名</th><th>ロット</th><th>使用期限</th>` +
+      h += `<table><colgroup>` +
+        `<col style="width:9%"><col style="width:26%"><col style="width:15%"><col style="width:13%">` +
+        `<col style="width:10%"><col style="width:9%"><col style="width:9%"><col style="width:9%"></colgroup>` +
+        `<thead><tr><th>状態</th><th>商品名</th><th>ロット</th><th>使用期限</th>` +
         `<th class="num">残日数</th><th class="num">警告日数</th><th class="num">在庫数</th><th class="num">総在庫</th></tr></thead><tbody>`;
       if (rows.length === 0) h += emptyRow(8);
       rows.forEach((r) => {
@@ -481,7 +494,10 @@
       const rows = data.rows || [];
       const pairs = [['警告日数(この日数以内)', (q.get('warnDays') || (data.warnDays != null ? data.warnDays : '')) + '日'], ['件数', rows.length]];
       let h = metaRow(pairs);
-      h += `<table><thead><tr><th>状態</th><th>商品名</th><th>棚</th><th>ロット</th><th>開封日</th>` +
+      h += `<table><colgroup>` +
+        `<col style="width:9%"><col style="width:22%"><col style="width:10%"><col style="width:13%"><col style="width:11%">` +
+        `<col style="width:11%"><col style="width:8%"><col style="width:9%"><col style="width:7%"></colgroup>` +
+        `<thead><tr><th>状態</th><th>商品名</th><th>棚</th><th>ロット</th><th>開封日</th>` +
         `<th>開封後期限</th><th class="num">残日数</th><th class="num">開封後日数</th><th>ラベル期限</th></tr></thead><tbody>`;
       if (rows.length === 0) h += emptyRow(9);
       rows.forEach((r) => {
