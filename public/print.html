@@ -340,9 +340,11 @@
       receipts: '入庫', receipt_details: '入庫明細', issues: '出庫', issue_details: '出庫明細',
       orders: '発注', order_details: '発注明細', barcodes: 'バーコード', usage_records: '使用記録',
       stock_movements: '在庫変動', product_stocks: '在庫', app_settings: '設定',
-      plans: 'プラン', supplier_bills: '支払管理', stocktakes: '棚卸し',
+      plans: 'プラン', supplier_bills: '支払管理', billing: '支払書', billing_detail: '支払明細書',
+      stocktakes: '棚卸し', shelves: '棚',
       system_settings: 'システム設定', notification_state: '通知状態',
-      ledger: '試薬管理台帳', inventory: '在庫一覧', logs: '操作ログ',
+      ledger: '試薬管理台帳', inventory: '在庫一覧', expiry: '使用期限一覧', open_life: '開封後期限一覧',
+      logs: '操作ログ',
     };
     function logsBody(data) {
       const from = q.get('from') || '';
