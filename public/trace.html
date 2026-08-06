@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ロット逆引き | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header></header>
+  <main>
+    <div id="denied" class="card" style="display:none;"><p>この画面は管理者のみ利用できます。</p></div>
+
+    <div id="area" style="display:none;">
+      <div class="card">
+        <h2>ロット逆引き（トレーサビリティ）</h2>
+        <p style="font-size:0.85rem; color:#556; margin-top:0;">
+          ロット番号を入力すると、そのロットの<strong>入庫（入手元）・出庫（使用先）・在庫移動・使用記録・現在庫</strong>を横断的に逆引きします。
+          不具合ロットの回収・追跡（リコール対応）にご利用ください。
+        </p>
+        <div class="row">
+          <div style="flex:2; min-width:220px;"><label>ロット番号</label><input id="lot" placeholder="例：ABC-1234" /></div>
+          <div style="flex:0 0 auto;"><label>&nbsp;</label><button onclick="run()">逆引き</button></div>
+          <div style="flex:0 0 auto;"><label>&nbsp;</label><button class="secondary" onclick="csv()">在庫移動をCSV出力</button></div>
+        </div>
+        <p class="msg" id="msg"></p>
+      </div>
+
+      <div id="results" style="display:none;">
+        <div class="card">
+          <h3>現在庫</h3>
+          <div style="overflow-x:auto;"><table id="tblStock"><thead><tr>
+            <th>商品名</th><th>棚</th><th>使用期限</th><th class="nowrap">在庫数（バラ）</th>
+          </tr></thead><tbody></tbody></table></div>
+        </div>
+        <div class="card">
+          <h3>入庫（入手元）</h3>
+          <div style="overflow-x:auto;"><table id="tblReceipts"><thead><tr>
+            <th>入庫日</th><th>商品名</th><th>問屋</th><th class="nowrap">入庫数</th><th class="nowrap">バラ数</th><th>使用期限</th><th>担当</th>
+          </tr></thead><tbody></tbody></table></div>
+        </div>
+        <div class="card">
+          <h3>出庫（使用先）</h3>
+          <div style="overflow-x:auto;"><table id="tblIssues"><thead><tr>
+            <th>出庫日</th><th>商品名</th><th class="nowrap">出庫数</th><th class="nowrap">バラ数</th><th>使用期限</th><th>バーコード</th><th>担当</th>
+          </tr></thead><tbody></tbody></table></div>
+        </div>
+        <div class="card">
+          <h3>在庫移動履歴（入庫・出庫・調整・廃棄・返品・棚卸差異）</h3>
+          <div style="overflow-x:auto;"><table id="tblMoves"><thead><tr>
+            <th>対象日</th><th>区分</th><th>商品名</th><th class="nowrap">増減</th><th class="nowrap">変動前</th><th class="nowrap">変動後</th><th>理由</th><th>担当</th>
+          </tr></thead><tbody></tbody></table></div>
+        </div>
+        <div class="card">
+          <h3>使用記録（開封・使用終了）</h3>
+          <div style="overflow-x:auto;"><table id="tblUsage"><thead><tr>
+            <th>商品名</th><th>内容物コード</th><th>使用期限</th><th>開封日</th><th>使用終了日</th>
+          </tr></thead><tbody></tbody></table></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    const MOVE_LABEL = { receipt: '入庫', issue: '出庫', adjust: '在庫調整', disposal: '廃棄', return: '返品', stocktake: '棚卸差異' };
+
+    async function boot() {
+      const user = await initPage('trace');
+      if (!user) return;
+      const allowed = user.userType === 'admin' || user.userType === 'superadmin';
+      if (!allowed) { document.getElementById('denied').style.display = 'block'; return; }
+      if (user.userType === 'superadmin' && !(currentMe && currentMe.activeFacilityId != null)) {
+        document.querySelector('main').innerHTML = '<div class="card">全体管理者は、画面上部の施設セレクタで対象施設を選択してからご利用ください。</div>';
+        return;
+      }
+      document.getElementById('area').style.display = 'block';
+      // URLに ?lot= があれば初期実行(他画面からの遷移用)
+      const q = new URLSearchParams(location.search);
+      if (q.get('lot')) { document.getElementById('lot').value = q.get('lot'); run(); }
+    }
+
+    function fillRows(sel, rows, cols, colspan) {
+      const tbody = document.querySelector(sel + ' tbody');
+      tbody.innerHTML = '';
+      if (!rows.length) { tbody.innerHTML = `<tr><td colspan="${colspan}" style="color:#888;">該当なし</td></tr>`; return; }
+      rows.forEach((r) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = cols(r);
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function run() {
+      const msg = document.getElementById('msg');
+      const lot = document.getElementById('lot').value.trim();
+      if (!lot) { setMsg(msg, 'ロット番号を入力してください', 'error'); return; }
+      setMsg(msg, '検索中…', 'ok');
+      const { ok, data } = await api('/api/trace/lot?lot=' + encodeURIComponent(lot));
+      if (!ok) { setMsg(msg, (data && data.error) || '検索に失敗しました', 'error'); return; }
+      const total = (data.currentStock.length + data.receipts.length + data.issues.length + data.movements.length + data.usageRecords.length);
+      document.getElementById('results').style.display = total ? 'block' : 'block';
+      setMsg(msg, total ? `ロット「${esc(lot)}」の該当 計 ${total} 件` : `ロット「${esc(lot)}」に該当するデータはありません`, total ? 'ok' : 'error');
+
+      fillRows('#tblStock', data.currentStock, (r) =>
+        `<td>${esc(r.product_name)}</td><td>${esc(r.shelf || '')}</td><td>${r.expiry_date || ''}</td>` +
+        `<td class="num">${r.stock_quantity}</td>`, 4);
+
+      fillRows('#tblReceipts', data.receipts, (r) =>
+        `<td>${r.receipt_date || ''}</td><td>${esc(r.product_name)}</td><td>${esc(r.supplier || '')}</td>` +
+        `<td class="num">${r.receipt_quantity}</td><td class="num">${r.stock_added_quantity}</td>` +
+        `<td>${r.expiry_date || ''}</td><td>${esc(r.user_name || '')}</td>`, 7);
+
+      fillRows('#tblIssues', data.issues, (r) =>
+        `<td>${r.issue_date || ''}</td><td>${esc(r.product_name)}</td>` +
+        `<td class="num">${r.issue_quantity}</td><td class="num">${r.issue_total_quantity}</td>` +
+        `<td>${r.expiry_date || ''}</td><td>${esc(r.barcode_value || '')}</td><td>${esc(r.user_name || '')}</td>`, 7);
+
+      fillRows('#tblMoves', data.movements, (r) => {
+        const chg = Number(r.quantity_change);
+        return `<td>${r.movement_date || ''}</td><td>${MOVE_LABEL[r.movement_type] || esc(r.movement_type)}</td>` +
+          `<td>${esc(r.product_name)}</td><td class="num">${(chg > 0 ? '+' : '') + chg}</td>` +
+          `<td class="num">${r.quantity_before}</td><td class="num">${r.quantity_after}</td>` +
+          `<td>${esc(r.reason || '')}</td><td>${esc(r.user_name || '')}</td>`;
+      }, 8);
+
+      fillRows('#tblUsage', data.usageRecords, (r) =>
+        `<td>${esc(r.product_name)}</td><td>${esc(r.content_code)}</td><td>${r.expiry_date || ''}</td>` +
+        `<td>${r.use_start_date || ''}</td><td>${r.use_end_date || ''}</td>`, 5);
+    }
+
+    function csv() {
+      const lot = document.getElementById('lot').value.trim();
+      if (!lot) { setMsg(document.getElementById('msg'), 'ロット番号を入力してください', 'error'); return; }
+      window.location = '/api/trace/lot/csv?lot=' + encodeURIComponent(lot);
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    boot();
+  </script>
+</body>
+</html>

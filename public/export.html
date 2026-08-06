@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>データ出力（バックアップ） | 試薬在庫管理システム</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header></header>
+  <main>
+    <div id="denied" class="card" style="display:none;"><p>この画面は管理者のみ利用できます。</p></div>
+
+    <div id="area" style="display:none;">
+      <div class="card">
+        <h2>データ出力（バックアップ）</h2>
+        <p style="font-size:0.88rem; color:#445;">
+          この施設の<strong>マスタ・在庫・履歴</strong>を一括でCSV化し、ZIPファイルにまとめてダウンロードします。
+          監査・システム移行・バックアップ（BCP）にご利用ください。
+        </p>
+        <ul style="font-size:0.85rem; color:#556; line-height:1.8;">
+          <li>含まれるもの：部門／分類／棚／メーカー／問屋／商品／商品詳細、在庫、入庫・出庫・発注、在庫移動、バーコード、使用記録、支払、棚卸、ユーザー、施設設定 など</li>
+          <li>ZIP内は表ごとのCSV（UTF-8・Excel対応）と、内容一覧の <code>manifest.txt</code> です。</li>
+          <li><strong>パスワード等の機密情報は含まれません</strong>（ユーザーは氏名・権限等のみ）。</li>
+        </ul>
+        <div style="margin-top:10px;">
+          <button id="btn" onclick="doExport()">ZIPをダウンロード</button>
+          <span class="msg" id="msg" style="margin-left:10px;"></span>
+        </div>
+        <p style="font-size:0.8rem; color:#888; margin-top:14px;">
+          ※ データ量により生成に少し時間がかかる場合があります。出力操作は監査ログに記録されます。
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    async function boot() {
+      const user = await initPage('export');
+      if (!user) return;
+      const allowed = user.userType === 'admin' || user.userType === 'superadmin';
+      if (!allowed) { document.getElementById('denied').style.display = 'block'; return; }
+      if (user.userType === 'superadmin' && !(currentMe && currentMe.activeFacilityId != null)) {
+        document.querySelector('main').innerHTML = '<div class="card">全体管理者は、画面上部の施設セレクタで対象施設を選択してからご利用ください。</div>';
+        return;
+      }
+      document.getElementById('area').style.display = 'block';
+    }
+
+    // ZIPはバイナリのため fetch で受け取り Blob 保存する（api()はJSON前提のため直接fetch）。
+    async function doExport() {
+      const btn = document.getElementById('btn');
+      const msg = document.getElementById('msg');
+      btn.disabled = true;
+      setMsg(msg, '生成中…', 'ok');
+      try {
+        const res = await fetch('/api/export/all', { credentials: 'same-origin' });
+        if (!res.ok) {
+          let e = '出力に失敗しました';
+          try { const j = await res.json(); e = j.error || e; } catch (_) {}
+          setMsg(msg, e, 'error'); btn.disabled = false; return;
+        }
+        const blob = await res.blob();
+        // ファイル名はContent-Dispositionから復元（無ければ既定）
+        let fname = 'reagent_backup.zip';
+        const cd = res.headers.get('Content-Disposition') || '';
+        const m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+        if (m) { try { fname = decodeURIComponent(m[1]); } catch (_) {} }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = fname; document.body.appendChild(a); a.click();
+        a.remove(); URL.revokeObjectURL(url);
+        setMsg(msg, 'ダウンロードを開始しました', 'ok');
+      } catch (err) {
+        setMsg(msg, '通信エラーが発生しました', 'error');
+      }
+      btn.disabled = false;
+    }
+
+    boot();
+  </script>
+</body>
+</html>

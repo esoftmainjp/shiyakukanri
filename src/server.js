@@ -551,6 +551,8 @@ app.use('/api/quick-product', requireLogin, requireRole('admin', 'general', 'sup
 app.use('/api/masters',   requireLogin, requireRole('admin', 'superadmin'), require('./routes/masters'));
 app.use('/api/import',    requireLogin, requireRole('admin', 'superadmin'), requireFeature('feat_import'), require('./routes/import'));
 app.use('/api/logs',      requireLogin, requireRole('admin', 'superadmin'), require('./routes/logs'));
+app.use('/api/trace',     requireLogin, requireRole('admin', 'superadmin'), require('./routes/trace'));
+app.use('/api/export',    requireLogin, requireRole('admin', 'superadmin'), require('./routes/export'));
 
 // ------------------------------------------------------------
 // 取扱説明書(PDF)。ログインユーザーが閲覧可能。

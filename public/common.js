@@ -184,6 +184,8 @@ function operationalMenu(includeAdmin) {
     const adminItems = [
       ['masters', '/masters.html', 'マスター編集'],
       planAllows('feat_billing') && billingFeatureEnabled() && ['billing', '/billing.html', '支払管理'],
+      ['trace', '/trace.html', 'ロット逆引き'],
+      ['export', '/export.html', 'データ出力'],
       ['logs', '/logs.html', '操作ログ'],
       ['settings', '/settings.html', '施設設定'],
       !isPermanent && ['plan', '/plan.html', 'ご契約・プラン'],
