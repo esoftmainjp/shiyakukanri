@@ -21,6 +21,7 @@
       <div class="row">
         <div style="flex:2;"><label class="barcode-label">バーコードを読み取り/入力（独自 / GS1-128）／読み取ると自動で明細に追加</label><input id="barcode" class="barcode-input" placeholder="ここにスキャン（Enterで自動追加）" autofocus /></div>
         <div style="flex:0 0 auto;"><label>&nbsp;</label><button onclick="addBarcode()">読取</button></div>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label><button type="button" id="camScanBtn" class="secondary" style="display:none; white-space:nowrap;">📷 カメラでスキャン</button></div>
       </div>
       <p class="msg" id="bcMsg"></p>
 
@@ -65,6 +66,7 @@
   </main>
 
   <script src="/common.js"></script>
+  <script src="/scan.js"></script>
   <script src="/gs1.js"></script>
   <script src="/product-picker.js"></script>
   <script>
@@ -102,6 +104,15 @@
       document.getElementById('barcode').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); addBarcode(); }
       });
+      // カメラスキャン(端末設定でON時のみ): 読取値を#barcodeへ入れEnterでaddBarcodeを実行
+      if (window.CameraScan && CameraScan.enabled()) {
+        const cb = document.getElementById('camScanBtn');
+        cb.style.display = '';
+        cb.onclick = () => CameraScan.open({ title: 'バーコードで出庫', onResult: (code) => {
+          const b = document.getElementById('barcode'); b.value = code;
+          b.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        }});
+      }
       onProductChange();
     }
 

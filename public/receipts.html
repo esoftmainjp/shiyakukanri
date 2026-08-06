@@ -45,6 +45,7 @@
           <label class="barcode-label">バーコードをスキャン（GS1-128：JAN・ロット・使用期限）／読み取ると自動で明細に追加。同じロットは箱数＋1</label>
           <input id="scan" class="barcode-input" placeholder="ここにスキャン（Enterで自動追加）" autofocus />
         </div>
+        <div style="flex:0 0 auto;"><label>&nbsp;</label><button type="button" id="camScanBtn" class="secondary" style="display:none; white-space:nowrap;">📷 カメラでスキャン</button></div>
       </div>
       <p class="msg" id="scanMsg"></p>
 
@@ -132,6 +133,7 @@
   </main>
 
   <script src="/common.js"></script>
+  <script src="/scan.js"></script>
   <script src="/gs1.js"></script>
   <script src="/product-picker.js"></script>
   <script>
@@ -184,6 +186,14 @@
       // GS1-128スキャン: Enterで確定
       const scan = document.getElementById('scan');
       scan.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); handleScan(scan.value); } });
+      // カメラスキャン(端末設定でON時のみ): 読取値を#scanへ入れEnterでhandleScanを実行
+      if (window.CameraScan && CameraScan.enabled()) {
+        const cb = document.getElementById('camScanBtn');
+        cb.style.display = '';
+        cb.onclick = () => CameraScan.open({ title: 'GS1-128 スキャン', onResult: (code) => {
+          scan.value = code; scan.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        }});
+      }
     }
 
     // 選択中の商品＋ロット＋使用期限の現在庫を表示

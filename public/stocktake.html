@@ -110,6 +110,7 @@
         <label style="font-weight:600;">バーコードスキャン</label>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <input id="scanInput" placeholder="バーコードを読み取り(Enterで登録)" onkeydown="onScanKey(event)" style="flex:1; min-width:220px;" />
+          <button type="button" id="camScanBtn" class="secondary" style="display:none; white-space:nowrap;">📷 カメラでスキャン</button>
           <span class="toast" id="scanToast"></span>
         </div>
         <p class="muted" style="margin:6px 0 0;">読み取った個体を実数に加算します。読み取られなかった有効個体は確定時に「紛失」として無効化されます。</p>
@@ -139,6 +140,7 @@
   </main>
 
   <script src="/common.js"></script>
+  <script src="/scan.js"></script>
   <script>
     let currentUser = null;
     let currentId = null;
@@ -163,6 +165,15 @@
       const opt = (arr) => '<option value="">すべて</option>' + (arr || []).map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
       document.getElementById('nCategory').innerHTML = opt(cat.data && cat.data.categories);
       document.getElementById('nDepartment').innerHTML = opt(dep.data && dep.data.departments);
+      // カメラスキャン(端末設定でON時のみ): 読取値を#scanInputへ入れEnterでonScanKeyを実行
+      if (window.CameraScan && CameraScan.enabled()) {
+        const cb = document.getElementById('camScanBtn');
+        cb.style.display = '';
+        cb.onclick = () => CameraScan.open({ title: '棚卸しスキャン', onResult: (code) => {
+          const s = document.getElementById('scanInput'); s.value = code;
+          s.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        }});
+      }
       loadList();
     }
 

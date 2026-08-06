@@ -49,6 +49,19 @@
       </div>
 
       <div class="card">
+        <h2>カメラスキャン</h2>
+        <div style="margin-top:4px;">
+          <label style="display:inline-flex; align-items:center; gap:8px; margin:0; font-weight:700; color:var(--ink);">
+            <input type="checkbox" id="camera_scan" style="width:auto;" />カメラでバーコードを読み取る
+          </label>
+        </div>
+        <p style="color:#6b7280; font-size:0.83rem; margin-top:8px;">
+          オンにすると、入庫・出庫・棚卸の画面に「カメラでスキャン」ボタンが表示され、この端末のカメラでバーコード（GS1-128・JAN・独自バーコード等）を読み取れます。
+          カメラ付きのスマホ・タブレット向けの設定です（オフが既定）。
+        </p>
+      </div>
+
+      <div class="card">
         <h2>バーコードの種別</h2>
         <div>
           <label>印刷するバーコード</label>
@@ -167,6 +180,8 @@
       document.getElementById('theme').value = theme;
       // 画面の幅(端末別)。現在値を選択状態に。
       document.getElementById('content_width').value = getDeviceSetting('content_width', '980px');
+      // カメラスキャン(端末別・既定OFF)
+      document.getElementById('camera_scan').checked = getDeviceSetting('camera_scan', '0') === '1';
       // バーコード種別(端末別)
       document.getElementById('barcode_kind').value = getDeviceSetting('barcode_kind', '1d') === '2d' ? '2d' : '1d';
       // 1次元ラベル設定
@@ -183,6 +198,7 @@
       applyTheme(document.getElementById('theme').value); // テーマは端末に保存
       const cw = document.getElementById('content_width').value;
       setDeviceSetting('content_width', cw); applyContentWidth(cw); // 画面の幅は端末に保存
+      setDeviceSetting('camera_scan', document.getElementById('camera_scan').checked ? '1' : '0'); // カメラスキャン
       setDeviceSetting('barcode_kind', document.getElementById('barcode_kind').value); // バーコード種別
       LABEL_KEYS.forEach((k) => { setDeviceSetting(k, document.getElementById(k).value); });
       // 2次元: 現在表示中の入力を取り込み、縦/横それぞれのキーで保存
@@ -198,6 +214,8 @@
       try { localStorage.removeItem('dev_content_width'); } catch (e) { /* ignore */ }
       document.getElementById('content_width').value = '980px';
       applyContentWidth('980px');
+      try { localStorage.removeItem('dev_camera_scan'); } catch (e) { /* ignore */ }
+      document.getElementById('camera_scan').checked = false;
       try { localStorage.removeItem('dev_barcode_kind'); } catch (e) { /* ignore */ }
       document.getElementById('barcode_kind').value = '1d';
       LABEL_KEYS.forEach((k) => {
